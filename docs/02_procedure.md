@@ -75,6 +75,24 @@ padlen 을 명시하고, 그와 별개로 **평가 guard band 5 s** 를 전 방�
 입력 5 dB 에서 +5.9 dB → **+16.2 dB**. "Sameni 가 잘 안 된다" 는 초기 관찰은
 방법의 한계가 아니라 구현 문제였다.
 
+**F-8. 합성 벤치마크가 딥러닝을 12 dB 과대평가하고 있었다** — 초기 `SyntheticSource` 는
+모든 기록에 **같은 커널**을 썼다. record 단위로 split 을 해도 morphology 는 train/test 가
+완전히 동일하므로, 1 M 파라미터 신경망이 생성기를 통째로 외워버린다.
+
+| 조건 | M06 (U-Net) | M04 (SWT) |
+|---|---|---|
+| 학습에 쓰인 morphology | **+16.5 dB** | +7.2 dB |
+| 커널을 교란한 morphology | **+4~6 dB** | +8~12 dB |
+
+즉 "DL이 DSP를 압도한다"는 결론은 **벤치마크의 인공물**이었다.
+`synthetic.jitter_kernel()` 로 기록(=피험자)마다 파형 위치·진폭·폭을 흔들고
+낮은 확률로 T 파를 역전시키도록 고쳤다 (기록 간 beat template 상관 ≈ 1.0 → 0.0~0.6).
+회귀 테스트 `test_synthetic_records_have_distinct_morphology` 로 고정했다.
+
+> **일반화**: 합성/증강 데이터로 딥러닝을 평가할 때, split 축(record)과
+> **변이 축(morphology)이 일치하지 않으면** record split 은 leakage 를 막지 못한다.
+> MIT-BIH 에서는 기록마다 실제로 다른 환자이므로 이 문제가 없다.
+
 **F-7. SNR sweep 은 잡음 실현을 1 회만 뽑고 스케일만 바꿔야 한다** —
 SNR 마다 다른 잡음을 뽑으면 곡선이 '잡음 조성 변화' 와 뒤섞여 해석 불가능해진다.
 

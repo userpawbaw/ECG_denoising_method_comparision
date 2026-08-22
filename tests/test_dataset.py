@@ -65,3 +65,30 @@ def test_eval_set_is_shared_and_reproducible(tmp_path):
     back = load_eval_set(p)
     assert len(back) == len(it1)
     assert np.array_equal(back[0]["y"], it1[0]["y"])
+
+
+def test_synthetic_records_have_distinct_morphology():
+    """기록마다 morphology 가 달라야 한다.
+
+    회귀 테스트: 모든 합성 기록이 같은 커널을 쓰면 record 단위 split 을 해도
+    morphology 가 train/test 에 동일하게 존재해 **leakage 와 같은 효과**가 난다.
+    실측으로 신경망이 생성기를 외워 성능이 12 dB 과대평가됐다.
+    """
+    import itertools
+
+    from ecgdn.eval.morphology import beat_template
+
+    src = SyntheticSource(n_train=4, n_val=1, n_test=4, dur_s=40.0)
+    tmpl = {}
+    for split in ("train", "test"):
+        for nm in src.records(split):
+            r = src.get(nm)
+            t = beat_template(r.x, r.r_peaks, r.fs)
+            tmpl[nm] = t - t.mean()
+    ccs = []
+    for a, b in itertools.combinations(tmpl, 2):
+        ta, tb = tmpl[a], tmpl[b]
+        d = np.sqrt((ta @ ta) * (tb @ tb))
+        if d > 0:
+            ccs.append(abs(float((ta @ tb) / d)))
+    assert np.median(ccs) < 0.8, f"기록 간 morphology 가 너무 비슷하다 (median |cc| = {np.median(ccs):.3f})"
