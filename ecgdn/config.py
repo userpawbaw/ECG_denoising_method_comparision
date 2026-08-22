@@ -67,8 +67,12 @@ class SWTCfg:
     #   그 결과 QRS 대역을 과도하게 잘라낸다 (실측: 18.7 dB -> 14.1 dB 로 악화).
     #   SWT(norm=False) 는 백색잡음의 계수 분산을 level 에 무관하게 보존하므로
     #   잡음이 지배적인 최고주파 band 하나에서 추정한 sigma 를 전 level 에 쓰는 것이 맞다.
-    sigma_source: str = "d1"          # 'd1' | 'd2' | 'min12' | 'level'
-    k: tuple[float, ...] = (0.6, 0.6, 0.6, 0.6, 0.6)
+    # 아래 기본값은 scripts/tune_swt.py 로 탐색한 결과다 (docs/05_swt_tuning.md).
+    # 탐색 seed 와 검증 seed 를 분리했고, 검증 세트에서 +11.4 dB
+    # (교과서 기본값 level-MAD + soft + k=1 은 -3.5 dB).
+    # MIT-BIH 확보 후에는 TRAIN split 으로 반드시 재탐색할 것.
+    sigma_source: str = "d2"          # 'd1' | 'd2' | 'min12' | 'level'
+    k: tuple[float, ...] = (2.5, 2.0, 0.6, 0.4, 0.3)
     mode: str = "garrote"          # 'soft' | 'hard' | 'garrote'
     protect_qrs: bool = True
     protect_ms: float = 60.0       # R-peak 주변 보호 반경
