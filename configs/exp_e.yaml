@@ -1,0 +1,18 @@
+# EXP-E — 안전성 프로브 (RQ5). hallucination / 부정맥 훼손 검증.
+exp_id: exp_e
+snr_db: 5.0
+
+data:
+  source: auto
+  seg_s: 60.0
+  n_seg_per_record: 1
+  dur_s: 300.0
+  n_test: 22
+  nstdb_root: data/raw/nstdb
+
+methods: [M00, M01, M04, M05, B01]
+
+dl_methods:
+  M06: {ckpt: results/m06_l1/best.pt}
+  M07: {ckpt: results/m07_l1/best.pt, pre: M04}
+  M08: {ckpt: results/m08_l1/best.pt}

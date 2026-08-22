@@ -1,0 +1,26 @@
+# EXP-B — 잡음 종류별 강약 (RQ2). SNR 은 10 dB 고정.
+exp_id: exp_b
+mode: snr
+
+data:
+  source: auto
+  split: test
+  seg_s: 60.0
+  n_seg_per_record: 2
+  snr_grid: [10]
+  conditions: [awgn, pli, bw_synth, ma_synth, em_synth, impulse, mixed]
+  noise_split: test
+  dur_s: 300.0
+  n_test: 22
+  seed: eval_b
+
+methods: [M00, M01, M02, M03, M04, M05f, M05, B01, B02]
+
+dl_methods:
+  M06: {ckpt: results/m06_l1/best.pt}
+  M07: {ckpt: results/m07_l1/best.pt, pre: M04}
+  M08: {ckpt: results/m08_l1/best.pt}
+
+eval:
+  do_morph: true
+  do_spectral: true

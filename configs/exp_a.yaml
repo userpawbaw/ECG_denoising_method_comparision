@@ -1,0 +1,26 @@
+# EXP-A — 입력 SNR sweep (RQ1). 주 결과표/곡선의 원천.
+exp_id: exp_a
+mode: snr
+
+data:
+  source: auto
+  split: test
+  seg_s: 60.0
+  n_seg_per_record: 2
+  snr_grid: [-5, 0, 5, 10, 15, 20]
+  conditions: [mixed]
+  noise_split: test
+  dur_s: 300.0
+  n_test: 22
+  seed: eval_a
+
+methods: [M00, M01, M02, M03, M04, M05f, M05, B01, B02]
+
+dl_methods:
+  M06: {ckpt: results/m06_l1/best.pt}
+  M07: {ckpt: results/m07_l1/best.pt, pre: M04}
+  M08: {ckpt: results/m08_l1/best.pt}
+
+eval:
+  do_morph: true
+  do_spectral: true
