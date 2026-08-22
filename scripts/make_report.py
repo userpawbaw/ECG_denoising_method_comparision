@@ -16,7 +16,7 @@ import pandas as pd
 
 import ecgdn.methods  # noqa: F401
 from ecgdn.eval.stats import compare_methods, summarize
-from ecgdn.registry import available, meta
+from ecgdn.registry import available, build, meta
 from ecgdn.utils import ensure_dir
 from ecgdn.viz import plots
 
@@ -90,10 +90,71 @@ def fmt_table(t: pd.DataFrame, metrics, floor) -> list[str]:
     return lines
 
 
+def make_waveform_figures(out: Path, cfg_path: str = "configs/exp_a.yaml",
+                          snr_db: float = 5.0, record_idx: int = 0):
+    """F1/F2/F3 — 대표 구간의 파형 스택, QRS 확대, PSD.
+
+    숫자 표만으로는 morphology 보존을 보여줄 수 없다. 이 그림들이 결과의 핵심이다.
+    """
+    import yaml
+
+    from ecgdn.data.dataset import build_eval_set
+    from ecgdn.data.nstdb import make_banks
+    from ecgdn.data.sources import get_source
+    cfg = yaml.safe_load(Path(cfg_path).read_text())
+    d = cfg.get("data", {})
+    src = get_source(d.get("source", "auto"), dur_s=float(d.get("dur_s", 300.0)),
+                     n_test=int(d.get("n_test", 22)))
+    banks = make_banks("test", d.get("nstdb_root", "data/raw/nstdb"))
+    items = build_eval_set(src, "test", seg_s=float(d.get("seg_s", 60.0)),
+                           snr_grid=[snr_db], noise_conditions=("mixed",), banks=banks,
+                           n_seg_per_record=1, seed=d.get("seed", "eval"))
+    if not items:
+        return None
+    it = items[min(record_idx, len(items) - 1)]
+    x, y, fs = it["x"].astype(float), it["y"].astype(float), it["fs"]
+
+    methods = {}
+    for mid in cfg.get("methods", []):
+        try:
+            methods[mid] = build(mid)
+        except Exception as e:
+            print(f"[warn] build({mid}) failed: {type(e).__name__}: {e}")
+    for mid, spec in (cfg.get("dl_methods") or {}).items():
+        spec = {"ckpt": spec} if isinstance(spec, str) else spec
+        if Path(spec["ckpt"]).exists():
+            from ecgdn.methods.dl_wrapper import DLDenoiser
+            methods[mid] = DLDenoiser(ckpt=spec["ckpt"], name=mid, pre=spec.get("pre"),
+                                      batch=32)
+    outs = {}
+    for mid, fn in methods.items():
+        ctx = {"x_clean": x} if getattr(fn, "needs_clean", False) else {}
+        try:
+            outs[mid] = fn(y, fs, ctx)
+        except Exception as e:
+            print(f"[warn] {mid} failed on figure segment: {type(e).__name__}: {e}")
+
+    rp = np.asarray(it["r_peaks"], dtype=int)
+    mid_t = float(rp[len(rp) // 2]) / fs if rp.size else 20.0
+    plots.waveform_stack(x, y, outs, fs, t0=max(6.0, mid_t - 2.0), dur=4.0,
+                         path=out / "F1_waveforms.png",
+                         title=f"Representative segment (record {it['record']}, "
+                               f"input SNR {snr_db:.0f} dB)")
+    plots.waveform_stack(x, y, outs, fs, t0=max(6.0, mid_t - 0.25), dur=0.6,
+                         path=out / "F2_qrs_zoom.png",
+                         title="QRS zoom (same segment)")
+    plots.psd_compare(x, y, outs, fs, path=out / "F3_psd.png",
+                      title=f"PSD (record {it['record']}, input SNR {snr_db:.0f} dB)")
+    return it["record"]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--real-snr", type=float, default=None,
                     help="실측 장비 SNR 추정치 [dB]. F4 에 수직선으로 표시.")
+    ap.add_argument("--fig-snr", type=float, default=5.0,
+                    help="대표 파형 그림(F1-F3)의 입력 SNR [dB].")
+    ap.add_argument("--no-waveforms", action="store_true")
     args = ap.parse_args()
 
     out = ensure_dir("results/report")
@@ -103,6 +164,24 @@ def main() -> int:
                      "(수정하지 말 것 — 스크립트를 고칠 것)", ""]
 
     a, b, c = load_exp("exp_a"), load_exp("exp_b"), load_exp("exp_c")
+
+    # ---------------- 대표 파형 (숫자표가 못 보여주는 것)
+    if not args.no_waveforms:
+        try:
+            rec = make_waveform_figures(out, snr_db=args.fig_snr)
+            if rec:
+                md += ["## 대표 파형", "",
+                       f"기록 `{rec}`, 입력 SNR {args.fig_snr:.0f} dB, 동일 y축.", "",
+                       "![F1](../results/report/F1_waveforms.png)", "",
+                       "### QRS 확대", "",
+                       "![F2](../results/report/F2_qrs_zoom.png)", "",
+                       "### 주파수 스펙트럼", "",
+                       "![F3](../results/report/F3_psd.png)", "",
+                       "PSD 는 시간영역에서 보이지 않는 것을 보여준다: "
+                       "어떤 방법이 60 Hz 를 지웠는지, 어떤 방법이 QRS 의 고주파 성분까지 "
+                       "함께 잘라냈는지.", ""]
+        except Exception as e:
+            print(f"[warn] waveform figures skipped: {type(e).__name__}: {e}")
 
     # ---------------- 방법 목록
     md += ["## 비교 대상", "", "| ID | 분류 | 설명 |", "|---|---|---|"]
