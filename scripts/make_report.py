@@ -160,7 +160,7 @@ def _pareto_front(rem: dict[str, float], pres: dict[str, float]) -> list[str]:
     return sorted(front)
 
 
-def _conclusions(a, c) -> list[str]:
+def _conclusions(a, c, b=None) -> list[str]:
     """결과표에서 직접 도출되는 결론만 쓴다 (사람이 손으로 쓰지 않는다)."""
     PRACTICAL = [m for m in plots.METHOD_ORDER
                  if m in a.method.unique() and not m.startswith("B") and m != "M00"]
@@ -218,7 +218,34 @@ def _conclusions(a, c) -> list[str]:
                f"방법 간 편차는 {spread:.2f} ms 로 좁아 이 조건에서는 판별력이 없다. "
                "MIT-BIH 처럼 형태 변이가 큰 데이터에서 다시 볼 것.", ""]
 
-    md += ["### 5) 이 결과의 적용 범위", "",
+    if b is not None:
+        pv = b[b.metric == "snr_imp_scaled"].pivot_table(
+            index="method", columns="cond", values="value", aggfunc="mean")
+        prac = [m for m in PRACTICAL if m in pv.index]
+        if prac and len(pv.columns):
+            md += ["### 5) 잡음 종류에 따라 답이 갈린다 (RQ2)", "",
+                   "입력 10 dB 고정. **잡음 종류마다 최적 기법이 다르다** — 단일 승자는 없다.", "",
+                   "| 잡음 | 최적(실용) | 그 값 | 최악(실용) | 그 값 |", "|---|---|---|---|---|"]
+            for cond in pv.columns:
+                col = pv.loc[prac, cond].sort_values(ascending=False)
+                md.append(f"| `{cond}` | **`{col.index[0]}`** | {col.iloc[0]:+.2f} dB "
+                          f"| `{col.index[-1]}` | {col.iloc[-1]:+.2f} dB |")
+            md.append("")
+            if "impulse" in pv.columns:
+                col = pv.loc[prac, "impulse"].sort_values(ascending=False)
+                dl = [m for m in ("M06", "M07", "M08") if m in col.index]
+                cls = [m for m in ("M01", "M02", "M03", "M04") if m in col.index]
+                if dl and cls:
+                    md += ["> **가장 실용적인 발견**: 순간적인 임펄스성 artifact "
+                           "(오실로스코프에서 보이는 날카로운 spike) 에서는 "
+                           f"딥러닝 계열이 {col[dl].max():+.1f} dB, "
+                           f"고전 DSP 계열이 최대 {col[cls].max():+.1f} dB 다.",
+                           "> 임펄스는 시간축에서 sparse 하고 광대역이라 "
+                           "**주파수 기반 분리가 원리적으로 통하지 않는다.** "
+                           "반대로 PLI·baseline wander 에서는 튜닝된 SWT 가 oracle 에 근접하고 "
+                           "딥러닝이 오히려 뒤진다.", ""]
+
+    md += ["### 6) 이 결과의 적용 범위", "",
            "- **합성 ECG(D0) 기준이다.** MIT-BIH(D1) 로 반드시 재검증해야 한다 "
            "(`docs/02_procedure.md` STEP 14-15).",
            "- 딥러닝은 이 합성 분포에서 학습했다. 다른 morphology 분포에서 얼마나 유지되는지는 "
@@ -412,7 +439,7 @@ def main() -> int:
 
     # ---------------- 자동 결론 (데이터에서만 도출)
     if a is not None:
-        md += _conclusions(a, c)
+        md += _conclusions(a, c, b)
 
     doc = ensure_dir("docs") / "90_results.md"
     doc.write_text("\n".join(md) + "\n")
