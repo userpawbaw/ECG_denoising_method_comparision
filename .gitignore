@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# 원본 데이터 / 대용량 산출물은 커밋하지 않는다
+data/
+results/
+!results/.gitkeep
+*.pt
+*.ckpt
+*.parquet
+*.npz
