@@ -43,12 +43,14 @@ def latency(model, n=WIN, reps=50, warmup=10):
 
 
 def main() -> int:
+    from ecgdn.models.cnn_transformer import CNNTransformer
     from ecgdn.models.resunet1d import ResUNet1D
     from ecgdn.models.wavelet_unet import WaveletSubbandUNet
 
     rows = []
     for name, m in [("M06 ResUNet1D", ResUNet1D()),
-                    ("M08 WaveletSubbandUNet", WaveletSubbandUNet())]:
+                    ("M08 WaveletSubbandUNet", WaveletSubbandUNet()),
+                    ("M09 CNNTransformer", CNNTransformer())]:
         m.eval()
         lat = latency(m)
         rows.append((name, m.n_params(), getattr(m, "receptive_field_samples", -1),

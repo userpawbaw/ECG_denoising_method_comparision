@@ -8,6 +8,78 @@
 
 ---
 
+## 진행 현황 (자동 아님 — STEP 완료 시 갱신할 것)
+
+| STEP | 상태 | 산출물 / 통과한 DoD | 비고 |
+|---|---|---|---|
+| 00 환경 | ✅ | `requirements.txt`, `Makefile` | |
+| 01 규격 | ✅ | `config.py`, `utils.py`, `registry.py` | `pytest tests/test_utils.py` |
+| 02 합성 ECG | ✅ | ODE↔위상영역 오차 5.9e-11, R-peak 100 % | **PVC 커널을 zero-phase-mean 으로 정규화**(아래 F-2) |
+| 03 잡음 | ✅ | 6종 PSD 대역 검증 | **degenerate 잡음 버그 수정**(아래 F-1) |
+| 04 믹서/OLA | ✅ | 재구성 오차 < 1e-10, SNR 오차 < 1e-6 | |
+| 05 신호 지표 | ✅ | 0.5배 축소가 strict 6.02 dB / scaled ∞ 로 분리됨 | DC 규약 통일 |
+| 06 R-peak 지표 | ✅ | 1:1 매칭, +8 ms 편향 검출 확인 | |
+| 07 morphology + floor | ✅ | `docs/03_metric_floor.md` | **sub-sample beat 정렬 필수**(아래 F-3) |
+| 08 스펙트럼 + SNR 추정 | ✅ | `docs/04_snr_estimator_calibration.md` | AWGN 편향 0.9 dB |
+| 09 평가 엔진 | ✅ | `evaluate`, `evaluate_many`, `stats` | **guard band 5 s 확정**(아래 F-4) |
+| 10 M00~M02 | ✅ | R-peak 편향 < 0.2 ms | |
+| 11 M03/M04 + B01 | ✅ | `docs/05_swt_tuning.md`, 검증 세트 +11.4 dB | **σ 는 전역 추정**(00_review B-1 정정) |
+| 12 B02 | ✅ | M04/M05 가 B02 를 넘음 → 비선형 처리 필요 | |
+| 13 Sameni | ✅ | `docs/06_sameni_diagnosis.md` 7/7 | **버그 2건 수정, +5.9 → +16.2 dB** |
+| 14 다운로드 | ⬜ | `scripts/download_data.py` 작성 완료 | **로컬에서 실행 필요** (원격은 physionet 차단) |
+| 15 적재/split | ✅ | `mitdb.py`, `nstdb.py`, `splits.py` (DS1/DS2) | 데이터 확보 후 통합 테스트 |
+| 16 데이터셋 | ✅ | 결정론적 재현, 역정규화 검증 | 합성 소스로 MIT-BIH 없이도 동작 |
+| 17 M06 | ✅ | overfit 2.2e-5, 976K params, RF 3.55 s | |
+| 18 학습 루프 | ✅ | best 선택을 지표 기준으로 | |
+| 19 loss ablation | 🔄 | `configs/m0*_l*.yaml` | 학습 진행 중 |
+| 20 DL 래퍼 | ✅ | 임의 길이, 경계 불연속 없음 | |
+| 21 TorchSWT | ✅ | pywt 대비 < 1e-6, gradcheck 통과 | |
+| 22 M07 | 🔄 | `configs/m07_l1.yaml` | 학습 진행 중 |
+| 23 M08 | 🔄 | 993K params, identity 출발 확인 | 학습 진행 중 |
+| 24 EXP-A | ⬜ | `configs/exp_a.yaml` | 학습 완료 후 |
+| 25 EXP-B/C | ✅ | EXP-C 동작 확인 (distortion floor) | 전체 실행은 학습 후 |
+| 26 EXP-E | ✅ | `docs/07_safety_probe.md` | **M05 의 PVC 훼손 발견** |
+| 27 리포트 | ✅ | F1~F8, T1~T3 자동 생성 | |
+| 28 실측 수집 | ⬜ | `docs/08_acquisition.md`, 스케치, 로거 | **하드웨어 필요** |
+| 29 실측 SNR | ⬜ | `scripts/estimate_real_snr.py` | 28 이후 |
+| 30 EXP-F | ⬜ | | 28 이후 |
+
+범례: ✅ 완료 / 🔄 진행 중 / ⬜ 외부 조건 대기
+
+### 구현 중 실제로 발견한 것 (설계를 바꾼 것들)
+
+**F-1. `motion_synth` 가 드물게 전(全) 0 잡음을 생성** — 약 1/2600 window.
+이벤트가 창 끝에 놓이면 상승항이 0 이라 기여가 전혀 없다. SNR 스케일링이 불가능해져
+학습이 매번 에폭 6 부근에서 죽었다. 회귀 테스트를 8000 시행으로 강화했다
+(400 시행으로는 못 잡는다).
+
+**F-2. PVC 커널의 위상 평균이 정상 beat 와 달라 beat 마다 DC 계단 발생** —
+front-end distortion floor 가 40 dB → 13 dB 로 붕괴. 모든 beat 종류가 같은 등전위선을
+공유하도록 커널을 zero-phase-mean 으로 정규화했다.
+
+**F-3. `fs=250 Hz` 에서 1 샘플(4 ms) 정렬 오차가 SNR 추정을 6 dB 왜곡** —
+QRS 는 σ 가 10 ms 수준이라 1 샘플만 어긋나도 beat 잔차가 부풀어 오른다.
+4배 업샘플 후 template 교차상관 정렬을 필수 단계로 넣었다 (20 dB → 14 dB 였던 것이 20.5 dB 로).
+
+**F-4. `filtfilt` 기본 padlen 으로는 front-end 자체가 11.9 dB 왜곡** —
+0.5 Hz HPF 는 수 초간 링잉하는데 scipy 기본 padlen 은 15 샘플이다.
+padlen 을 명시하고, 그와 별개로 **평가 guard band 5 s** 를 전 방법 공통 규약으로 확정했다
+(guard 3 s 40.9 dB → 5 s 41.9 dB 포화).
+
+**F-5. SWT 의 σ 를 level 별 MAD 로 추정하면 안 된다** — D3 이상은 ECG 가 계수를
+지배해 σ 를 2~5 배 과대추정하고 QRS 대역을 잘라낸다.
+검증 세트에서 전역 σ +11.4 dB vs level별 σ −3.5 dB. `00_review.md` B-1 초판 권고를 정정했다.
+
+**F-6. Sameni 구현 버그 2건** — (a) phase-averaged template 의 상수 오프셋,
+(b) `q_z` 를 누적 분산으로 잘못 계산(beat 길이 L 로 나눠야 함).
+입력 5 dB 에서 +5.9 dB → **+16.2 dB**. "Sameni 가 잘 안 된다" 는 초기 관찰은
+방법의 한계가 아니라 구현 문제였다.
+
+**F-7. SNR sweep 은 잡음 실현을 1 회만 뽑고 스케일만 바꿔야 한다** —
+SNR 마다 다른 잡음을 뽑으면 곡선이 '잡음 조성 변화' 와 뒤섞여 해석 불가능해진다.
+
+---
+
 ## PHASE 0 — 기반
 
 ### STEP 00. 환경 구축 `[NO-DATA]`

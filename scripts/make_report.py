@@ -261,6 +261,35 @@ def main() -> int:
             md += ["![F5](../results/report/F5_pareto.png)", "",
                    "오른쪽 위로 갈수록 좋다. 오른쪽 아래는 '잡음은 잘 지우지만 파형을 망가뜨리는' 방법이다.", ""]
 
+    # ---------------- EXP-D (RQ4): wavelet 을 어디에 쓸 것인가
+    if a is not None:
+        trio = ["M06", "M07", "M08"]
+        have = [m for m in trio if m in a.method.unique()]
+        if len(have) >= 2:
+            md += ["## EXP-D — wavelet 을 어디에 쓸 것인가 (RQ4)", "",
+                   "같은 backbone(Residual U-Net)·같은 손실·같은 데이터에서 **wavelet 의 위치만** 바꾼다.",
+                   "",
+                   "| ID | wavelet 의 역할 |", "|---|---|",
+                   "| `M06` | 쓰지 않음 (raw 파형을 그대로 입력) |",
+                   "| `M07` | **전처리 필터** — SWT thresholding 으로 1차 제거한 뒤 U-Net |",
+                   "| `M08` | **입력 표현공간** — SWT subband 를 채널로 주고 U-Net 이 대역별 잡음을 학습 |",
+                   ""]
+            rows = []
+            for m, _, _ in MAIN_METRICS:
+                w = per_record(a, m)
+                if w.empty:
+                    continue
+                rows.append([m] + [f"{w[x].mean():.4g}" if x in w else "—" for x in have])
+            md += ["| metric | " + " | ".join(have) + " |",
+                   "|---" * (len(have) + 1) + "|"]
+            for r in rows:
+                md.append("| `" + r[0] + "` | " + " | ".join(r[1:]) + " |")
+            md += ["",
+                   "이 표가 답하는 것: **DSP 를 AI 앞단에 두는 것**과 "
+                   "**DSP 가 정의한 표현공간을 AI 에게 주는 것** 중 무엇이 효과적인가.",
+                   "차이가 크지 않다면 그것도 결과다 — 'wavelet 표현이 U-Net 이 스스로 배우는 것 이상을 주지 못한다'.",
+                   ""]
+
     # ---------------- EXP-B
     if b is not None:
         plots.noise_heatmap(b, "snr_imp_scaled", out / "F6_noise_heatmap.png",

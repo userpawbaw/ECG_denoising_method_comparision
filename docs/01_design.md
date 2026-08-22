@@ -148,11 +148,23 @@ y  = x + n'
 | `M06` | **Residual 1D U-Net** | Deep | ★ DL 주력 |
 | `M07` | SWT → Residual U-Net | Hybrid (순차) | DSP 전처리 + DL |
 | `M08` | **Wavelet-subband Residual U-Net** | Hybrid (구조) | ★ 최종 후보 |
-| `M09` | CNN + Transformer | Deep (확장) | 여유 시 |
+| `M09` | CNN + Transformer | Deep (확장) | 긴 문맥의 효용 검증 |
 | `B01` | **Oracle wavelet threshold** | bound | wavelet 계열 **상한** |
 | `B02` | Wiener (oracle PSD) | bound | 선형 필터 **상한** |
 
 `M09`는 `M08`까지 완료된 후에만 착수한다. 미완료여도 과제는 성립한다.
+
+**`M09` 구조** (구현 완료, 768 K params)
+```
+y (B,1,1024)
+ └─ CNN stem + 2단 다운샘플        -> (B, 96, 256)   토큰 256개
+ └─ 학습형 positional embedding
+ └─ TransformerEncoder × 3 (nhead 4, pre-norm, GELU)
+ └─ 2단 업샘플 + skip
+ └─ head(0 초기화) -> 예측 잡음 n̂,  x̂ = y − n̂
+```
+attention 이 전 토큰을 보므로 실효 수용영역은 window 전체(4.096 s)다.
+`M06`(RF 3.55 s)과의 차이가 곧 "**명시적 장거리 attention 이 추가 이득을 주는가**" 의 답이 된다.
 
 ### 4.1 딥러닝 모델 규격
 
