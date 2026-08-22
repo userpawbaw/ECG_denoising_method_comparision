@@ -94,16 +94,20 @@ raw
 | 리샘플 | 360 → 250 Hz (polyphase, `scipy.signal.resample_poly(25, 36)`) |
 | 잡음 | `nstdb` 의 `bw`, `ma`, `em` (각 30 min, 360 Hz → 250 Hz) + 합성 PLI + AWGN |
 
-**record split (고정, 변경 금지):**
+**record split (고정, 변경 금지) — SSOT 는 `ecgdn/data/splits.py`:**
+
+DS1/DS2 는 de Chazal 등이 제안해 널리 인용되는 **inter-patient** 분할이다.
+paced beat 기록(102, 104, 107, 217)은 morphology 가 근본적으로 달라 주 실험에서 분리하고
+보조 분석에만 쓴다.
+
 ```
-TRAIN (24): 101 106 108 109 112 114 115 116 118 119 122 124
-            201 203 205 207 208 209 215 220 223 230 100 105
-VAL    (8): 111 117 121 123 200 202 210 213
-TEST  (16): 103 104 107 113 210x? -> 아래 확정 목록 참조
+TRAIN (18): 101 106 108 109 112 114 115 116 118 119 122 124 201 203 205 207 209 215
+VAL   (4): 208 220 223 230
+TEST  (22): 100 103 105 111 113 117 121 123 200 202 210 212 213 214 219 221 222 228 231 232 233 234
+PACED (4): 102 104 107 217     <- 주 실험 제외
 ```
-> 정확한 목록은 `ecgdn/data/splits.py` 의 `MITDB_SPLIT` 상수를 단일 진실 원천(SSOT)으로 한다.
-> 원칙: (a) record 단위, (b) TEST에 정상/부정맥이 모두 포함, (c) paced beat record(102,104,107,217)는
-> ECG morphology가 근본적으로 다르므로 **별도 그룹**으로 분리해 보조 분석에만 사용.
+
+`splits.check_split()` 이 import 시점에 교집합·누락을 자동 검증한다.
 
 **noise split (시간축 disjoint, A-7):**
 ```
