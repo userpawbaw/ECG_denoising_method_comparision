@@ -31,15 +31,15 @@
 | 16 데이터셋 | ✅ | 결정론적 재현, 역정규화 검증 | 합성 소스로 MIT-BIH 없이도 동작 |
 | 17 M06 | ✅ | overfit 2.2e-5, 976K params, RF 3.55 s | |
 | 18 학습 루프 | ✅ | best 선택을 지표 기준으로 | |
-| 19 loss ablation | 🔄 | `configs/m0*_l*.yaml` | 학습 진행 중 |
+| 19 loss ablation | ✅ | m06_l1/l3, m08_l1/l4 학습 완료 | L3/L4 가 L1 보다 우수 |
 | 20 DL 래퍼 | ✅ | 임의 길이, 경계 불연속 없음 | |
 | 21 TorchSWT | ✅ | pywt 대비 < 1e-6, gradcheck 통과 | |
-| 22 M07 | 🔄 | `configs/m07_l1.yaml` | 학습 진행 중 |
-| 23 M08 | 🔄 | 993K params, identity 출발 확인 | 학습 진행 중 |
-| 24 EXP-A | ⬜ | `configs/exp_a.yaml` | 학습 완료 후 |
-| 25 EXP-B/C | ✅ | EXP-C 동작 확인 (distortion floor) | 전체 실행은 학습 후 |
+| 22 M07 | ✅ | 학습 완료 | 저 SNR 에서 최강, 고 SNR 에서 붕괴 |
+| 23 M08 | ✅ | 학습 완료 | M06 대비 전 구간 우위 |
+| 24 EXP-A | ✅ | 264 구간 × 12 기법, `results/exp_a` | 입력 SNR 별 최적 기법 확정 |
+| 25 EXP-B/C | ✅ | `results/exp_b`(308×12), `results/exp_c`(44×12) | Pareto front 확정 |
 | 26 EXP-E | ✅ | `docs/07_safety_probe.md` | **M05 의 PVC 훼손 발견** |
-| 27 리포트 | ✅ | F1~F8, T1~T3 자동 생성 | |
+| 27 리포트 | ✅ | `docs/90_results.md` + F1~F8, T1~T3 | 결론까지 데이터에서 자동 도출 |
 | 28 실측 수집 | ⬜ | `docs/08_acquisition.md`, 스케치, 로거 | **하드웨어 필요** |
 | 29 실측 SNR | ⬜ | `scripts/estimate_real_snr.py` | 28 이후 |
 | 30 EXP-F | ⬜ | | 28 이후 |

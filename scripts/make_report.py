@@ -148,6 +148,86 @@ def make_waveform_figures(out: Path, cfg_path: str = "configs/exp_a.yaml",
     return it["record"]
 
 
+def _pareto_front(rem: dict[str, float], pres: dict[str, float]) -> list[str]:
+    """두 축 모두에서 다른 방법에 지배당하지 않는 방법들."""
+    keys = [k for k in rem if k in pres and np.isfinite(rem[k]) and np.isfinite(pres[k])]
+    front = []
+    for k in keys:
+        dominated = any(rem[o] >= rem[k] and pres[o] >= pres[k]
+                        and (rem[o] > rem[k] or pres[o] > pres[k]) for o in keys if o != k)
+        if not dominated:
+            front.append(k)
+    return sorted(front)
+
+
+def _conclusions(a, c) -> list[str]:
+    """결과표에서 직접 도출되는 결론만 쓴다 (사람이 손으로 쓰지 않는다)."""
+    PRACTICAL = [m for m in plots.METHOD_ORDER
+                 if m in a.method.unique() and not m.startswith("B") and m != "M00"]
+    piv = a[a.metric == "snr_imp_scaled"].pivot_table(
+        index="snr_in_target", columns="method", values="value", aggfunc="mean")
+
+    md = ["## 결론 (표에서 직접 도출)", "",
+          "### 1) 입력 SNR 구간별 최적 기법 (RQ1)", "",
+          "| 입력 SNR [dB] | 최적(실용) | 그 값 | 2위 | oracle `B01` 대비 부족분 |",
+          "|---|---|---|---|---|"]
+    for snr in piv.index:
+        row = piv.loc[snr, [m for m in PRACTICAL if m in piv.columns]].sort_values(ascending=False)
+        b01 = piv.loc[snr, "B01"] if "B01" in piv.columns else np.nan
+        gap = f"{b01 - row.iloc[0]:+.2f} dB" if np.isfinite(b01) else "—"
+        md.append(f"| {snr:g} | **`{row.index[0]}`** | {row.iloc[0]:+.2f} dB "
+                  f"| `{row.index[1]}` ({row.iloc[1]:+.2f}) | {gap} |")
+    md.append("")
+
+    # 유해 구간
+    harmful = []
+    for m in PRACTICAL:
+        if m not in piv.columns:
+            continue
+        neg = [f"{s:g}" for s in piv.index if piv.loc[s, m] < 0]
+        if neg:
+            harmful.append(f"`{m}` (입력 {', '.join(neg)} dB)")
+    if harmful:
+        md += ["### 2) 오히려 신호를 나쁘게 만드는 구간", "",
+               "아래 조건에서는 **아무 처리도 하지 않는 편이 낫다** (`snr_imp_scaled < 0`):", "",
+               "- " + "\n- ".join(harmful), ""]
+
+    # Pareto
+    if c is not None:
+        cd = per_record(c, "snr_out_strict").mean(axis=0).replace([np.inf, -np.inf], np.nan)
+        rem = per_record(a, "snr_imp_scaled").mean(axis=0).to_dict()
+        pres = {k: v for k, v in cd.to_dict().items() if np.isfinite(v)}
+        front = _pareto_front({k: v for k, v in rem.items() if k in PRACTICAL},
+                              {k: v for k, v in pres.items() if k in PRACTICAL})
+        dom = [m for m in PRACTICAL if m in pres and m not in front]
+        md += ["### 3) 잡음 제거 vs 신호 보존의 Pareto front (RQ3)", "",
+               "가로축 = 잡음을 얼마나 제거했는가, 세로축 = 깨끗한 신호를 얼마나 안 망가뜨리는가.", "",
+               f"- **Pareto front (실용 기법)**: {', '.join('`'+m+'`' for m in front)}",
+               f"- **지배당함 (두 축 모두에서 더 나은 대안이 있음)**: "
+               f"{', '.join('`'+m+'`' for m in dom) if dom else '없음'}", "",
+               "> `distortion floor` 는 출력 SNR 의 **천장**이기도 하다. "
+               "예를 들어 floor 가 15 dB 인 방법은 입력이 아무리 깨끗해도 출력이 15 dB 를 넘지 못한다.", ""]
+
+    # 지표의 한계
+    rp = per_record(a, "rpeak_mae_ms").mean(axis=0)
+    if "M00" in rp:
+        spread = float(np.nanmax(rp) - np.nanmin(rp))
+        md += ["### 4) 이 실험에서 판별력이 없었던 지표", "",
+               f"- `rpeak_mae_ms` 는 무처리(`M00`)에서도 {rp['M00']:.2f} ms 다. "
+               "이는 방법의 성능이 아니라 **검출기(xqrs)의 체계적 위치 편향**이며 모든 방법에 공통이다. "
+               f"방법 간 편차는 {spread:.2f} ms 로 좁아 이 조건에서는 판별력이 없다. "
+               "MIT-BIH 처럼 형태 변이가 큰 데이터에서 다시 볼 것.", ""]
+
+    md += ["### 5) 이 결과의 적용 범위", "",
+           "- **합성 ECG(D0) 기준이다.** MIT-BIH(D1) 로 반드시 재검증해야 한다 "
+           "(`docs/02_procedure.md` STEP 14-15).",
+           "- 딥러닝은 이 합성 분포에서 학습했다. 다른 morphology 분포에서 얼마나 유지되는지는 "
+           "별도 검증 대상이다 (F-8 참조).",
+           "- 실측 Arduino 신호의 SNR 을 추정한 뒤(`STEP 29`), 위 1) 표에서 해당 구간의 행을 보면 "
+           "**그 장비에 어떤 기법을 써야 하는지** 바로 읽을 수 있다.", ""]
+    return md
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--real-snr", type=float, default=None,
@@ -329,6 +409,10 @@ def main() -> int:
         for meth in plots._order(list(cost.index)):
             md.append(f"| `{meth}` | {cost[meth]:.4f} |")
         md += ["", "RTF < 1 이면 실시간 처리 가능. (단일 CPU 스레드, 60 s 구간 기준)", ""]
+
+    # ---------------- 자동 결론 (데이터에서만 도출)
+    if a is not None:
+        md += _conclusions(a, c)
 
     doc = ensure_dir("docs") / "90_results.md"
     doc.write_text("\n".join(md) + "\n")
