@@ -22,6 +22,7 @@
 | [`docs/07_safety_probe.md`](docs/07_safety_probe.md) | hallucination / 부정맥 훼손 검증 |
 | [`docs/08_acquisition.md`](docs/08_acquisition.md) | 실측 데이터 수집 프로토콜 (S1~S6) |
 | [`docs/90_results.md`](docs/90_results.md) | 실험 결과 (자동 생성) |
+| [`docs/91_report.md`](docs/91_report.md) | **종합 보고서** — 설계 논리, 지표 선택 근거, 결과 해석 |
 
 ---
 
