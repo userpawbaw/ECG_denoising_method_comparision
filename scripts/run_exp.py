@@ -26,7 +26,7 @@ from ecgdn.data.dataset import build_eval_set
 from ecgdn.data.nstdb import make_banks
 from ecgdn.data.sources import get_source
 from ecgdn.eval.engine import evaluate, make_ref_cache
-from ecgdn.registry import build, meta
+from ecgdn.registry import available, build, meta
 from ecgdn.utils import ensure_dir, save_manifest
 
 
@@ -107,10 +107,10 @@ def main() -> int:
                          do_morph=do_morph, do_spectral=do_spec, cache=cache)
             m["latency_s"] = lat
             m["rtf"] = lat / (len(y) / fs)
+            fam = meta(mid).get("family", "") if mid in available() else "deep"
             base = dict(exp=exp_id, record=it["record"], seg=it["seg"],
                         cond=it["cond"], snr_in_target=it["snr"], method=mid,
-                        family=meta(mid).get("family", "") if mid in
-                        __import__("ecgdn.registry", fromlist=["x"]).available() else "deep")
+                        family=fam)
             for k, v in m.items():
                 rows.append({**base, "metric": k, "value": float(v)})
         if i % 10 == 0 or i == len(items):
