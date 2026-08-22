@@ -175,7 +175,7 @@ def metrics_signal(x, y, xhat) -> dict   # snr_in, snr_out_strict, snr_out_scale
 
 **DoD**
 1. `xhat == x` 일 때 `snr_out_* = inf`, `rmse = 0`, `cc = 1`, `gain_bias = 1`
-2. `xhat = 0.5 * x` 일 때 `snr_out_strict ≈ 3.5 dB`, **`snr_out_scaled = inf`**, `gain_bias = 2.0`
+2. `xhat = 0.5 * x` 일 때 `snr_out_strict = 10log10(4) ≈ 6.02 dB`, **`snr_out_scaled = inf`**, `gain_bias = 2.0`
    → A-1의 scale bias 분리가 실제로 작동함을 증명하는 테스트
 3. `xhat = x + c` (상수 오프셋)일 때 지표가 불변
 

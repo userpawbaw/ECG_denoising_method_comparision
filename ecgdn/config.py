@@ -20,6 +20,14 @@ SNR_GRID: tuple[int, ...] = (-5, 0, 5, 10, 15, 20)
 SNR_TRAIN_RANGE: tuple[float, float] = (-5.0, 20.0)
 
 # ---------------------------------------------------------------- 평가 규격
+# 평가 구간 규약 (실측으로 결정, docs/03_metric_floor.md 참조)
+#   0.5 Hz zero-phase HPF 는 경계에서 수 초간 링잉한다. Kalman 은 수렴 시간이 필요하고
+#   OLA/wavelet 은 패딩 경계 효과가 있다. 따라서 **모든 방법**에 대해 동일하게
+#   구간 양끝 GUARD 초를 지표 계산에서 제외한다. (방법에는 전체 구간을 준다)
+#   실측: guard 3 s 에서 40.9 dB, 5 s 에서 41.9 dB 로 포화 -> 5 s 채택.
+EVAL_SEG_S: float = 60.0       # 평가 단위 구간 길이
+EVAL_GUARD_S: float = 5.0      # 양끝 제외 길이
+
 RPEAK_TOL_MS: float = 75.0     # R-peak 매칭 허용오차
 BEAT_PRE_MS: float = 250.0     # beat 잘라내기 (R 기준 앞)
 BEAT_POST_MS: float = 400.0    # beat 잘라내기 (R 기준 뒤)
@@ -54,7 +62,13 @@ class SWTCfg:
     """
     wavelet: str = "sym4"
     level: int = 5
-    k: tuple[float, ...] = (1.0, 1.0, 0.4, 0.4, 0.6)
+    # sigma 추정 출처. **"d1" 또는 "d2" 가 정답이다.**
+    #   level 별 MAD 는 D3~D5 에서 ECG 자체가 계수를 지배해 sigma 를 2~5 배 과대추정하고,
+    #   그 결과 QRS 대역을 과도하게 잘라낸다 (실측: 18.7 dB -> 14.1 dB 로 악화).
+    #   SWT(norm=False) 는 백색잡음의 계수 분산을 level 에 무관하게 보존하므로
+    #   잡음이 지배적인 최고주파 band 하나에서 추정한 sigma 를 전 level 에 쓰는 것이 맞다.
+    sigma_source: str = "d1"          # 'd1' | 'd2' | 'min12' | 'level'
+    k: tuple[float, ...] = (0.6, 0.6, 0.6, 0.6, 0.6)
     mode: str = "garrote"          # 'soft' | 'hard' | 'garrote'
     protect_qrs: bool = True
     protect_ms: float = 60.0       # R-peak 주변 보호 반경

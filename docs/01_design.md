@@ -44,6 +44,24 @@ RQ3·RQ5는 대화 원안에 없던 것이며, 이 과제를 단순 벤치마크
 | 진폭 단위 | **mV** (MIT-BIH는 gain/baseline으로 물리단위 변환) | R-peak amplitude 지표를 물리적으로 해석 가능 |
 | dtype | `float32` (저장), `float64` (metric 계산) | metric에서 정밀도 손실 방지 |
 
+### 2.0 평가 구간 규약 (guard band) — **실측으로 확정**
+
+0.5 Hz zero-phase HPF는 경계에서 수 초간 링잉하고, Kalman은 수렴 시간이 필요하며,
+wavelet/OLA는 패딩 경계 효과가 있다. 이를 방치하면 **깨끗한 신호에 front-end만 걸어도
+왜곡 11.9 dB**가 나온다(측정값).
+
+| guard [s] | front-end distortion [dB] |
+|---|---|
+| 0 | 11.5 |
+| 1 | 25.9 |
+| 2 | 35.2 |
+| 3 | 40.9 |
+| **5** | **41.9** (포화) |
+| 10 | 41.7 |
+
+→ **확정**: 평가 단위 구간 `EVAL_SEG_S = 60 s`, 양끝 `EVAL_GUARD_S = 5 s`를 지표 계산에서 제외.
+**방법에는 전체 구간을 주고, 지표만 내부 구간에서 계산한다.** 모든 방법에 동일 적용.
+
 ### 2.1 공통 front-end (모든 방법에 동일 적용)
 
 ```
@@ -206,6 +224,11 @@ L_band  = Σ_j w_j * mean( (ŝ_j - s_j)² )
 | `cc` | ↑ | Pearson (평균 제거 후) |
 | `rpeak_mae_ms` | ↓ | 매칭된 R-peak의 시간 오차 평균 |
 | `qrs_dur_err_ms` | ↓ | QRS onset~offset 폭 오차 (**metric noise floor 병기**) |
+
+> **DC 규약 (전 지표 공통)**: 모든 지표는 `x` 와 `x̂` 양쪽의 **평균을 제거한 뒤** 계산한다.
+> ECG의 절대 전위 기준선은 임의값이고, 공통 front-end HPF가 이미 DC를 제거하기 때문이다.
+> 이렇게 해야 `SNR`/`RMSE`/`PRDN`/`CC` 의 정의가 서로 모순되지 않는다.
+> 느린 baseline wander 잔차는 평균 제거로 숨지 않으므로 평가력은 유지된다.
 
 ### 5.2 보조 지표 (7) — 부록표
 
