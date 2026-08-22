@@ -227,7 +227,7 @@ SWT(`norm=False`)는 백색잡음의 계수 분산을 level에 무관하게 보�
 ```
 `k`는 `scripts/tune_swt.py`로 탐색한다(탐색 seed와 검증 seed 분리). 수렴값:
 ```
-k = (D1 1.6, D2 1.6, D3 0.4, D4 0.3, D5 0.2)
+k = (D1 2.5, D2 2.0, D3 0.6, D4 0.4, D5 0.3)
 A5 는 thresholding 하지 않는다 (baseline은 별도 HPF로 처리)
 ```
 D1/D2가 크고 D3~D5가 작게 수렴한 것은 위 대역 SNR 표와 **정확히 같은 방향**이다.

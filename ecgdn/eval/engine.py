@@ -15,12 +15,13 @@ from typing import Any, Iterable, Sequence
 import numpy as np
 
 from ..config import EVAL_GUARD_S
-from .morphology import metrics_morph
+from .morphology import metrics_morph, ref_cache
 from .rpeak import detect_rpeaks, metrics_rpeak
 from .signal_metrics import metrics_signal
 from .spectral import metrics_spectral
 
-__all__ = ["trim_guard", "evaluate", "evaluate_many", "to_long_frame"]
+__all__ = ["trim_guard", "evaluate", "evaluate_many", "to_long_frame",
+           "make_ref_cache"]
 
 
 def trim_guard(n: int, fs: float, guard_s: float = EVAL_GUARD_S) -> slice:
@@ -34,7 +35,8 @@ def trim_guard(n: int, fs: float, guard_s: float = EVAL_GUARD_S) -> slice:
 def evaluate(x: np.ndarray, y: np.ndarray | None, xhat: np.ndarray, fs: float, *,
              r_peaks_ref: np.ndarray | None = None,
              guard_s: float = EVAL_GUARD_S,
-             do_morph: bool = True, do_spectral: bool = True) -> dict[str, float]:
+             do_morph: bool = True, do_spectral: bool = True,
+             cache: dict | None = None) -> dict[str, float]:
     x = np.asarray(x, dtype=np.float64).ravel()
     xhat = np.asarray(xhat, dtype=np.float64).ravel()
     if x.size != xhat.size:
@@ -54,11 +56,30 @@ def evaluate(x: np.ndarray, y: np.ndarray | None, xhat: np.ndarray, fs: float, *
     out.update(metrics_signal(xt, yt, ht))
     out.update(metrics_rpeak(xt, ht, fs, r_peaks_ref=rp))
     if do_morph:
-        out.update(metrics_morph(xt, ht, fs, rp))
+        out.update(metrics_morph(xt, ht, fs, rp, cache=cache))
     if do_spectral:
         out.update(metrics_spectral(xt, ht, fs))
     out["eval_len_s"] = float(xt.size / fs)
     return out
+
+
+def make_ref_cache(x: np.ndarray, fs: float, r_peaks_ref=None,
+                   guard_s: float = EVAL_GUARD_S, do_morph: bool = True) -> dict | None:
+    """구간 하나에 대해 reference 쪽 계산을 1회만 하고 재사용한다.
+
+    guard 를 적용한 뒤의 좌표계에서 만들어야 `evaluate` 와 정합한다.
+    """
+    if not do_morph:
+        return None
+    x = np.asarray(x, dtype=np.float64).ravel()
+    sl = trim_guard(x.size, fs, guard_s)
+    xt = x[sl]
+    if r_peaks_ref is None:
+        rp = detect_rpeaks(xt, fs)
+    else:
+        rp = np.asarray(r_peaks_ref, dtype=int) - sl.start
+        rp = rp[(rp >= 0) & (rp < xt.size)]
+    return ref_cache(xt, fs, rp)
 
 
 def evaluate_many(x: np.ndarray, y: np.ndarray, methods: dict[str, Any], fs: float, *,
@@ -74,6 +95,7 @@ def evaluate_many(x: np.ndarray, y: np.ndarray, methods: dict[str, Any], fs: flo
     import time
 
     base_ctx = dict(ctx or {})
+    cache = make_ref_cache(x, fs, r_peaks_ref, guard_s, do_morph)
     res: dict[str, dict[str, float]] = {}
     for name, fn in methods.items():
         c = dict(base_ctx)
@@ -83,7 +105,7 @@ def evaluate_many(x: np.ndarray, y: np.ndarray, methods: dict[str, Any], fs: flo
         xhat = fn(y, fs, c)
         dt = time.perf_counter() - t0
         m = evaluate(x, y, xhat, fs, r_peaks_ref=r_peaks_ref, guard_s=guard_s,
-                     do_morph=do_morph, do_spectral=do_spectral)
+                     do_morph=do_morph, do_spectral=do_spectral, cache=cache)
         if timing:
             m["latency_s"] = float(dt)
             m["rtf"] = float(dt / (len(np.asarray(y).ravel()) / fs))

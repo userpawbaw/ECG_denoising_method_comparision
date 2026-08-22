@@ -50,3 +50,18 @@ def test_evaluate_many_and_long_frame():
     df = to_long_frame([{"record": "syn", "method": k, "metrics": v} for k, v in res.items()])
     assert set(df.columns) >= {"record", "method", "metric", "value"}
     assert len(df) > 10
+
+
+def test_ref_cache_gives_identical_results():
+    """캐시 사용 여부가 지표를 바꾸면 안 된다 (속도 최적화일 뿐)."""
+    from ecgdn.eval.engine import make_ref_cache
+    from ecgdn.methods.frontend import FrontEnd
+
+    s, y = _case(snr=8.0, dur=90.0)
+    xhat = FrontEnd()(y, s.fs)
+    a = evaluate(s.x, y, xhat, s.fs, r_peaks_ref=s.r_peaks)
+    cache = make_ref_cache(s.x, s.fs, s.r_peaks)
+    b = evaluate(s.x, y, xhat, s.fs, r_peaks_ref=s.r_peaks, cache=cache)
+    for k in a:
+        if np.isfinite(a[k]):
+            assert abs(a[k] - b[k]) < 1e-9, k

@@ -25,7 +25,7 @@ import ecgdn.methods  # noqa: F401  레지스트리 등록
 from ecgdn.data.dataset import build_eval_set
 from ecgdn.data.nstdb import make_banks
 from ecgdn.data.sources import get_source
-from ecgdn.eval.engine import evaluate
+from ecgdn.eval.engine import evaluate, make_ref_cache
 from ecgdn.registry import build, meta
 from ecgdn.utils import ensure_dir, save_manifest
 
@@ -92,6 +92,8 @@ def main() -> int:
     t0 = time.perf_counter()
     for i, it in enumerate(items, 1):
         x, y, fs = it["x"].astype(np.float64), it["y"].astype(np.float64), it["fs"]
+        # reference 쪽 계산(특히 느린 delineation)은 구간당 1회만 한다
+        cache = make_ref_cache(x, fs, it["r_peaks"], do_morph=do_morph)
         for mid, fn in methods.items():
             ctx = {"x_clean": x} if getattr(fn, "needs_clean", False) else {}
             ts = time.perf_counter()
@@ -102,7 +104,7 @@ def main() -> int:
                 continue
             lat = time.perf_counter() - ts
             m = evaluate(x, y, xhat, fs, r_peaks_ref=it["r_peaks"],
-                         do_morph=do_morph, do_spectral=do_spec)
+                         do_morph=do_morph, do_spectral=do_spec, cache=cache)
             m["latency_s"] = lat
             m["rtf"] = lat / (len(y) / fs)
             base = dict(exp=exp_id, record=it["record"], seg=it["seg"],

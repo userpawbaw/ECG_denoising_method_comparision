@@ -15,6 +15,7 @@ from ..config import BEAT_POST_MS, BEAT_PRE_MS
 __all__ = [
     "beat_matrix", "beat_template", "delineate_qrs", "peak_amplitude",
     "metrics_morph", "half_sample_consistency", "hsc_to_snr_db", "aligned_beats",
+    "ref_cache",
 ]
 
 
@@ -243,17 +244,40 @@ def hsc_to_snr_db(hsc: float, n_beats: int) -> float:
     return float(10.0 * np.log10(r)) if r > 0 else float("nan")
 
 
+def ref_cache(x_ref: np.ndarray, fs: float, r_peaks_ref: np.ndarray,
+              do_delineate: bool = True) -> dict:
+    """clean reference 에서만 계산되는 값들을 미리 만들어 둔다.
+
+    같은 구간에 여러 방법을 적용할 때 reference 쪽 계산(특히 느린 delineation)을
+    방법 수만큼 반복하지 않기 위한 것. 결과는 동일하다.
+    """
+    x_ref = np.asarray(x_ref, dtype=np.float64).ravel()
+    r = np.asarray(r_peaks_ref, dtype=int).ravel()
+    c: dict = {
+        "a_ref": peak_amplitude(x_ref, r, fs),
+        "tmpl": beat_template(x_ref, r, fs),
+        "beats": beat_matrix(x_ref, r, fs)[0],
+        "hsc": half_sample_consistency(x_ref, r, fs),
+    }
+    c["dur"], c["succ"] = delineate_qrs(x_ref, r, fs) if do_delineate else (
+        np.full(r.size, np.nan), 0.0)
+    return c
+
+
 def metrics_morph(x_ref: np.ndarray, xhat: np.ndarray, fs: float,
-                  r_peaks_ref: np.ndarray, do_delineate: bool = True
-                  ) -> dict[str, float]:
-    """morphology 지표 묶음. 양쪽 모두 r_peaks_ref 로 정렬."""
+                  r_peaks_ref: np.ndarray, do_delineate: bool = True,
+                  cache: dict | None = None) -> dict[str, float]:
+    """morphology 지표 묶음. 양쪽 모두 r_peaks_ref 로 정렬.
+
+    cache: `ref_cache()` 결과를 주면 reference 쪽 재계산을 건너뛴다.
+    """
     out: dict[str, float] = {}
     x_ref = np.asarray(x_ref, dtype=np.float64).ravel()
     xhat = np.asarray(xhat, dtype=np.float64).ravel()
     r = np.asarray(r_peaks_ref, dtype=int).ravel()
 
     # --- R-peak 진폭
-    a_ref = peak_amplitude(x_ref, r, fs)
+    a_ref = cache["a_ref"] if cache else peak_amplitude(x_ref, r, fs)
     a_hat = peak_amplitude(xhat, r, fs)
     with np.errstate(invalid="ignore", divide="ignore"):
         rel = np.abs(a_hat - a_ref) / np.abs(a_ref)
@@ -261,7 +285,7 @@ def metrics_morph(x_ref: np.ndarray, xhat: np.ndarray, fs: float,
     out["r_amp_ratio"] = float(np.nanmedian(a_hat / a_ref)) if rel.size else float("nan")
 
     # --- beat template 상관 (양쪽 동일 R 로 정렬)
-    tr = beat_template(x_ref, r, fs)
+    tr = cache["tmpl"] if cache else beat_template(x_ref, r, fs)
     th = beat_template(xhat, r, fs)
     if tr.size and th.size == tr.size:
         a = tr - tr.mean(); b = th - th.mean()
@@ -271,7 +295,7 @@ def metrics_morph(x_ref: np.ndarray, xhat: np.ndarray, fs: float,
         out["beat_cc"] = float("nan")
 
     # --- beat 단위 상관의 중앙값 (template 평균이 가리는 개별 beat 손상 포착)
-    br, _ = beat_matrix(x_ref, r, fs)
+    br = cache["beats"] if cache else beat_matrix(x_ref, r, fs)[0]
     bh, _ = beat_matrix(xhat, r, fs)
     if br.shape == bh.shape and br.size:
         a = br - br.mean(axis=1, keepdims=True)
@@ -286,7 +310,7 @@ def metrics_morph(x_ref: np.ndarray, xhat: np.ndarray, fs: float,
 
     # --- QRS duration
     if do_delineate:
-        d_ref, s_ref = delineate_qrs(x_ref, r, fs)
+        d_ref, s_ref = (cache["dur"], cache["succ"]) if cache else delineate_qrs(x_ref, r, fs)
         d_hat, s_hat = delineate_qrs(xhat, r, fs)
         n = min(d_ref.size, d_hat.size)
         if n:
@@ -306,6 +330,6 @@ def metrics_morph(x_ref: np.ndarray, xhat: np.ndarray, fs: float,
     n_beats = float(aligned_beats(xhat, r, fs)[0].shape[0])
     out["n_beats_used"] = n_beats
     out["hsc_hat"] = half_sample_consistency(xhat, r, fs)
-    out["hsc_ref"] = half_sample_consistency(x_ref, r, fs)
+    out["hsc_ref"] = cache["hsc"] if cache else half_sample_consistency(x_ref, r, fs)
     out["hsc_snr_hat_db"] = hsc_to_snr_db(out["hsc_hat"], int(n_beats))
     return out
