@@ -21,6 +21,10 @@
 | [`docs/06_sameni_diagnosis.md`](docs/06_sameni_diagnosis.md) | Sameni EKF/EKS 자가진단 6항목 |
 | [`docs/07_safety_probe_d0.md`](docs/07_safety_probe_d0.md) | hallucination / 부정맥 훼손 검증 |
 | [`docs/08_acquisition.md`](docs/08_acquisition.md) | 실측 데이터 수집 프로토콜 (S1~S6) |
+| [`docs/19_record_keeping.md`](docs/19_record_keeping.md) | **기록 규약** — 무엇을 어떻게 남기는가 |
+| [`docs/20_findings.md`](docs/20_findings.md) | **발견 노트 (F-1~F-12)** — 결과 해석을 바꾼 것들. 판단 과정 포함 |
+| [`docs/21_decisions.md`](docs/21_decisions.md) | 설계 결정 (D) — 갈림길에서 무엇을 왜 골랐나 |
+| [`docs/22_incidents.md`](docs/22_incidents.md) | 운영 사고 (O) |
 | [`docs/90_results_d0.md`](docs/90_results_d0.md) | 실험 결과 (자동 생성) |
 | [`docs/91_report.md`](docs/91_report.md) | **종합 보고서** — 설계 논리, 지표 선택 근거, 결과 해석 |
 
