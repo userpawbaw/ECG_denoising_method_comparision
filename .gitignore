@@ -7,6 +7,15 @@ venv/
 
 # 원본 데이터 / 대용량 산출물은 커밋하지 않는다
 data/
+# 다만 PhysioNet 원본은 예외로 허용한다.
+# 이 저장소는 physionet.org 접근이 막힌 원격 환경에서도 실험을 재현해야 하므로,
+# 로컬에서 받은 mitdb/nstdb 를 그대로 올려 공유한다 (약 130 MB).
+# 실측 Arduino 데이터(data/arduino/)는 개인정보 문제로 계속 제외한다.
+!data/raw/
+!data/raw/mitdb/
+!data/raw/mitdb/**
+!data/raw/nstdb/
+!data/raw/nstdb/**
 results/
 !results/.gitkeep
 *.pt
