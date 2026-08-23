@@ -35,15 +35,15 @@
 | 16 데이터셋 | ✅ | 결정론적 재현, 역정규화 검증 | 합성 소스로 MIT-BIH 없이도 동작 |
 | 17 M06 | ✅ | overfit 2.2e-5, 976K params, RF 3.55 s | |
 | 18 학습 루프 | ✅ | best 선택을 지표 기준으로 | |
-| 19 loss ablation | 🔄 | 체크포인트만 존재, DoD 표 미생성 | **결론 철회**(아래 F-9). front-end 재학습으로 재실행 중 |
+| 19 loss ablation | ✅ | `results/d0/ablation_loss.csv`, `docs/10_loss_ablation_d0.md` | TEST split 측정. M06 은 L2/L3 가 L1 을 지배, M08 의 L4 는 beat_cc 손실 |
 | 20 DL 래퍼 | ✅ | 임의 길이, 경계 불연속 없음 | |
 | 21 TorchSWT | ✅ | pywt 대비 < 1e-6, gradcheck 통과 | |
-| 22 M07 | 🔄 | ep 8 에서 중단 | **재학습 필요**(99_status M-3). 성능 서술은 FE 수정 전 값 |
-| 23 M08 | 🔄 | D0+FE 학습 완료(best ep 15) | loss ablation 용 m08_l3/l4 미학습 |
-| 24 EXP-A | 🔄 | `results/exp_a` 는 `git=d787577` 산출 | **FE 수정 이전이라 무효.** 재실행 필요 |
-| 25 EXP-B/C | 🔄 | 좌동 | **FE 수정 이전이라 무효.** 재실행 필요 |
-| 26 EXP-E | 🔄 | `docs/07_safety_probe_d0.md` | DL 부분은 FE 수정 이전. M05 의 PVC 훼손은 고전 기법이라 유효 |
-| 27 리포트 | 🔄 | `docs/90_results_d0.md` + F1~F8, T1~T3 | 재생성 필요. 91_report 5장에 경고 배너 게시 중 |
+| 22 M07 | ✅ | D0+FE 학습 완료 (best ep 8) | 전처리형 hybrid 는 M06 보다도 낮다 — SWT 가 신경망 도달 전에 정보를 없앤다 |
+| 23 M08 | ✅ | D0+FE, L1/L3/L4 전부 학습 | 전체 평균 최고(11.97 dB). 표현공간형이 전처리형을 이긴다 |
+| 24 EXP-A | ✅ | `results/d0/exp_a` (173,712 행) | 15 dB 최고가 M04 → **M08** 로 바뀜. M06/M08 이 M01 대비 유의(r≈1.0) |
+| 25 EXP-B/C | ✅ | `results/d0/exp_b`(202,664), `exp_c`(28,952) | **F-11**: oracle=M_FE=34.13 dB. wavelet 은 bw/em/impulse 에서 기여 0 |
+| 26 EXP-E | ✅ | `docs/07_safety_probe_d0.md` | DL 이 **가장 안전**(asystole 0.044). M05 만 PVC 훼손(−0.065) |
+| 27 리포트 | ✅ | `docs/90_results_d0.md`, `results/d0/report/` | 91_report 5장 전면 재작성, 경고 배너 해제 |
 | 28 실측 수집 | ⬜ | `docs/08_acquisition.md`, 스케치, 로거 | **하드웨어 필요** |
 | 29 실측 SNR | ⬜ | `scripts/estimate_real_snr.py` | 28 이후 |
 | 30 EXP-F | ⬜ | | 28 이후 |
@@ -96,6 +96,27 @@ padlen 을 명시하고, 그와 별개로 **평가 guard band 5 s** 를 전 방�
 > **일반화**: 합성/증강 데이터로 딥러닝을 평가할 때, split 축(record)과
 > **변이 축(morphology)이 일치하지 않으면** record split 은 leakage 를 막지 못한다.
 > MIT-BIH 에서는 기록마다 실제로 다른 환자이므로 이 문제가 없다.
+
+**F-11. oracle 도 front-end 의 천장에 걸려 있다** — EXP-C(왜곡 하한)에서
+`B01`(oracle wavelet), `B02`(oracle Wiener), `M_FE`(front-end 단독) 세 개가
+**소수점까지 같은 34.13 ± 3.72 dB** 로 나왔다. oracle 은 정답을 알고 최적
+복원을 하는데도 여기서 멈춘다 — oracle 역시 front-end 를 통과하기 때문이다.
+
+즉 **34.13 dB 는 어떤 방법의 성질이 아니라 공통 front-end 가 정한 천장**이고,
+front-end 를 쓰는 모든 방법이 이 위로 갈 수 없다. 초판이 "`M04` 가 oracle 과
+동일한 무손실" 이라고 쓴 것은 절반만 맞다. `M04` 가 front-end 위에 0.03 dB 만
+더 잃는 것은 사실이지만, 34 dB 라는 천장 자체는 SWT 가 만든 것이 아니다.
+
+같은 실행에서 두 번째 사실도 드러났다. **wavelet thresholding 은 bw·em·impulse
+에서 구조적으로 0 을 기여한다** — `M04` 뿐 아니라 oracle `B01` 조차 그렇다
+(bw −0.00, em +0.07, impulse 는 `M04` 정확히 0.00). 구현 문제가 아니라 방법의
+한계다: 기저선 변동은 근사계수 `A5` 에 실려 있고 thresholding 은 세부계수만
+건드린다. **정답을 알아도 못 고친다.**
+
+> **일반화**: oracle 을 "이론적 상한" 으로 인용하기 전에, 그 oracle 이 어떤
+> 전처리를 포함하는지 확인해야 한다. 전처리를 공유하면 oracle 은 그 전처리의
+> 상한이지 문제의 상한이 아니다. 그리고 oracle 이 못 고치는 조건은 그 계열
+> 전체가 못 고치는 조건이다 — 그것 자체가 결과다.
 
 **F-10. 딥러닝만 공통 front-end 를 받지 못하고 있었다** — 공정성 규약 (3) 은
 "모든 방법에 동일한 front-end 를 준다" 인데, 고전 기법은 전부 내부에서 FE 를 적용하는
