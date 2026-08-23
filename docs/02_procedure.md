@@ -505,6 +505,22 @@ python scripts/download_data.py --db nstdb --out data/raw
 
 **DoD**: `mitdb` 48 records, `nstdb` 의 `bw/ma/em` 3 records 존재 + 체크섬 기록
 
+**주의 — 이 STEP 은 원격 세션에서 수행할 수 없다.** PhysioNet 접근이 조직 egress
+정책으로 차단되어 있다(403). 따라서 다운로드는 **사용자 로컬에서** 실행하고, 결과물을
+저장소로 공유한다 (`docs/09_data_upload.md`).
+
+그동안 실데이터 경로가 한 번도 실행되지 않은 채로 남으면, 데이터가 도착한 **그날**
+처음 깨진다. 그래서 데이터 없이도 이 경로를 강제로 통과시키는 검증을 따로 둔다:
+
+```bash
+python scripts/check_realdata_path.py            # WFDB 형식 fixture 로 전 경로 점검
+python scripts/check_realdata_path.py --real     # 실제 data/raw 가 도착한 뒤 같은 점검
+```
+fixture 는 **신호만 합성**이고 파일 포맷(`.hea`/`.dat` fmt 212, `.atr`), 리드 이름,
+표본율 360 Hz, 채널 구성은 MIT-BIH/NSTDB 와 동일하다. 즉 `load_record` → `resample_to`
+→ `NoiseBank` → `ECGDenoiseDataset` → 평가 엔진까지 **실데이터와 같은 코드 경로**를 탄다.
+102/104 처럼 MLII 가 없는 기록의 lead fallback 도 재현한다.
+
 ---
 
 ### STEP 15. 적재 · 리샘플 · split
@@ -735,7 +751,7 @@ x_clean 을 그대로 각 방법에 통과 → snr_distortion = 10log10(var(x)/v
 ### STEP 28. Arduino 데이터 수집
 
 **참조**: `00_review.md` B-4 프로토콜(S1~S6) + CSV 스키마.
-**산출 파일**: `data/arduino/*.csv`, `docs/04_acquisition_log.md`
+**산출 파일**: `data/arduino/*.csv`, `docs/08a_acquisition_log.md`
 
 **DoD**: 전 세션 수집 완료 + 각 파일 헤더에 `fs_hz`, `adc_bits`, `vref_v`, `gain`, `session` 기록
 
@@ -750,7 +766,7 @@ python scripts/estimate_real_snr.py --in data/arduino --out results/real_snr.csv
 - 세션별(S1, S6-USB, S6-battery) SNR 분포를 표로 출력
 - **이 값이 EXP-A 곡선의 어느 지점인지 F4에 표시**
 
-**DoD**: `docs/05_real_snr.md` 에 3가지 추정치와 그 차이에 대한 해석 기록
+**DoD**: `docs/08b_real_snr.md` (`estimate_real_snr.py` 가 자동 생성) 에 3가지 추정치와 그 차이에 대한 해석 기록
 
 ---
 
