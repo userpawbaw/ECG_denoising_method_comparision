@@ -31,7 +31,7 @@
 | 16 데이터셋 | ✅ | 결정론적 재현, 역정규화 검증 | 합성 소스로 MIT-BIH 없이도 동작 |
 | 17 M06 | ✅ | overfit 2.2e-5, 976K params, RF 3.55 s | |
 | 18 학습 루프 | ✅ | best 선택을 지표 기준으로 | |
-| 19 loss ablation | ✅ | m06_l1/l3, m08_l1/l4 학습 완료 | L3/L4 가 L1 보다 우수 |
+| 19 loss ablation | 🔄 | 체크포인트만 존재, DoD 표 미생성 | **결론 철회**(아래 F-9). front-end 재학습으로 재실행 중 |
 | 20 DL 래퍼 | ✅ | 임의 길이, 경계 불연속 없음 | |
 | 21 TorchSWT | ✅ | pywt 대비 < 1e-6, gradcheck 통과 | |
 | 22 M07 | ✅ | 학습 완료 | 저 SNR 에서 최강, 고 SNR 에서 붕괴 |
@@ -92,6 +92,26 @@ padlen 을 명시하고, 그와 별개로 **평가 guard band 5 s** 를 전 방�
 > **일반화**: 합성/증강 데이터로 딥러닝을 평가할 때, split 축(record)과
 > **변이 축(morphology)이 일치하지 않으면** record split 은 leakage 를 막지 못한다.
 > MIT-BIH 에서는 기록마다 실제로 다른 환자이므로 이 문제가 없다.
+
+**F-9. loss ablation 의 결론이 front-end 수정으로 무효화됐다** — STEP 19 는 한때
+"L3/L4 가 L1 보다 우수"로 ✅ 처리돼 있었다. 두 가지가 틀렸다.
+
+1. **비교 대상이 아닌 것을 비교했다.** 근거가 학습 로그의 **VAL** `snr_imp` 였다.
+   VAL 은 early stopping 이 best 를 고른 대상이므로 그 위의 성능은 낙관적으로 편향된다.
+   DoD 가 요구한 것은 **TEST split** 에서의 `snr_imp_scaled` / `qrs_dur_err_ms` /
+   `beat_cc` 표였는데, `results/ablation_loss.csv` 는 생성된 적이 없다.
+2. **교란 변수가 들어갔다.** front-end 비대칭을 고친 뒤 L1 체크포인트만 재학습되어,
+   `L1(FE 있음)` vs `L3/L4(FE 없음)` 를 비교하는 꼴이 됐다. 이 차이는 loss 효과가
+   아니라 front-end 효과다.
+
+조치: 상태를 🔄 로 되돌리고 결론을 철회했다. 전 체크포인트를 같은 조건
+(`frontend: true`)으로 재학습한 뒤 `configs/abl_loss.yaml` 로 **TEST split** 에서
+평가해 `results/ablation_loss.csv` 를 만든다. 기준선으로 `M_FE` 를 같은 표에 넣어,
+loss 간 차이가 front-end 가 이미 한 일보다 큰지 작은지 바로 읽히게 한다.
+
+> **일반화**: 파이프라인 앞단을 고치면, 그 뒤로 학습된 **모든 체크포인트가 동시에
+> 무효**가 된다. ablation 표는 "언제 학습됐는가"를 기록하지 않으면 조용히 거짓이 된다.
+> 그래서 표에 체크포인트의 `git hash` 와 `frontend` 플래그를 함께 싣는다.
 
 **F-7. SNR sweep 은 잡음 실현을 1 회만 뽑고 스케일만 바꿔야 한다** —
 SNR 마다 다른 잡음을 뽑으면 곡선이 '잡음 조성 변화' 와 뒤섞여 해석 불가능해진다.
@@ -610,12 +630,27 @@ RF = 1 + Σ_layers (k-1) * dilation * Π(이전 stride)
 
 ---
 
-### STEP 19. Loss ablation (L1→L2→L3)
+### STEP 19. Loss ablation (L1→L2→L3→L4)
 
-**산출 파일**: `ecgdn/models/losses.py`, `configs/m06_l{1,2,3}.yaml`
+**산출 파일**: `ecgdn/models/losses.py`, `configs/m06_l{1,2,3}.yaml`,
+`configs/m08_l{1,3,4}.yaml`, `configs/abl_loss.yaml`, `scripts/make_ablation_table.py`
 
-**DoD**: 3개 설정의 학습 완료 + `results/ablation_loss.csv`
+```bash
+bash scripts/run_all_training.sh              # 전 loss 를 같은 조건으로 학습
+python scripts/run_exp.py -c configs/abl_loss.yaml
+python scripts/make_ablation_table.py         # -> results/ablation_loss.csv
+```
+
+**DoD**: 전 설정의 학습 완료 + `results/ablation_loss.csv`
 표에 `snr_imp_scaled`, `qrs_dur_err_ms`, `beat_cc` 를 함께 실어 **"loss가 morphology를 실제로 바꾸는지"** 를 본다.
+
+**필수 조건 — 학습 조건이 손실 말고는 전부 같아야 한다.** 특히 `frontend` 가 섞이면
+loss 효과와 front-end 효과가 분리되지 않는다 (F-9 에서 실제로 그렇게 됐다).
+`make_ablation_table.py` 는 체크포인트 manifest 의 `frontend`/git hash 를 표에 함께 싣고,
+설정이 섞여 있으면 **경고를 내며 종료코드 2** 로 끝난다.
+
+**평가는 TEST split 에서 한다.** 학습 로그의 VAL `snr_imp` 는 early stopping 이 best 를
+고른 대상이므로 그 위에서의 비교는 낙관적으로 편향된다.
 
 ---
 
