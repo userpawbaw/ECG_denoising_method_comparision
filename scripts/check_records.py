@@ -25,7 +25,8 @@ F_REQUIRED = {
 
 # 근거 등급. [재구성] 은 "당시 기록이 없어 사후 복원" 이라는 뜻이고, 이것을
 # 숨기지 않는 것이 이 검사의 목적이다 (docs/19_record_keeping.md 8절).
-EVIDENCE_TAGS = ("[측정]", "[로그]", "[커밋]", "[대화]", "[재구성]")
+EVIDENCE_TAGS = ("[측정]", "[로그]", "[커밋]", "[대화]",
+                 "[코드]", "[문헌]", "[추론]", "[재구성]")
 D_REQUIRED = {
     "갈림길": ("### 갈림길",),
     "검토한 선택지": ("### 검토한 선택지", "### 근거 —"),
@@ -135,6 +136,17 @@ def main() -> int:
     inc = (d / "22_incidents.md").read_text()
     o_ids = re.findall(r"\n## (O-\d+)\.", inc)
     print(f"\n[사고] 22_incidents.md — {len(o_ids)} 항목: {', '.join(o_ids)}")
+
+    # R 은 '재사용 규칙' 이 있어야 R 로 남길 가치가 있다
+    rp = d / "23_ai_review.md"
+    if rp.exists():
+        r_items = _blocks(rp, r"R-\d+")
+        r_bad = [f"{rid}: 재사용 규칙 없음" for rid, body in r_items
+                 if "### 재사용 규칙" not in body]
+        print("\n[AI 검토] 23_ai_review.md — %d 항목" % len(r_items))
+        for b in r_bad:
+            print("  ✗", b)
+        problems += r_bad
 
     print("\n" + "=" * 60)
     if problems:
