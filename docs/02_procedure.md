@@ -10,6 +10,10 @@
 
 ## 진행 현황 (자동 아님 — STEP 완료 시 갱신할 것)
 
+> **현재 상태·다음 절차의 단일 진실 원천은 `docs/99_status.md` 다.**
+> 이 표는 STEP 단위 요약이고, 산출물이 어느 데이터(D0/D1)·어느 커밋 기준인지와
+> 미해결 문제 목록은 그쪽에 있다.
+
 | STEP | 상태 | 산출물 / 통과한 DoD | 비고 |
 |---|---|---|---|
 | 00 환경 | ✅ | `requirements.txt`, `Makefile` | |
@@ -26,7 +30,7 @@
 | 11 M03/M04 + B01 | ✅ | `docs/05_swt_tuning.md`, 검증 세트 +11.4 dB | **σ 는 전역 추정**(00_review B-1 정정) |
 | 12 B02 | ✅ | M04/M05 가 B02 를 넘음 → 비선형 처리 필요 | |
 | 13 Sameni | ✅ | `docs/06_sameni_diagnosis.md` 7/7 | **버그 2건 수정, +5.9 → +16.2 dB** |
-| 14 다운로드 | ⬜ | `scripts/download_data.py` 작성 완료 | **로컬에서 실행 필요** (원격은 physionet 차단) |
+| 14 다운로드 | ✅ | mitdb 48기록 90 MB + nstdb bw/ma/em 31 MB | 2026-08-23 도착. `check_realdata_path.py` 로 경로 검증 |
 | 15 적재/split | ✅ | `mitdb.py`, `nstdb.py`, `splits.py` (DS1/DS2) | 데이터 확보 후 통합 테스트 |
 | 16 데이터셋 | ✅ | 결정론적 재현, 역정규화 검증 | 합성 소스로 MIT-BIH 없이도 동작 |
 | 17 M06 | ✅ | overfit 2.2e-5, 976K params, RF 3.55 s | |
@@ -34,12 +38,12 @@
 | 19 loss ablation | 🔄 | 체크포인트만 존재, DoD 표 미생성 | **결론 철회**(아래 F-9). front-end 재학습으로 재실행 중 |
 | 20 DL 래퍼 | ✅ | 임의 길이, 경계 불연속 없음 | |
 | 21 TorchSWT | ✅ | pywt 대비 < 1e-6, gradcheck 통과 | |
-| 22 M07 | ✅ | 학습 완료 | 저 SNR 에서 최강, 고 SNR 에서 붕괴 |
-| 23 M08 | ✅ | 학습 완료 | M06 대비 전 구간 우위 |
-| 24 EXP-A | ✅ | 264 구간 × 12 기법, `results/exp_a` | 입력 SNR 별 최적 기법 확정 |
-| 25 EXP-B/C | ✅ | `results/exp_b`(308×12), `results/exp_c`(44×12) | Pareto front 확정 |
-| 26 EXP-E | ✅ | `docs/07_safety_probe.md` | **M05 의 PVC 훼손 발견** |
-| 27 리포트 | ✅ | `docs/90_results.md` + F1~F8, T1~T3 | 결론까지 데이터에서 자동 도출 |
+| 22 M07 | 🔄 | ep 8 에서 중단 | **재학습 필요**(99_status M-3). 성능 서술은 FE 수정 전 값 |
+| 23 M08 | 🔄 | D0+FE 학습 완료(best ep 15) | loss ablation 용 m08_l3/l4 미학습 |
+| 24 EXP-A | 🔄 | `results/exp_a` 는 `git=d787577` 산출 | **FE 수정 이전이라 무효.** 재실행 필요 |
+| 25 EXP-B/C | 🔄 | 좌동 | **FE 수정 이전이라 무효.** 재실행 필요 |
+| 26 EXP-E | 🔄 | `docs/07_safety_probe.md` | DL 부분은 FE 수정 이전. M05 의 PVC 훼손은 고전 기법이라 유효 |
+| 27 리포트 | 🔄 | `docs/90_results.md` + F1~F8, T1~T3 | 재생성 필요. 91_report 5장에 경고 배너 게시 중 |
 | 28 실측 수집 | ⬜ | `docs/08_acquisition.md`, 스케치, 로거 | **하드웨어 필요** |
 | 29 실측 SNR | ⬜ | `scripts/estimate_real_snr.py` | 28 이후 |
 | 30 EXP-F | ⬜ | | 28 이후 |
