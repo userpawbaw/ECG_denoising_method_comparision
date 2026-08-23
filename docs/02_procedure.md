@@ -693,7 +693,7 @@ y (임의 길이) → frame(win,hop) → per-window robust_scale → model → �
 
 ### STEP 22. M07 (순차 hybrid)
 
-**산출 파일**: `configs/m07.yaml`
+**산출 파일**: `configs/m07_l1.yaml`
 
 **구현 사양**: `M04`(SWT denoiser)를 데이터 전처리로 적용한 뒤 `M06` 구조를 학습.
 **중요**: `M04` 는 학습 중에 **고정**(파라미터 학습 없음). 전처리를 `Dataset` 안에서 하면 느리므로
