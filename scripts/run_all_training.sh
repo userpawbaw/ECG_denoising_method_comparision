@@ -27,12 +27,19 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 # loss ablation(configs/abl_loss.yaml)은 **모든 loss 를 같은 조건에서** 학습해야
 # 성립하므로, l2/l3/l4 를 빠뜨리면 표가 조용히 거짓이 된다 (docs/02 F-9).
 RUNS="${*:-m06_l1 m08_l1 m07_l1 m06_l2 m06_l3 m08_l3 m08_l4}"
+
+# 기본은 **재개 켬**이다. 이 러너를 다시 돌리는 상황은 대부분 중단 복구이고,
+# 이미 목표 epoch 까지 끝난 학습은 train.py 가 알아서 건너뛴다.
+# 처음부터 다시 학습하려면 RESUME=0 으로 준다.
+RESUME_FLAG=""
+[ "${RESUME:-1}" = "1" ] && RESUME_FLAG="--resume"
+
 mkdir -p results/logs
 for c in $RUNS; do
   echo "=============== $c  (source=$SOURCE) ==============="
-  python3 scripts/train.py -c "configs/$c.yaml" --source "$SOURCE" \
+  python3 scripts/train.py -c "configs/$c.yaml" --source "$SOURCE" $RESUME_FLAG \
       --workers 2 --threads 4 \
       2>&1 | tee "results/logs/train_${SOURCE}_$c.log" \
-           | grep -E "^\[|^ep|^best|^early" || echo "FAILED: $c"
+           | grep -E "^\[|^ep|^best|^early|^이미" || echo "FAILED: $c"
 done
 echo "ALL DONE"

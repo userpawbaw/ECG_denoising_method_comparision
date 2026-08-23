@@ -51,6 +51,7 @@ class TrainState:
     epoch: int = 0
     best_metric: float = -math.inf
     best_epoch: int = -1
+    step: int = 0                      # LR 스케줄 위치. 재개 시 복원해야 한다
     history: list[dict[str, float]] = None
 
     def __post_init__(self):
@@ -118,12 +119,19 @@ class Trainer:
     def fit(self) -> TrainState:
         train_loader = self._loader(self.train_ds, shuffle=True)
         total_steps = max(1, self.cfg.epochs * len(train_loader))
-        step = 0
+        step = self.state.step
+        start_ep = self.state.epoch + 1
         log_path = self.out / "log.csv"
-        log_path.write_text("epoch,lr,train_loss,val_loss,val_snr_imp_scaled,"
-                            "val_snr_imp_strict,val_gain_bias,secs\n")
+        if start_ep == 1 or not log_path.exists():
+            log_path.write_text("epoch,lr,train_loss,val_loss,val_snr_imp_scaled,"
+                                "val_snr_imp_strict,val_gain_bias,secs\n")
+        if start_ep > self.cfg.epochs:
+            print(f"이미 {self.state.epoch} epoch 까지 끝났다 (목표 {self.cfg.epochs}). "
+                  f"더 돌리려면 --epochs 를 늘릴 것.")
+            return self.state
 
-        for ep in range(1, self.cfg.epochs + 1):
+        lr = self.cfg.lr           # 재개 직후 첫 로그 줄을 위한 초기값
+        for ep in range(start_ep, self.cfg.epochs + 1):
             if hasattr(self.train_ds, "set_epoch"):
                 self.train_ds.set_epoch(ep)
             self.model.train()
@@ -161,13 +169,17 @@ class Trainer:
                   f"snr_imp {row['val_snr_imp_scaled']:+6.2f} dB  gain {row['val_gain_bias']:.3f}  "
                   f"{secs:.1f}s", flush=True)
 
+            # 체크포인트에 기록될 epoch/step 을 **저장 전에** 갱신한다.
+            # (이전에는 save 뒤에 갱신해서 두 체크포인트의 epoch 이 1 작았다)
+            self.state.epoch = ep
+            self.state.step = step
+
             # best 선택은 **지표** 기준
             if vm["snr_imp_scaled"] > self.state.best_metric:
                 self.state.best_metric = vm["snr_imp_scaled"]
                 self.state.best_epoch = ep
                 self.save("best.pt")
             self.save("last.pt")
-            self.state.epoch = ep
 
             if ep - self.state.best_epoch >= self.cfg.patience:
                 print(f"early stop at epoch {ep} (best {self.state.best_epoch}: "
@@ -178,11 +190,56 @@ class Trainer:
         return self.state
 
     def save(self, name: str) -> Path:
+        """`last.pt` 에는 **재개에 필요한 전부**를 담는다.
+
+        `best.pt` 는 추론용이라 모델 가중치만 넣는다 — optimizer 상태까지 넣으면
+        파일이 두 배가 되는데 추론에서는 쓰이지 않는다.
+        """
         p = self.out / name
-        torch.save({"model": self.model.state_dict(), "model_name": self.model_name,
-                    "epoch": self.state.epoch, "best_metric": self.state.best_metric,
-                    "cfg": asdict(self.cfg)}, p)
+        ck = {"model": self.model.state_dict(), "model_name": self.model_name,
+              "epoch": self.state.epoch, "best_metric": self.state.best_metric,
+              "cfg": asdict(self.cfg)}
+        if name == "last.pt":
+            ck["opt"] = self.opt.state_dict()
+            ck["scaler"] = self.scaler.state_dict()
+            ck["state"] = {"best_epoch": self.state.best_epoch,
+                           "step": self.state.step,
+                           "history": self.state.history}
+        torch.save(ck, p)
         return p
+
+    def try_resume(self, path: str | Path | None = None) -> bool:
+        """`last.pt` 에서 이어서 학습한다. 없으면 False 를 돌려주고 처음부터 간다.
+
+        모델 가중치만 복원하는 것으로는 부족하다. optimizer 의 모멘텀,
+        LR 스케줄의 위치(`step`), early stopping 이 보는 `best_epoch` 까지
+        되돌리지 않으면 '이어서' 가 아니라 '다른 학습' 이 된다.
+
+        **한계**: LR 스케줄은 `total_steps = epochs x len(loader)` 로 정규화되므로,
+        재개할 때 `epochs` 를 바꾸면 남은 구간의 LR 곡선이 원래와 달라진다.
+        중단분을 그대로 이어붙이려면 `epochs` 를 바꾸지 말 것.
+        """
+        p = Path(path) if path else (self.out / "last.pt")
+        if not p.exists():
+            return False
+        ck = torch.load(p, map_location=self.device, weights_only=False)
+        self.model.load_state_dict(ck["model"])
+        if "opt" in ck:
+            self.opt.load_state_dict(ck["opt"])
+        if "scaler" in ck:
+            self.scaler.load_state_dict(ck["scaler"])
+        st = ck.get("state") or {}
+        self.state.epoch = int(ck.get("epoch", 0))
+        self.state.best_metric = float(ck.get("best_metric", -math.inf))
+        self.state.best_epoch = int(st.get("best_epoch", self.state.epoch))
+        self.state.step = int(st.get("step", 0))
+        self.state.history = list(st.get("history") or [])
+        if "opt" not in ck:
+            print(f"[resume] {p} 에 optimizer 상태가 없다 (구버전 체크포인트). "
+                  f"가중치만 복원하므로 모멘텀과 LR 위치는 초기화된다.")
+        print(f"[resume] epoch {self.state.epoch} 까지 완료된 상태에서 재개 "
+              f"(best {self.state.best_epoch}: {self.state.best_metric:+.3f} dB)")
+        return True
 
 
 def _collate(batch):

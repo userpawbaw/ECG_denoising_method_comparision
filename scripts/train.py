@@ -3,6 +3,7 @@
     python scripts/train.py -c configs/m06_l1.yaml --source synthetic
     python scripts/train.py -c configs/m06_l1.yaml --source mitdb
     python scripts/train.py -c configs/m06_l1.yaml --epochs 5      # 빠른 확인
+    python scripts/train.py -c configs/m06_l1.yaml --source mitdb --resume   # 중단분 이어서
 
 산출물은 **데이터축별로 분리**된다: `results/d0/<exp_id>` (합성),
 `results/d1/<exp_id>` (MIT-BIH). 같은 경로를 쓰면 D0/D1 결과가 서로를 덮어쓰고,
@@ -60,6 +61,8 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=0)
     ap.add_argument("--source", default=None, choices=("auto", "synthetic", "mitdb"),
                     help="config 의 data.source 를 덮어쓴다. 재현성을 위해 명시를 권한다")
+    ap.add_argument("--resume", action="store_true",
+                    help="출력 디렉터리의 last.pt 에서 이어서 학습한다")
     args = ap.parse_args()
 
     cfg = load_cfg(args.config)
@@ -94,7 +97,7 @@ def main() -> int:
 
     print(f"[{exp_id}] source={src.kind} train_windows={len(tr)} val_windows={len(va)} "
           f"model={mcfg.get('name')} params={model.n_params():,} loss={cfg.get('loss')}")
-    tr_state = Trainer(model, loss_fn, tr, va, tcfg, out_dir=out,
+    trainer = Trainer(model, loss_fn, tr, va, tcfg, out_dir=out,
                        device=args.device, num_workers=args.workers,
                        model_name=mcfg.get("name", "resunet1d"),
                        extra_manifest={"exp_id": exp_id, "source": src.kind,
@@ -102,7 +105,10 @@ def main() -> int:
                                        "loss": cfg.get("loss"),
                                        "pre_denoise": cfg.get("data", {}).get("pre_denoise"),
                                        "frontend": cfg.get("data", {}).get("frontend", True),
-                                       "model_kwargs": mcfg.get("kwargs") or {}}).fit()
+                                       "model_kwargs": mcfg.get("kwargs") or {}})
+    if args.resume and not trainer.try_resume():
+        print("[resume] last.pt 가 없다. 처음부터 학습한다.")
+    tr_state = trainer.fit()
     # 체크포인트에 model_kwargs 를 남겨 두어야 나중에 복원 가능
     for nm in ("best.pt", "last.pt"):
         p = out / nm
