@@ -17,6 +17,7 @@
 import _bootstrap  # noqa: F401
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -36,30 +37,61 @@ from ecgdn.utils import ensure_dir, save_manifest
 # front-end 를 끌 수 없는 방법: 그 필터 자체가 방법의 정의다
 FE_INTRINSIC = {"M_FE", "M01", "M01d"}
 
+# 축별 SWT 튜닝 결과를 주입할 방법. M04s 는 **교과서 기본 설정** 이 그 정의이므로
+# 제외한다 (튜닝의 이득을 보이는 대조군이다).
+SWT_TUNED = {"M04", "M04np", "B01"}
 
-def _build_with_fe(mid: str, frontend: bool):
-    """use_frontend 를 받는 팩토리에만 전달한다."""
+
+def load_swt_tuning(tag: str) -> dict | None:
+    """`results/{tag}/tune_swt/best.json` 을 SWTCfg 인자로 읽는다.
+
+    축마다 최적점이 다르다 — D0 는 sigma=d2/garrote/protect=True/k=(2.5,...),
+    D1 은 sigma=d1/hard/protect=False/k=(0.6,...). D0 파라미터로 D1 을 돌리면
+    M04 가 부당하게 약해지고, 그 상태의 비교는 F-6 에서 겪은 실수(약한
+    baseline 과의 비교)의 반복이다 (docs/21_decisions.md D-9).
+    """
+    from ecgdn.config import SWTCfg
+
+    p = Path("results") / tag / "tune_swt" / "best.json"
+    if not p.exists():
+        return None
+    d = json.loads(p.read_text())
+    fields = set(SWTCfg.__dataclass_fields__)
+    return {k: (tuple(v) if isinstance(v, list) else v)
+            for k, v in d.items() if k in fields}
+
+
+def _build_with_fe(mid: str, frontend: bool, swt_kw: dict | None = None):
+    """use_frontend 와 축별 SWT 파라미터를 받는 팩토리에만 전달한다."""
     import inspect
 
     from ecgdn.registry import _REGISTRY  # noqa: PLC2701
 
-    if frontend or mid in FE_INTRINSIC:
-        return build(mid)
-    fn = _REGISTRY[mid]
-    try:
-        params = inspect.signature(fn).parameters
-        if "kw" in params or "use_frontend" in params:
-            return build(mid, use_frontend=False)
-    except (TypeError, ValueError):
-        pass
-    return build(mid)
+    kw = dict(swt_kw) if (swt_kw and mid in SWT_TUNED) else {}
+    # M04np 는 'QRS 보호만 끈 조건' 이 정의다. 튜닝값이 무엇이든 이 축은 고정한다.
+    if mid == "M04np":
+        kw["protect_qrs"] = False
+    if not (frontend or mid in FE_INTRINSIC):
+        fn = _REGISTRY[mid]
+        try:
+            params = inspect.signature(fn).parameters
+            if "kw" in params or "use_frontend" in params:
+                kw["use_frontend"] = False
+        except (TypeError, ValueError):
+            pass
+    return build(mid, **kw) if kw else build(mid)
 
 
 def build_methods(cfg: dict, tag: str = "") -> dict:
     frontend = bool(cfg.get("frontend", True))
+    swt_kw = load_swt_tuning(tag) if cfg.get("swt_from_tuning", True) else None
+    if swt_kw:
+        print(f"[swt] {tag} 튜닝값 적용 -> {swt_kw}")
+    else:
+        print(f"[swt] {tag} 튜닝값 없음 — config.py 기본값 사용")
     ms: dict = {}
     for mid in cfg.get("methods", []):
-        ms[mid] = _build_with_fe(mid, frontend)
+        ms[mid] = _build_with_fe(mid, frontend, swt_kw)
     for mid, spec in (cfg.get("dl_methods") or {}).items():
         from ecgdn.methods.dl_wrapper import DLDenoiser
         if isinstance(spec, str):
@@ -163,6 +195,7 @@ def main() -> int:
 
     df = pd.DataFrame(rows)
     df.to_parquet(out / "metrics.parquet", index=False)
+    cfg = dict(cfg, _swt_applied=load_swt_tuning(tag))
     save_manifest(out, cfg=cfg, extra={"n_items": len(items), "methods": list(methods)})
     print(f"\nrows={len(df)}  -> {out/'metrics.parquet'}")
 
