@@ -19,9 +19,9 @@
 | [`docs/04_snr_estimator_calibration.md`](docs/04_snr_estimator_calibration.md) | ground-truth 없는 SNR 추정기의 편향표 |
 | [`docs/05_swt_tuning.md`](docs/05_swt_tuning.md) | SWT threshold 파라미터 탐색 (탐색/검증 분리) |
 | [`docs/06_sameni_diagnosis.md`](docs/06_sameni_diagnosis.md) | Sameni EKF/EKS 자가진단 6항목 |
-| [`docs/07_safety_probe.md`](docs/07_safety_probe.md) | hallucination / 부정맥 훼손 검증 |
+| [`docs/07_safety_probe_d0.md`](docs/07_safety_probe_d0.md) | hallucination / 부정맥 훼손 검증 |
 | [`docs/08_acquisition.md`](docs/08_acquisition.md) | 실측 데이터 수집 프로토콜 (S1~S6) |
-| [`docs/90_results.md`](docs/90_results.md) | 실험 결과 (자동 생성) |
+| [`docs/90_results_d0.md`](docs/90_results_d0.md) | 실험 결과 (자동 생성) |
 | [`docs/91_report.md`](docs/91_report.md) | **종합 보고서** — 설계 논리, 지표 선택 근거, 결과 해석 |
 
 ---

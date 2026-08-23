@@ -25,12 +25,12 @@ data:
 methods: [M_FE]
 
 dl_methods:
-  M06-L1: {ckpt: results/m06_l1/best.pt}
-  M06-L2: {ckpt: results/m06_l2/best.pt}
-  M06-L3: {ckpt: results/m06_l3/best.pt}
-  M08-L1: {ckpt: results/m08_l1/best.pt}
-  M08-L3: {ckpt: results/m08_l3/best.pt}
-  M08-L4: {ckpt: results/m08_l4/best.pt}
+  M06-L1: {ckpt: "results/{tag}/m06_l1/best.pt"}
+  M06-L2: {ckpt: "results/{tag}/m06_l2/best.pt"}
+  M06-L3: {ckpt: "results/{tag}/m06_l3/best.pt"}
+  M08-L1: {ckpt: "results/{tag}/m08_l1/best.pt"}
+  M08-L3: {ckpt: "results/{tag}/m08_l3/best.pt"}
+  M08-L4: {ckpt: "results/{tag}/m08_l4/best.pt"}
 
 eval:
   do_morph: true          # qrs_dur_err_ms, beat_cc 가 DoD 지표다

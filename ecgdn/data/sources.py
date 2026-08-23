@@ -15,7 +15,11 @@ from ..config import FS
 from .splits import MITDB_SPLIT
 
 __all__ = ["CleanRecord", "CleanSource", "SyntheticSource", "MITDBSource",
-           "get_source"]
+           "get_source", "resolve_source_kind", "source_tag", "SOURCE_TAG"]
+
+# 산출물 경로에 붙일 데이터축 태그. D0 와 D1 의 결과가 같은 경로를 쓰면
+# 서로를 덮어쓰고, 표에서 어느 쪽 숫자인지 구분할 수 없게 된다.
+SOURCE_TAG = {"synthetic": "d0", "mitdb": "d1"}
 
 
 @dataclass
@@ -125,3 +129,26 @@ def get_source(kind: str = "auto", **kw) -> CleanSource:
     return SyntheticSource(**{k: v for k, v in kw.items()
                               if k in ("n_train", "n_val", "n_test", "dur_s", "fs",
                                        "pvc_prob")})
+
+
+def resolve_source_kind(kind: str = "auto", root: str | Path = "data/raw/mitdb") -> str:
+    """`auto` 가 **실제로 무엇을 고르는지** 를 데이터 적재 전에 확정한다.
+
+    `auto` 는 편리하지만 재현성을 해친다 — `data/raw/mitdb` 에 파일이 생기는
+    순간, 같은 커밋에 같은 config 로 같은 명령을 돌려도 D0 대신 D1 이 학습된다.
+    (실제로 그렇게 됐다: docs/99_status.md 2.1)
+
+    그래서 실행 전에 이 함수로 확정하고, 그 값을 산출물 경로와 manifest 에
+    함께 남긴다. `auto` 자체를 금지하지는 않는다 — 대신 결과가 섞이지 않게 한다.
+    """
+    if kind == "auto":
+        r = Path(root)
+        return "mitdb" if (r.exists() and any(r.glob("*.hea"))) else "synthetic"
+    if kind not in SOURCE_TAG:
+        raise KeyError(f"unknown source {kind!r}; choose from {sorted(SOURCE_TAG)} or 'auto'")
+    return kind
+
+
+def source_tag(kind: str = "auto", root: str | Path = "data/raw/mitdb") -> str:
+    """산출물 경로에 쓸 태그. synthetic -> d0, mitdb -> d1."""
+    return SOURCE_TAG[resolve_source_kind(kind, root)]

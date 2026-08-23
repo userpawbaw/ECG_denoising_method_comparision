@@ -42,8 +42,8 @@
 | 23 M08 | 🔄 | D0+FE 학습 완료(best ep 15) | loss ablation 용 m08_l3/l4 미학습 |
 | 24 EXP-A | 🔄 | `results/exp_a` 는 `git=d787577` 산출 | **FE 수정 이전이라 무효.** 재실행 필요 |
 | 25 EXP-B/C | 🔄 | 좌동 | **FE 수정 이전이라 무효.** 재실행 필요 |
-| 26 EXP-E | 🔄 | `docs/07_safety_probe.md` | DL 부분은 FE 수정 이전. M05 의 PVC 훼손은 고전 기법이라 유효 |
-| 27 리포트 | 🔄 | `docs/90_results.md` + F1~F8, T1~T3 | 재생성 필요. 91_report 5장에 경고 배너 게시 중 |
+| 26 EXP-E | 🔄 | `docs/07_safety_probe_d0.md` | DL 부분은 FE 수정 이전. M05 의 PVC 훼손은 고전 기법이라 유효 |
+| 27 리포트 | 🔄 | `docs/90_results_d0.md` + F1~F8, T1~T3 | 재생성 필요. 91_report 5장에 경고 배너 게시 중 |
 | 28 실측 수집 | ⬜ | `docs/08_acquisition.md`, 스케치, 로거 | **하드웨어 필요** |
 | 29 실측 SNR | ⬜ | `scripts/estimate_real_snr.py` | 28 이후 |
 | 30 EXP-F | ⬜ | | 28 이후 |

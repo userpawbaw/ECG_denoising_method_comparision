@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """STEP 19 DoD — loss ablation 표 생성.
 
-    python scripts/run_exp.py -c configs/abl_loss.yaml
-    python scripts/make_ablation_table.py
+    python scripts/run_exp.py -c configs/abl_loss.yaml --source synthetic
+    python scripts/make_ablation_table.py --source synthetic
 
-`results/abl_loss/metrics.parquet` (long format) 을 읽어
-`results/ablation_loss.csv` 와 `docs/10_loss_ablation.md` 를 만든다.
+`results/{tag}/abl_loss/metrics.parquet` (long format) 을 읽어
+`results/{tag}/ablation_loss.csv` 와 `docs/10_loss_ablation_{tag}.md` 를 만든다.
 
 표에 **체크포인트의 git hash 와 frontend 플래그를 함께 싣는다.** F-9 에서
 겪었듯, 파이프라인 앞단을 고치면 그 뒤로 학습된 체크포인트가 한꺼번에 무효가
@@ -29,9 +29,9 @@ METRICS = ["snr_imp_scaled", "qrs_dur_err_ms", "beat_cc"]
 LOWER_BETTER = {"qrs_dur_err_ms"}
 
 
-def ckpt_provenance(run: str) -> dict:
+def ckpt_provenance(run: str, tag: str) -> dict:
     """체크포인트가 '언제, 어떤 조건에서' 학습됐는지."""
-    d = Path("results") / run
+    d = Path("results") / tag / run
     out = {"run": run, "git": "?", "frontend": "?", "loss": "?", "model": "?"}
     mf = d / "manifest.json"
     if mf.exists():
@@ -45,9 +45,17 @@ def ckpt_provenance(run: str) -> dict:
 
 
 def main() -> int:
-    src = Path("results/abl_loss/metrics.parquet")
+    import argparse
+    from ecgdn.data.sources import resolve_source_kind, source_tag
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--source", default="auto", choices=("auto", "synthetic", "mitdb"))
+    args = ap.parse_args()
+    kind, tag = resolve_source_kind(args.source), source_tag(args.source)
+
+    src = Path(f"results/{tag}/abl_loss/metrics.parquet")
     if not src.exists():
-        print(f"[!] {src} 없음. 먼저 실행: python scripts/run_exp.py -c configs/abl_loss.yaml")
+        print(f"[!] {src} 없음. 먼저 실행: "
+              f"python scripts/run_exp.py -c configs/abl_loss.yaml --source {kind}")
         return 1
     d = pd.read_parquet(src)
     d = d[d["metric"].isin(METRICS)]
@@ -55,7 +63,7 @@ def main() -> int:
     # method 이름 'M06-L3' -> 체크포인트 디렉터리 'm06_l3'
     runs = {m: m.lower().replace("-", "_") for m in d["method"].unique()
             if m.upper().startswith("M0") and "-L" in m.upper()}
-    prov = {m: ckpt_provenance(r) for m, r in runs.items()}
+    prov = {m: ckpt_provenance(r, tag) for m, r in runs.items()}
 
     # --- 학습 조건이 섞였는지 먼저 확인한다 (F-9 재발 방지) -------------
     fes = {str(p["frontend"]) for p in prov.values()}
@@ -81,11 +89,14 @@ def main() -> int:
                          frontend=p.get("frontend", ""), ckpt_git=p.get("git", "")))
     out = pd.DataFrame(rows).sort_values(["metric", "snr_in", "method"])
     Path("results").mkdir(exist_ok=True)
-    out.to_csv("results/ablation_loss.csv", index=False)
-    print(f"[ok] results/ablation_loss.csv  ({len(out)} 행)")
+    Path(f"results/{tag}").mkdir(parents=True, exist_ok=True)
+    out.to_csv(f"results/{tag}/ablation_loss.csv", index=False)
+    print(f"[ok] results/{tag}/ablation_loss.csv  ({len(out)} 행)")
 
     # --- 사람이 읽는 표 -------------------------------------------------
-    md = ["# STEP 19 — loss ablation 결과", "",
+    axis = "D0 — 합성 ECG" if tag == "d0" else "D1 — MIT-BIH + NSTDB"
+    md = [f"# STEP 19 — loss ablation 결과 ({tag.upper()})", "",
+          f"> 데이터축: **{axis}**", "",
           "`configs/abl_loss.yaml` 로 **TEST split** 에서 평가한 결과다.",
           "학습 로그의 VAL 값이 아니다 (F-9 참조).", ""]
     if mixed:
@@ -124,8 +135,8 @@ def main() -> int:
            "- `M_FE` 는 공통 front-end 만 적용한 기준선이다. loss 간 차이가 이 기준선",
            "  대비 얼마나 되는지가 실질적 크기다.",
            "- 차이가 지표의 분해능(`docs/03_metric_floor.md`) 미만이면 차이가 아니다.", ""]
-    Path("docs/10_loss_ablation.md").write_text("\n".join(md) + "\n")
-    print("[ok] docs/10_loss_ablation.md")
+    Path(f"docs/10_loss_ablation_{tag}.md").write_text("\n".join(md) + "\n")
+    print(f"[ok] docs/10_loss_ablation_{tag}.md")
     return 2 if mixed else 0
 
 

@@ -21,9 +21,9 @@ data:
 methods: [M00, M_FE, M01, M02, M03, M04, M04np, M05f, M05, B01, B02]
 
 dl_methods:
-  M06: {ckpt: results/m06_l1/best.pt}
-  M07: {ckpt: results/m07_l1/best.pt, pre: M04}
-  M08: {ckpt: results/m08_l1/best.pt}
+  M06: {ckpt: "results/{tag}/m06_l1/best.pt"}
+  M07: {ckpt: "results/{tag}/m07_l1/best.pt", pre: M04}
+  M08: {ckpt: "results/{tag}/m08_l1/best.pt"}
 
 eval:
   do_morph: true

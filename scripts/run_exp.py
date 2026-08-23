@@ -1,6 +1,7 @@
 """STEP 24-25: 실험 실행기 (EXP-A / EXP-B / EXP-C).
 
-    python scripts/run_exp.py -c configs/exp_a.yaml
+    python scripts/run_exp.py -c configs/exp_a.yaml --source synthetic
+    python scripts/run_exp.py -c configs/exp_a.yaml --source mitdb
 
 공정성 규약
 ----------
@@ -9,7 +10,9 @@
   * oracle(B01/B02)만 ctx['x_clean'] 을 받는다.
   * `mode: distortion` 이면 잡음 없이 clean 을 그대로 통과시킨다 (EXP-C).
 
-산출: results/{exp_id}/metrics.parquet (long format), manifest.json
+산출: results/{tag}/{exp_id}/metrics.parquet (long format), manifest.json
+  tag = d0(합성) / d1(MIT-BIH). 데이터축이 다른 결과가 서로를 덮어쓰지 않도록
+  경로를 분리한다. config 의 체크포인트 경로에 쓴 `{tag}` 도 같은 값으로 치환된다.
 """
 import _bootstrap  # noqa: F401
 
@@ -24,7 +27,7 @@ import yaml
 import ecgdn.methods  # noqa: F401  레지스트리 등록
 from ecgdn.data.dataset import build_eval_set
 from ecgdn.data.nstdb import make_banks
-from ecgdn.data.sources import get_source
+from ecgdn.data.sources import get_source, resolve_source_kind, source_tag
 from ecgdn.eval.engine import evaluate, make_ref_cache
 from ecgdn.registry import available, build, meta
 from ecgdn.utils import ensure_dir, save_manifest
@@ -52,7 +55,7 @@ def _build_with_fe(mid: str, frontend: bool):
     return build(mid)
 
 
-def build_methods(cfg: dict) -> dict:
+def build_methods(cfg: dict, tag: str = "") -> dict:
     frontend = bool(cfg.get("frontend", True))
     ms: dict = {}
     for mid in cfg.get("methods", []):
@@ -61,7 +64,9 @@ def build_methods(cfg: dict) -> dict:
         from ecgdn.methods.dl_wrapper import DLDenoiser
         if isinstance(spec, str):
             spec = {"ckpt": spec}
-        ck = Path(spec["ckpt"])
+        # config 는 `results/{tag}/m06_l1/best.pt` 처럼 쓴다. 실행 시 고른 데이터축의
+        # 체크포인트가 자동으로 선택되므로, D0 모델을 D1 평가에 쓰는 사고가 막힌다.
+        ck = Path(str(spec["ckpt"]).replace("{tag}", tag))
         if not ck.exists():
             print(f"[skip] {mid}: checkpoint not found -> {ck}")
             continue
@@ -77,13 +82,24 @@ def main() -> int:
     ap.add_argument("-c", "--config", required=True)
     ap.add_argument("--limit", type=int, default=None, help="평가 항목 수 상한 (연습용)")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--source", default=None, choices=("auto", "synthetic", "mitdb"),
+                    help="config 의 data.source 를 덮어쓴다. 재현성을 위해 명시를 권한다")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text())
+    if args.source is not None:
+        cfg.setdefault("data", {})["source"] = args.source
     exp_id = cfg.get("exp_id", Path(args.config).stem)
-    out = ensure_dir(args.out or f"results/{exp_id}")
     d = cfg.get("data", {})
     mode = cfg.get("mode", "snr")
+
+    requested = d.get("source", "auto")
+    kind = resolve_source_kind(requested)
+    tag = source_tag(requested)
+    if requested == "auto":
+        print(f"[{exp_id}] source=auto -> {kind!r} 로 해석됨. "
+              f"재현성을 위해 --source {kind} 를 명시할 것.")
+    out = ensure_dir(args.out or f"results/{tag}/{exp_id}")
 
     src = get_source(d.get("source", "auto"), dur_s=float(d.get("dur_s", 300.0)),
                      n_train=int(d.get("n_train", 18)), n_val=int(d.get("n_val", 4)),
@@ -106,12 +122,12 @@ def main() -> int:
     if args.limit:
         items = items[: args.limit]
 
-    methods = build_methods(cfg)
+    methods = build_methods(cfg, tag)
     ev = cfg.get("eval", {})
     do_morph = bool(ev.get("do_morph", True))
     do_spec = bool(ev.get("do_spectral", True))
 
-    print(f"[{exp_id}] mode={mode} source={src.kind} items={len(items)} "
+    print(f"[{exp_id}] mode={mode} source={src.kind} tag={tag} items={len(items)} "
           f"frontend={cfg.get('frontend', True)} methods={list(methods)}")
     rows = []
     t0 = time.perf_counter()

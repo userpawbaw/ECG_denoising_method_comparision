@@ -12,7 +12,7 @@
   P3 (ectopic)      : 부정맥(PVC, 'V') beat 만 골라 형태 보존을 정상 beat 와 비교한다.
                       -> PVC 가 정상 QRS 모양으로 '교정' 되면 실패.
 
-산출: results/exp_e/{probe.csv, summary.md}, docs/07_safety_probe.md
+산출: results/{tag}/exp_e/{probe.csv, summary.md}, docs/07_safety_probe_{tag}.md
 """
 import _bootstrap  # noqa: F401
 
@@ -27,17 +27,22 @@ import ecgdn.methods  # noqa: F401
 from ecgdn.data.mixer import mix_at_snr
 from ecgdn.data.noise import mixed_noise
 from ecgdn.data.nstdb import make_banks
-from ecgdn.data.sources import get_source
+from ecgdn.data.sources import get_source, resolve_source_kind, source_tag
 from ecgdn.eval.morphology import beat_matrix
 from ecgdn.registry import build
 from ecgdn.utils import ensure_dir, rng, save_manifest
 
+# main() 이 --source 로 채운다. _methods 가 ckpt 의 {tag} 치환에 쓴다.
+_TAG = ["d0"]
+
 
 def _methods(cfg):
     ms = {mid: build(mid) for mid in cfg.get("methods", [])}
+    tag = _TAG[0]
     for mid, spec in (cfg.get("dl_methods") or {}).items():
         from ecgdn.methods.dl_wrapper import DLDenoiser
         spec = {"ckpt": spec} if isinstance(spec, str) else spec
+        spec = dict(spec, ckpt=str(spec["ckpt"]).replace("{tag}", tag))
         if not Path(spec["ckpt"]).exists():
             print(f"[skip] {mid}: no checkpoint"); continue
         ms[mid] = DLDenoiser(ckpt=spec["ckpt"], name=mid, pre=spec.get("pre"), batch=32)
@@ -116,10 +121,20 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("-c", "--config", default="configs/exp_e.yaml")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--source", default=None, choices=("auto", "synthetic", "mitdb"),
+                    help="config 의 data.source 를 덮어쓴다")
     args = ap.parse_args()
     cfg = yaml.safe_load(Path(args.config).read_text())
+    if args.source is not None:
+        cfg.setdefault("data", {})["source"] = args.source
     d = cfg.get("data", {})
     snr = float(cfg.get("snr_db", 5.0))
+
+    requested = d.get("source", "auto")
+    kind = resolve_source_kind(requested)
+    _TAG[0] = source_tag(requested)
+    if requested == "auto":
+        print(f"[exp_e] source=auto -> {kind!r} 로 해석됨. --source {kind} 명시 권장.")
 
     src = get_source(d.get("source", "auto"), dur_s=float(d.get("dur_s", 300.0)),
                      n_test=int(d.get("n_test", 22)))
@@ -132,19 +147,21 @@ def main() -> int:
     if args.limit:
         items = items[: args.limit]
     methods = _methods(cfg)
-    print(f"[exp_e] items={len(items)} methods={list(methods)} snr={snr} dB")
+    print(f"[exp_e] tag={_TAG[0]} items={len(items)} methods={list(methods)} snr={snr} dB")
 
     rows: list[dict] = []
     probe_p1_p2(items, methods, snr, banks, rows, "p1")
     probe_p1_p2(items, methods, snr, banks, rows, "p2")
     probe_p3(items, methods, snr, banks, rows)
     df = pd.DataFrame(rows)
-    out = ensure_dir("results/exp_e")
+    out = ensure_dir(f"results/{_TAG[0]}/exp_e")
     df.to_csv(out / "probe.csv", index=False)
     save_manifest(out, cfg=cfg)
 
-    md = ["# 07. 안전성 프로브 (EXP-E)", "",
-          "> 자동 생성: `python scripts/run_safety_probe.py`", "",
+    axis = "D0 — 합성 ECG" if _TAG[0] == "d0" else "D1 — MIT-BIH + NSTDB"
+    md = [f"# 07. 안전성 프로브 (EXP-E, {_TAG[0].upper()})", "",
+          f"> 자동 생성: `python scripts/run_safety_probe.py --source {kind}`", "",
+          f"> **데이터축: {axis}**", "",
           "**질문: denoiser 가 없는 파형을 만들어내지는 않는가?**", "",
           "의료 신호에서는 SNR 보다 중요한 질문이다. 딥러닝/생성형 계열은",
           "\"이 환자 ECG 라면 이렇게 생겼을 것\" 을 그럴듯하게 그려낼 수 있다.", "",
@@ -190,7 +207,7 @@ def main() -> int:
            "- 다만 잡음이 그대로 남아도 이 값은 올라간다. 따라서 **잡음 제거량(EXP-A)과 함께** 봐야 한다.",
            "- P3 의 `V - N` 이 0 근처면 부정맥에 대해 편향이 없다는 뜻이다.",
            "", "## 재현", "", "```bash", "python scripts/run_safety_probe.py", "```"]
-    doc = ensure_dir("docs") / "07_safety_probe.md"
+    doc = ensure_dir("docs") / f"07_safety_probe_{_TAG[0]}.md"
     doc.write_text("\n".join(md) + "\n")
     print(df.groupby(["probe", "method"]).size().to_string())
     print(f"-> {doc}")

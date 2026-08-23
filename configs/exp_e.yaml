@@ -14,6 +14,6 @@ data:
 methods: [M00, M_FE, M01, M04, M05, B01]
 
 dl_methods:
-  M06: {ckpt: results/m06_l1/best.pt}
-  M07: {ckpt: results/m07_l1/best.pt, pre: M04}
-  M08: {ckpt: results/m08_l1/best.pt}
+  M06: {ckpt: "results/{tag}/m06_l1/best.pt"}
+  M07: {ckpt: "results/{tag}/m07_l1/best.pt", pre: M04}
+  M08: {ckpt: "results/{tag}/m08_l1/best.pt"}

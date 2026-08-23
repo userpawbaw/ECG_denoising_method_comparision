@@ -1,7 +1,12 @@
 """STEP 18: 학습 진입점. 실험 1개 = yaml 1개.
 
-    python scripts/train.py -c configs/m06_l1.yaml
+    python scripts/train.py -c configs/m06_l1.yaml --source synthetic
+    python scripts/train.py -c configs/m06_l1.yaml --source mitdb
     python scripts/train.py -c configs/m06_l1.yaml --epochs 5      # 빠른 확인
+
+산출물은 **데이터축별로 분리**된다: `results/d0/<exp_id>` (합성),
+`results/d1/<exp_id>` (MIT-BIH). 같은 경로를 쓰면 D0/D1 결과가 서로를 덮어쓰고,
+나중에 표에서 어느 쪽 숫자인지 구분할 수 없다.
 """
 import _bootstrap  # noqa: F401
 
@@ -15,7 +20,7 @@ import yaml
 from ecgdn.config import TrainCfg
 from ecgdn.data.dataset import ECGDenoiseDataset
 from ecgdn.data.nstdb import make_banks
-from ecgdn.data.sources import get_source
+from ecgdn.data.sources import get_source, resolve_source_kind, source_tag
 from ecgdn.models import build_model, make_loss
 from ecgdn.train import Trainer
 from ecgdn.utils import ensure_dir
@@ -53,9 +58,13 @@ def main() -> int:
     ap.add_argument("--device", default=None)
     ap.add_argument("--threads", type=int, default=None)
     ap.add_argument("--workers", type=int, default=0)
+    ap.add_argument("--source", default=None, choices=("auto", "synthetic", "mitdb"),
+                    help="config 의 data.source 를 덮어쓴다. 재현성을 위해 명시를 권한다")
     args = ap.parse_args()
 
     cfg = load_cfg(args.config)
+    if args.source is not None:
+        cfg.setdefault("data", {})["source"] = args.source
     if args.epochs is not None:
         cfg.setdefault("train", {})["epochs"] = args.epochs
     if args.threads:
@@ -63,7 +72,16 @@ def main() -> int:
 
     torch.manual_seed(int(cfg.get("seed", 0)))
     exp_id = cfg.get("exp_id", Path(args.config).stem)
-    out = ensure_dir(args.out or f"results/{exp_id}")
+
+    # 데이터축을 **적재 전에** 확정한다. auto 로 두면 data/raw 의 상태에 따라
+    # 조용히 D0/D1 이 바뀌므로, 무엇이 선택됐는지 경로와 로그에 함께 남긴다.
+    requested = cfg.get("data", {}).get("source", "auto")
+    kind = resolve_source_kind(requested)
+    tag = source_tag(requested)
+    if requested == "auto":
+        print(f"[{exp_id}] source=auto -> {kind!r} 로 해석됨. "
+              f"재현성을 위해 --source {kind} 를 명시할 것.")
+    out = ensure_dir(args.out or f"results/{tag}/{exp_id}")
     (out / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False,
                                                     allow_unicode=True))
 
@@ -80,6 +98,7 @@ def main() -> int:
                        device=args.device, num_workers=args.workers,
                        model_name=mcfg.get("name", "resunet1d"),
                        extra_manifest={"exp_id": exp_id, "source": src.kind,
+                                       "source_requested": requested, "tag": tag,
                                        "loss": cfg.get("loss"),
                                        "pre_denoise": cfg.get("data", {}).get("pre_denoise"),
                                        "frontend": cfg.get("data", {}).get("frontend", True),

@@ -3,7 +3,9 @@
     python scripts/make_report.py
 
 `results/` 의 산출물만 읽는다 (원본 데이터 재접근 불필요).
-산출: results/report/*.{png,csv,md}, docs/90_results.md
+산출: results/{tag}/report/*.{png,csv,md}, docs/90_results_{tag}.md
+  tag = d0(합성) / d1(MIT-BIH). D0 보고서를 D1 실행이 덮어쓰면
+  두 축을 비교할 수 없게 되므로 산출물과 문서를 모두 분리한다.
 """
 import _bootstrap  # noqa: F401
 
@@ -45,13 +47,16 @@ AUX_METRICS = [
 ]
 
 
+TAG = "d0"          # main() 에서 --source 로 확정한다
+
+
 def load_exp(name: str):
-    p = Path("results") / name / "metrics.parquet"
+    p = Path("results") / TAG / name / "metrics.parquet"
     return pd.read_parquet(p) if p.exists() else None
 
 
 def load_floor() -> dict[str, float]:
-    p = Path("results/metric_floor/floor.csv")
+    p = Path("results/metric_floor/floor.csv")   # floor 는 아직 축 공통 (P-6)
     if not p.exists():
         return {}
     d = pd.read_csv(p)
@@ -268,13 +273,21 @@ def main() -> int:
     ap.add_argument("--fig-snr", type=float, default=5.0,
                     help="대표 파형 그림(F1-F3)의 입력 SNR [dB].")
     ap.add_argument("--no-waveforms", action="store_true")
+    ap.add_argument("--source", default="auto", choices=("auto", "synthetic", "mitdb"),
+                    help="어느 데이터축의 결과를 읽어 보고서를 만들지")
     args = ap.parse_args()
 
-    out = ensure_dir("results/report")
+    global TAG
+    from ecgdn.data.sources import resolve_source_kind, source_tag
+    kind, TAG = resolve_source_kind(args.source), source_tag(args.source)
+    axis = "D0 — 합성 ECG (McSharry ODE)" if TAG == "d0" else "D1 — MIT-BIH + NSTDB 실잡음"
+
+    out = ensure_dir(f"results/{TAG}/report")
     floor = load_floor()
-    md: list[str] = ["# 90. 실험 결과", "",
-                     "> 자동 생성: `python scripts/make_report.py`  "
-                     "(수정하지 말 것 — 스크립트를 고칠 것)", ""]
+    md: list[str] = [f"# 90. 실험 결과 ({TAG.upper()})", "",
+                     f"> 자동 생성: `python scripts/make_report.py --source {kind}`  "
+                     "(수정하지 말 것 — 스크립트를 고칠 것)", "",
+                     f"> **데이터축: {axis}**", ""]
 
     a, b, c = load_exp("exp_a"), load_exp("exp_b"), load_exp("exp_c")
 
@@ -285,11 +298,11 @@ def main() -> int:
             if rec:
                 md += ["## 대표 파형", "",
                        f"기록 `{rec}`, 입력 SNR {args.fig_snr:.0f} dB, 동일 y축.", "",
-                       "![F1](../results/report/F1_waveforms.png)", "",
+                       "![F1](../results/" + TAG + "/report/F1_waveforms.png)", "",
                        "### QRS 확대", "",
-                       "![F2](../results/report/F2_qrs_zoom.png)", "",
+                       "![F2](../results/" + TAG + "/report/F2_qrs_zoom.png)", "",
                        "### 주파수 스펙트럼", "",
-                       "![F3](../results/report/F3_psd.png)", "",
+                       "![F3](../results/" + TAG + "/report/F3_psd.png)", "",
                        "PSD 는 시간영역에서 보이지 않는 것을 보여준다: "
                        "어떤 방법이 60 Hz 를 지웠는지, 어떤 방법이 QRS 의 고주파 성분까지 "
                        "함께 잘라냈는지.", ""]
@@ -326,8 +339,8 @@ def main() -> int:
         plots.snr_curve(a, "qrs_dur_err_ms", out / "F4b_qrs_curve.png",
                         real_snr=args.real_snr, ylabel="QRS duration error [ms]",
                         title="EXP-A: QRS duration error vs input SNR")
-        md += ["![F4](../results/report/F4_snr_curve.png)", "",
-               "![F4b](../results/report/F4b_qrs_curve.png)", ""]
+        md += ["![F4](../results/" + TAG + "/report/F4_snr_curve.png)", "",
+               "![F4b](../results/" + TAG + "/report/F4b_qrs_curve.png)", ""]
 
         # 통계
         stats = []
@@ -398,7 +411,7 @@ def main() -> int:
             rem = per_record(a, "snr_imp_scaled").mean(axis=0).to_dict()
             pres = {k: v for k, v in cd.to_dict().items() if np.isfinite(v)}
             plots.pareto_scatter(rem, pres, out / "F5_pareto.png")
-            md += ["![F5](../results/report/F5_pareto.png)", "",
+            md += ["![F5](../results/" + TAG + "/report/F5_pareto.png)", "",
                    "오른쪽 위로 갈수록 좋다. 오른쪽 아래는 '잡음은 잘 지우지만 파형을 망가뜨리는' 방법이다.", ""]
 
     # ---------------- EXP-D (RQ4): wavelet 을 어디에 쓸 것인가
@@ -435,7 +448,7 @@ def main() -> int:
         plots.noise_heatmap(b, "snr_imp_scaled", out / "F6_noise_heatmap.png",
                             title="EXP-B: snr_imp_scaled by noise type (input 10 dB)")
         md += ["## EXP-B — 잡음 종류별 강약 (RQ2)", "",
-               "![F6](../results/report/F6_noise_heatmap.png)", ""]
+               "![F6](../results/" + TAG + "/report/F6_noise_heatmap.png)", ""]
         piv = b[b.metric == "snr_imp_scaled"].pivot_table(index="method", columns="cond",
                                                           values="value", aggfunc="mean")
         piv.round(2).to_csv(out / "table_noise.csv")
@@ -447,14 +460,14 @@ def main() -> int:
 
     # ---------------- 학습 곡선 / 비용
     runs = {}
-    for p in sorted(Path("results").glob("m0*/log.csv")):
+    for p in sorted(Path("results", TAG).glob("m0*/log.csv")):
         try:
             runs[p.parent.name] = pd.read_csv(p)
         except Exception:
             pass
     if runs:
         plots.training_curves(runs, out / "F8_training.png")
-        md += ["## 학습 곡선", "", "![F8](../results/report/F8_training.png)", "",
+        md += ["## 학습 곡선", "", "![F8](../results/" + TAG + "/report/F8_training.png)", "",
                "| run | best epoch | best val snr_imp_scaled [dB] |", "|---|---|---|"]
         for nm, d in runs.items():
             i = int(d["val_snr_imp_scaled"].idxmax())
@@ -474,7 +487,7 @@ def main() -> int:
     if a is not None:
         md += _conclusions(a, c, b)
 
-    doc = ensure_dir("docs") / "90_results.md"
+    doc = ensure_dir("docs") / f"90_results_{TAG}.md"
     doc.write_text("\n".join(md) + "\n")
     print(f"-> {doc}")
     print(f"-> {out}")

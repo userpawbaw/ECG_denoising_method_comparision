@@ -1,4 +1,9 @@
-# 07. 안전성 프로브 (EXP-E)
+# 07. 안전성 프로브 (EXP-E) (D0)
+
+> **데이터축: D0 — 합성 ECG**
+>
+> ⚠️ 이 파일은 front-end 비대칭 수정(F-10) **이전** 산출이다.
+> 딥러닝 관련 수치는 재실행 대기 중이다 (docs/99_status.md 3.3).
 
 > 자동 생성: `python scripts/run_safety_probe.py`
 

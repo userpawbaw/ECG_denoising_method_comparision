@@ -86,7 +86,7 @@ def test_dl_checkpoints_have_a_training_config(cfg_path: Path):
         ck = spec if isinstance(spec, str) else (spec or {}).get("ckpt")
         if not ck:
             continue
-        run = Path(ck).parent.name
+        run = Path(str(ck).replace("{tag}", "d0")).parent.name
         if not (ROOT / "configs" / f"{run}.yaml").exists():
             orphan.append(f"{mid} -> {ck} (configs/{run}.yaml 없음)")
     assert not orphan, f"{cfg_path.name}: 재현 불가능한 체크포인트 참조 {orphan}"
@@ -109,7 +109,7 @@ def test_training_runner_covers_every_referenced_checkpoint():
         for spec in (cfg.get("dl_methods") or {}).values():
             ck = spec if isinstance(spec, str) else (spec or {}).get("ckpt")
             if ck:
-                needed.add(Path(ck).parent.name)
+                needed.add(Path(str(ck).replace("{tag}", "d0")).parent.name)
     assert not (needed - runs), \
         f"실험이 쓰지만 러너가 학습하지 않는 체크포인트: {sorted(needed - runs)}"
 
@@ -130,7 +130,7 @@ def test_loss_ablation_covers_every_trained_loss():
         for spec in (cfg.get("dl_methods") or {}).values():
             ck = spec if isinstance(spec, str) else (spec or {}).get("ckpt")
             if ck:
-                referenced.add(Path(ck).parent.name)
+                referenced.add(Path(str(ck).replace("{tag}", "d0")).parent.name)
     assert not (runs - referenced), \
         f"학습되지만 어떤 실험/표에도 안 쓰이는 설정: {sorted(runs - referenced)}"
 
@@ -182,3 +182,28 @@ def test_gitignore_data_rule_is_anchored_to_repo_root():
            and l.rstrip("/*") == "data"]
     assert not bad, (f"루트에 고정되지 않은 data 규칙 {bad} — 이러면 ecgdn/data/ 같은 "
                      f"하위 패키지가 통째로 무시된다. '/data/*' 로 쓸 것")
+
+def test_experiment_configs_use_tag_templated_checkpoints():
+    """실험 config 의 체크포인트 경로는 `{tag}` 로 데이터축을 따라가야 한다.
+
+    `results/m06_l1/best.pt` 처럼 축이 고정된 경로를 쓰면, D0 로 학습한 모델을
+    D1 평가에 그대로 먹이는 사고가 조용히 일어난다. manifest 를 열어보기 전에는
+    드러나지 않는다 (docs/99_status.md 2.1).
+    """
+    bad = []
+    for p in CONFIGS:
+        cfg = yaml.safe_load(p.read_text()) or {}
+        for mid, spec in (cfg.get("dl_methods") or {}).items():
+            ck = spec if isinstance(spec, str) else (spec or {}).get("ckpt")
+            if ck and "{tag}" not in str(ck):
+                bad.append(f"{p.name}:{mid} -> {ck}")
+    assert not bad, f"데이터축이 고정된 체크포인트 경로: {bad}"
+
+
+def test_runner_scripts_require_an_explicit_data_axis():
+    """러너는 데이터축을 인자로 받아야 한다 — auto 에만 기대면 재현되지 않는다."""
+    for name in ("run_all_training.sh", "run_all_experiments.sh"):
+        t = (ROOT / "scripts" / name).read_text()
+        assert "SOURCE=" in t and "synthetic|mitdb" in t, \
+            f"{name} 에 데이터축 인자 처리가 없다"
+

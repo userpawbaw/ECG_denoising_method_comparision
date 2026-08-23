@@ -3,7 +3,7 @@
 > 대상: 이 실험을 처음 보는 평가자
 > 전제 지식: 학부 신호처리 + 기초 기계학습
 > 이 문서는 **왜 그렇게 설계했는가**에 초점을 둔다. 실행 방법은 `README.md`,
-> 단계별 절차는 `docs/02_procedure.md`, 자동 생성 결과표는 `docs/90_results.md` 참조.
+> 단계별 절차는 `docs/02_procedure.md`, 자동 생성 결과표는 `docs/90_results_<축>.md` 참조 (d0=합성, d1=MIT-BIH).
 
 ---
 

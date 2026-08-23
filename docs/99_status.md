@@ -81,7 +81,7 @@ train 기록이 `101, 106, 108, …` (MIT-BIH DS1).
 
 `results/exp_a|b|c|e` 는 전부 `git=d787577` 시점 산출물이다. front-end 비대칭
 수정(`cfb5d1a`)보다 **이전**이므로, 딥러닝이 front-end 없이 평가된 결과다.
-`docs/90_results.md`, `docs/91_report.md` 5장의 수치가 여기서 나왔다.
+`docs/90_results_d0.md`, `docs/91_report.md` 5장의 수치가 여기서 나왔다.
 91_report 5장 머리에 경고 배너를 달아 두었다.
 
 ### 3.4 보조 산출물 — 전부 **합성 고정**
@@ -92,7 +92,7 @@ train 기록이 `101, 106, 108, …` (MIT-BIH DS1).
 | `04_snr_estimator_calibration.md` | `check_snr_estimator.py` | `synth_ecg` 직접 호출 | 필요 |
 | `05_swt_tuning.md` | `tune_swt.py` | `synth_ecg` 직접 호출 | **필수** — `00_review` B-1 이 "MIT-BIH 확보 후 TRAIN split 으로 재탐색" 을 명시 |
 | `06_sameni_diagnosis.md` | `diagnose_sameni.py` | `synth_ecg` 직접 호출 | 필요 |
-| `07_safety_probe.md` | `run_safety_probe.py` | `get_source("auto")` | 자동 전환됨 |
+| `07_safety_probe_d0.md` | `run_safety_probe.py` | `get_source("auto")` | 자동 전환됨 |
 
 앞의 4개는 `get_source` 를 쓰지 않으므로 **D1 데이터가 있어도 자동으로 바뀌지 않는다.**
 → 미해결 항목 M-2.
@@ -169,7 +169,7 @@ D0 는 파이프라인 검증 역할이고, D0/D1 비교 자체가 "합성 벤�
 | **P-2** | M-4 완화: `last.pt` 로부터 재개 | 중단돼도 이어서 학습 |
 | **P-3** | D0 학습 완결 (m07_l1 재학습 + m06_l2/l3, m08_l3/l4) | 7개 체크포인트 전부 `frontend: true`, `source: synthetic` |
 | **P-4** | D0 실험 재실행 (EXP-A/B/C/E + abl_loss) | `results/d0/*` 갱신, STEP 19 DoD 표 생성 |
-| **P-5** | **결과 해석 보고** + 문서 갱신 | `90_results.md` 재생성, `91_report.md` 5장 경고 해제 및 수치 교체, 6개 수정 항목이 결과를 어떻게 바꿨는지 분석 |
+| **P-5** | **결과 해석 보고** + 문서 갱신 | `90_results_d0.md` 재생성, `91_report.md` 5장 경고 해제 및 수치 교체, 6개 수정 항목이 결과를 어떻게 바꿨는지 분석 |
 | **P-6** | M-2 해결: 보조 스크립트 4개에 소스 선택 추가 | D1 로 재실행 가능 |
 | **P-7** | D1 사전 작업: metric floor, **SWT 튜닝(TRAIN split)**, Sameni 진단 재측정 | D1 기준 파라미터 확정 |
 | **P-8** | D1 학습 + 실험 + 보고 | D0/D1 비교표 |
