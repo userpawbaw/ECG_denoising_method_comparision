@@ -45,7 +45,7 @@ class DLDenoiser(BaseDenoiser):
     def __init__(self, model=None, ckpt: str | Path | None = None,
                  name: str = "M06", win: int = WIN, hop: int = HOP,
                  device: str = "cpu", batch: int = 64, normalize: bool = True,
-                 pre: str | None = None, frontend: bool = True):
+                 pre: str | None = None, frontend: bool | None = None):
         import torch
 
         self.name = name
@@ -59,6 +59,19 @@ class DLDenoiser(BaseDenoiser):
                 raise ValueError("model 또는 ckpt 중 하나는 필요하다")
             model, ck = load_checkpoint(ckpt, device)
             self.meta = {k: v for k, v in ck.items() if k != "model"}
+            # **학습 때의 설정을 따른다.** 추론에서만 front-end 를 켜고 끄면
+            # train/inference 불일치가 되어 성능이 무너진다.
+            if frontend is None:
+                if "frontend" in ck:
+                    frontend = bool(ck["frontend"])
+                else:
+                    frontend = False
+                    print(f"[warn] {Path(ckpt).parent.name}: 체크포인트에 frontend 기록이 없다. "
+                          "front-end 없이 학습된 구형 체크포인트로 간주한다 (재학습 권장).")
+            if pre is None and ck.get("pre_denoise"):
+                pre = ck["pre_denoise"]
+        if frontend is None:
+            frontend = True
         self.model = model
         self.model.eval()
         self._torch = torch

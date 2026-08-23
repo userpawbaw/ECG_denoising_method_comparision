@@ -67,7 +67,8 @@ def build_methods(cfg: dict) -> dict:
             continue
         ms[mid] = DLDenoiser(ckpt=ck, name=mid, pre=spec.get("pre"),
                              batch=int(spec.get("batch", 32)),
-                             frontend=bool(spec.get("frontend", frontend)))
+                             # 명시하지 않으면 체크포인트의 학습 설정을 따른다
+                             frontend=spec.get("frontend"))
     return ms
 
 
