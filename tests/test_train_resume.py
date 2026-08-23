@@ -108,3 +108,43 @@ def test_already_finished_run_does_not_retrain(tmp_path):
     st = t2.fit()
     assert st.epoch == 2
     assert len(st.history) == 2, "끝난 학습을 다시 돌렸다"
+
+def test_legacy_checkpoint_recovers_best_epoch_from_log(tmp_path):
+    """`state` 가 없는 구버전 체크포인트도 best_epoch 을 log.csv 에서 되살린다.
+
+    epoch 으로 대신하면 early stopping 이 그 지점부터 다시 세기 시작해,
+    이미 정체된 학습을 patience 만큼 더 돌린다 (m06_l1 이 12 epoch 낭비).
+    """
+    t1 = _make(tmp_path, 4)
+    t1.fit()
+    real_best = t1.state.best_epoch
+
+    # P-2 이전 형식으로 되돌린다: state/opt/scaler 를 지운 last.pt
+    lp = tmp_path / "run" / "last.pt"
+    ck = torch.load(lp, map_location="cpu", weights_only=False)
+    for k in ("state", "opt", "scaler"):
+        ck.pop(k, None)
+    torch.save(ck, lp)
+
+    t2 = _make(tmp_path, 6)
+    assert t2.try_resume() is True
+    assert t2.state.best_epoch == real_best, \
+        f"log.csv 에서 best_epoch 을 복원하지 못했다 ({t2.state.best_epoch} != {real_best})"
+    assert len(t2.state.history) == 4, "history 도 log.csv 에서 복원돼야 한다"
+
+
+def test_recovery_survives_a_missing_log(tmp_path):
+    """log.csv 가 없어도 재개 자체는 실패하지 않는다."""
+    t1 = _make(tmp_path, 2)
+    t1.fit()
+    lp = tmp_path / "run" / "last.pt"
+    ck = torch.load(lp, map_location="cpu", weights_only=False)
+    for k in ("state", "opt", "scaler"):
+        ck.pop(k, None)
+    torch.save(ck, lp)
+    (tmp_path / "run" / "log.csv").unlink()
+
+    t2 = _make(tmp_path, 4)
+    assert t2.try_resume() is True
+    assert t2.state.epoch == 2
+

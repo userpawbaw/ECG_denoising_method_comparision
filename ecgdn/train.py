@@ -208,6 +208,30 @@ class Trainer:
         torch.save(ck, p)
         return p
 
+    def _recover_from_log(self) -> tuple[int, list[dict]]:
+        """`log.csv` 에서 history 와 best epoch 을 되살린다.
+
+        체크포인트가 무엇을 담고 있든 `log.csv` 는 매 epoch append 되므로
+        학습 이력의 진실 원천이다.
+        """
+        p = self.out / "log.csv"
+        if not p.exists():
+            return -1, []
+        import csv
+        try:
+            rows = [{k: float(v) for k, v in r.items()}
+                    for r in csv.DictReader(p.open())]
+        except (ValueError, KeyError):
+            return -1, []
+        if not rows:
+            return -1, []
+        for r in rows:
+            r["epoch"] = int(r["epoch"])
+        best = max(rows, key=lambda r: r["val_snr_imp_scaled"])
+        print(f"[resume] log.csv 에서 이력 복원: {len(rows)} epoch, "
+              f"best {best['epoch']} ({best['val_snr_imp_scaled']:+.3f} dB)")
+        return best["epoch"], rows
+
     def try_resume(self, path: str | Path | None = None) -> bool:
         """`last.pt` 에서 이어서 학습한다. 없으면 False 를 돌려주고 처음부터 간다.
 
@@ -231,9 +255,22 @@ class Trainer:
         st = ck.get("state") or {}
         self.state.epoch = int(ck.get("epoch", 0))
         self.state.best_metric = float(ck.get("best_metric", -math.inf))
-        self.state.best_epoch = int(st.get("best_epoch", self.state.epoch))
         self.state.step = int(st.get("step", 0))
         self.state.history = list(st.get("history") or [])
+
+        if "best_epoch" in st:
+            self.state.best_epoch = int(st["best_epoch"])
+        else:
+            # 구버전 체크포인트에는 best_epoch 가 없다. epoch 으로 대신하면
+            # early stopping 이 그 지점부터 다시 세기 시작해 이미 정체된 학습을
+            # patience 만큼 더 돌린다 (실제로 m06_l1 이 12 epoch 을 낭비했다).
+            # log.csv 는 매 epoch append 되므로 언제나 정확하다 — 거기서 되살린다.
+            self.state.best_epoch, self.state.history = self._recover_from_log()
+            if self.state.best_epoch < 0:
+                self.state.best_epoch = self.state.epoch
+                print("[resume] best_epoch 을 복원할 수 없다 (log.csv 없음). "
+                      "early stopping 이 현재 epoch 부터 다시 센다.")
+
         if "opt" not in ck:
             print(f"[resume] {p} 에 optimizer 상태가 없다 (구버전 체크포인트). "
                   f"가중치만 복원하므로 모멘텀과 LR 위치는 초기화된다.")
