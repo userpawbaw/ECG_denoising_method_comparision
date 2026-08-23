@@ -1,6 +1,7 @@
-# EXP-A — 입력 SNR sweep (RQ1). 주 결과표/곡선의 원천.
-exp_id: exp_a
-frontend: true          # false 로 두면 FE 를 끌 수 있는 모든 방법에서 끈다
+# EXP-A-nofe — 부록 조건: 공통 front-end 를 끄고 '알고리즘 자체' 만 비교한다.
+# 주 결과는 exp_a(FE=on) 이다 — 실측 장비에서는 front-end 를 당연히 쓰기 때문.
+exp_id: exp_a_nofe
+frontend: false          # false 로 두면 FE 를 끌 수 있는 모든 방법에서 끈다
 mode: snr
 
 data:
@@ -20,10 +21,7 @@ data:
 # M04np 는 M04 에서 QRS 보호만 끈 ablation.
 methods: [M00, M_FE, M01, M02, M03, M04, M04np, M05f, M05, B01, B02]
 
-dl_methods:
-  M06: {ckpt: results/m06_l1/best.pt}
-  M07: {ckpt: results/m07_l1/best.pt, pre: M04}
-  M08: {ckpt: results/m08_l1/best.pt}
+dl_methods: {}   # FE 없이 학습한 체크포인트가 없으므로 DL 은 제외
 
 eval:
   do_morph: true

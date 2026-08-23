@@ -45,7 +45,7 @@ class DLDenoiser(BaseDenoiser):
     def __init__(self, model=None, ckpt: str | Path | None = None,
                  name: str = "M06", win: int = WIN, hop: int = HOP,
                  device: str = "cpu", batch: int = 64, normalize: bool = True,
-                 pre: str | None = None):
+                 pre: str | None = None, frontend: bool = True):
         import torch
 
         self.name = name
@@ -62,7 +62,15 @@ class DLDenoiser(BaseDenoiser):
         self.model = model
         self.model.eval()
         self._torch = torch
-        # 순차 hybrid(M07): 학습 때와 **같은** DSP 전처리를 추론에서도 반드시 적용해야 한다
+        # 공통 front-end. 학습 때와 **같은** 전처리를 추론에서도 적용해야 한다.
+        # (학습은 창 양쪽에 여유를 붙여 필터링하고, 추론은 전체 신호에 한 번 적용한다 —
+        #  둘 다 FE 가 충분한 문맥을 보므로 정합한다)
+        self.frontend = bool(frontend)
+        self._fe = None
+        if self.frontend:
+            from .frontend import FrontEnd
+            self._fe = FrontEnd()
+        # 순차 hybrid(M07): 학습 때와 같은 DSP 전처리
         self.pre = None
         if pre is not None:
             from ..registry import build
@@ -70,6 +78,8 @@ class DLDenoiser(BaseDenoiser):
 
     def _run(self, y: np.ndarray, fs: float, ctx: dict[str, Any]) -> np.ndarray:
         torch = self._torch
+        if self._fe is not None:
+            y = self._fe(y, fs)
         if self.pre is not None:
             y = self.pre(y, fs)
         n = y.size

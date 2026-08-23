@@ -74,5 +74,5 @@ def apply_frontend(y: np.ndarray, fs: float, cfg: FrontEndCfg = DEFAULT_FE) -> n
 
 
 @register_method("M_FE", family="frontend", label="Front-end only (HPF+LPF+auto notch)")
-def _build_fe(**kw):
+def _build_fe(use_frontend: bool = True, **kw):
     return FrontEnd(FrontEndCfg(**kw) if kw else DEFAULT_FE)

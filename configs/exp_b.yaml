@@ -1,5 +1,6 @@
 # EXP-B — 잡음 종류별 강약 (RQ2). SNR 은 10 dB 고정.
 exp_id: exp_b
+frontend: true          # false 로 두면 FE 를 끌 수 있는 모든 방법에서 끈다
 mode: snr
 
 data:
@@ -14,7 +15,10 @@ data:
   n_test: 22
   seed: eval_b
 
-methods: [M00, M01, M02, M03, M04, M05f, M05, B01, B02]
+# M_FE 는 '공통 front-end 만' 이다. 모든 표에 필수로 넣어
+# 각 이득 중 얼마가 front-end 에서 온 것인지 바로 읽히게 한다.
+# M04np 는 M04 에서 QRS 보호만 끈 ablation.
+methods: [M00, M_FE, M01, M02, M03, M04, M04np, M05f, M05, B01, B02]
 
 dl_methods:
   M06: {ckpt: results/m06_l1/best.pt}

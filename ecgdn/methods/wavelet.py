@@ -191,18 +191,32 @@ class DWTDenoiser(_WaveletBase):
 
 # --------------------------------------------------------------------- 등록
 @register_method("M03", family="timefreq", label="DWT soft threshold (sym4, L5)")
-def _m03(**kw):
+def _m03(use_frontend: bool = True, **kw):
     cfg = SWTCfg(mode="soft", protect_qrs=False, **kw)
-    return DWTDenoiser(cfg, name="M03")
+    return DWTDenoiser(cfg, use_frontend=use_frontend, name="M03")
 
 
 @register_method("M04", family="timefreq",
                  label="SWT adaptive threshold (level-k + QRS protect, garrote)")
-def _m04(**kw):
-    return SWTDenoiser(SWTCfg(**kw) if kw else DEFAULT_SWT, name="M04")
+def _m04(use_frontend: bool = True, **kw):
+    return SWTDenoiser(SWTCfg(**kw) if kw else DEFAULT_SWT,
+                       use_frontend=use_frontend, name="M04")
+
+
+@register_method("M04np", family="timefreq",
+                 label="SWT adaptive threshold, QRS protection OFF (ablation)")
+def _m04np(use_frontend: bool = True, **kw):
+    """M04 에서 **QRS 보호만** 끈 조건.
+
+    M04s 는 sigma 출처/threshold 함수/QRS 보호를 동시에 바꿔 교란되어 있다.
+    'ECG-aware DSP 의 이득' 을 주장하려면 이 한 축만 분리해야 한다.
+    """
+    base = SWTCfg(**kw) if kw else DEFAULT_SWT
+    cfg = SWTCfg(**{**base.__dict__, "protect_qrs": False})
+    return SWTDenoiser(cfg, use_frontend=use_frontend, name="M04np")
 
 
 @register_method("M04s", family="timefreq", label="SWT soft threshold (uniform k, no protect)")
-def _m04s(**kw):
+def _m04s(use_frontend: bool = True, **kw):
     cfg = SWTCfg(mode="soft", k=(1.0,) * 5, protect_qrs=False, **kw)
-    return SWTDenoiser(cfg, name="M04s")
+    return SWTDenoiser(cfg, use_frontend=use_frontend, name="M04s")

@@ -36,7 +36,8 @@ def build_datasets(cfg: dict):
     kw = dict(win=int(d.get("win", 1024)), hop=int(d.get("hop", 512)),
               snr_range=tuple(d.get("snr_range", (-5.0, 20.0))),
               max_per_record=d.get("max_per_record"),
-              pre_denoise=d.get("pre_denoise"))
+              pre_denoise=d.get("pre_denoise"),
+              frontend=bool(d.get("frontend", True)))
     tr = ECGDenoiseDataset(src, "train", banks=make_banks("train", nstdb_root),
                            salt=("train", cfg.get("seed", 0)), **kw)
     va = ECGDenoiseDataset(src, "val", banks=make_banks("val", nstdb_root),
@@ -81,6 +82,7 @@ def main() -> int:
                        extra_manifest={"exp_id": exp_id, "source": src.kind,
                                        "loss": cfg.get("loss"),
                                        "pre_denoise": cfg.get("data", {}).get("pre_denoise"),
+                                       "frontend": cfg.get("data", {}).get("frontend", True),
                                        "model_kwargs": mcfg.get("kwargs") or {}}).fit()
     # 체크포인트에 model_kwargs 를 남겨 두어야 나중에 복원 가능
     for nm in ("best.pt", "last.pt"):
@@ -88,6 +90,8 @@ def main() -> int:
         if p.exists():
             ck = torch.load(p, map_location="cpu", weights_only=False)
             ck["model_kwargs"] = mcfg.get("kwargs") or {}
+            ck["frontend"] = bool(cfg.get("data", {}).get("frontend", True))
+            ck["pre_denoise"] = cfg.get("data", {}).get("pre_denoise")
             torch.save(ck, p)
     print(f"best epoch {tr_state.best_epoch}: {tr_state.best_metric:+.3f} dB  -> {out}")
     return 0

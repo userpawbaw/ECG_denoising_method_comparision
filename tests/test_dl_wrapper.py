@@ -21,7 +21,7 @@ class _Half(torch.nn.Module):
 @pytest.mark.parametrize("n", [1024, 3000, 12345])
 def test_length_preserved_and_identity(n):
     x = np.random.default_rng(n).standard_normal(n)
-    d = DLDenoiser(model=_Identity(), name="M06")
+    d = DLDenoiser(model=_Identity(), name="M06", frontend=False)
     out = d(x, 250.0)
     assert out.shape == x.shape
     assert np.max(np.abs(out - x)) < 1e-4
@@ -30,7 +30,7 @@ def test_length_preserved_and_identity(n):
 def test_scaling_is_undone():
     """모델이 0.5배로 만들면 출력도 정확히 0.5배여야 한다 (정규화가 새는지 확인)."""
     x = synth_ecg(30.0, seed=2).x
-    d = DLDenoiser(model=_Half(), name="M06")
+    d = DLDenoiser(model=_Half(), name="M06", frontend=False)
     out = d(x, 250.0)
     assert np.max(np.abs(out - 0.5 * x)) < 1e-4
 
@@ -42,7 +42,7 @@ def test_no_boundary_discontinuity():
     torch.manual_seed(0)
     for p in m.parameters():                   # 무작위 비선형 응답을 만들기 위해
         p.data.add_(0.01 * torch.randn_like(p))
-    d = DLDenoiser(model=m, name="M06", batch=8)
+    d = DLDenoiser(model=m, name="M06", batch=8, frontend=False)
     out = d(s.x, s.fs)
     dif = np.abs(np.diff(out))
     hops = np.arange(d.hop, len(dif) - 1, d.hop)
@@ -54,6 +54,25 @@ def test_no_boundary_discontinuity():
 def test_real_model_shapes():
     s = synth_ecg(20.0, seed=4)
     for name in ("resunet1d", "wavelet_unet"):
-        d = DLDenoiser(model=build_model(name), name="M06", batch=4)
+        d = DLDenoiser(model=build_model(name), name="M06", batch=4, frontend=False)
         out = d(s.x, s.fs)
         assert out.shape == s.x.shape and np.all(np.isfinite(out))
+
+
+def test_frontend_is_applied_when_enabled():
+    """딥러닝도 고전 기법과 동일한 공통 front-end 를 받아야 한다.
+
+    회귀 테스트: 이 경로가 없으면 DL 만 기저선 제거를 처음부터 학습해야 해서
+    baseline wander 조건에서 불공정한 비교가 된다 (FE 단독 +20.3 dB vs FE 없는 U-Net +6.3 dB).
+    """
+    from ecgdn.methods.frontend import apply_frontend
+
+    s = synth_ecg(30.0, seed=5)
+    drift = 0.5 * np.sin(2 * np.pi * 0.1 * np.arange(s.x.size) / s.fs)
+    y = s.x + drift
+    on = DLDenoiser(model=_Identity(), name="M06", frontend=True)(y, s.fs)
+    off = DLDenoiser(model=_Identity(), name="M06", frontend=False)(y, s.fs)
+    assert np.max(np.abs(off - y)) < 1e-4                      # FE 없으면 그대로
+    assert np.max(np.abs(on - apply_frontend(y, s.fs))) < 1e-4  # FE 있으면 필터를 통과
+    g = int(5 * s.fs)
+    assert np.std(on[g:-g]) < np.std(off[g:-g])                 # 드리프트가 제거됨

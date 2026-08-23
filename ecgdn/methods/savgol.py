@@ -35,5 +35,5 @@ class SavGol(BaseDenoiser):
 
 
 @register_method("M02", family="classical", label="Savitzky-Golay (40 ms, order 3)")
-def _s1(**kw):
-    return SavGol(**kw)
+def _s1(use_frontend: bool = True, **kw):
+    return SavGol(use_frontend=use_frontend, **kw)

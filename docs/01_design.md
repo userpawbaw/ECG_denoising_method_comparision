@@ -73,7 +73,32 @@ raw
 - `filtfilt` (zero-phase) 사용 → 위상 왜곡 없음. R-peak timing이 밀리지 않는다.
 - **[FE3]은 무조건 적용하지 않는다.** `psd_has_pli()` 로 60 Hz 피크의 존재를 판정한 뒤 적용한다.
   판정 기준: 59–61 Hz 대역 power가 인접 배경대역(55–58, 62–65 Hz) 중앙값의 **10 배 이상**.
-- 실험은 **front-end 유무 2조건**을 모두 돌린다 (`fe=on` / `fe=off`).
+
+> **적용 방식 (오해하기 쉬운 지점)**: 별도의 전역 front-end 단계가 파이프라인에 존재하는 것이 아니다.
+> **각 방법이 자기 안에서 front-end를 정확히 1회 적용**한다 (`use_frontend=True`).
+> `M01`/`M01d`/`M_FE`는 front-end 그 자체가 방법의 정의이므로 항상 켜져 있다.
+> 따라서 notch가 중복 적용되는 경로는 없다.
+>
+> **딥러닝도 동일하게 front-end를 받는다.** 학습 데이터셋과 추론 래퍼 양쪽에 적용된다.
+> 이 경로가 없으면 딥러닝만 기저선 제거를 처음부터 학습해야 해 비교가 불공정해진다
+> (실측: baseline wander 조건에서 front-end 단독 **+20.3 dB** vs front-end 없는 U-Net **+6.3 dB**).
+> 학습 시에는 창 양쪽에 **실제 이웃 구간을 `EVAL_GUARD_S` 만큼 붙여** 필터링한 뒤 가운데만 잘라낸다 —
+> 0.5 Hz HPF는 수 초간 링잉하므로 4.096 s 창에 그대로 걸면 창 전체가 트랜지언트가 된다.
+
+### 2.1.1 `frontend` 스위치와 주/부 조건
+
+| 조건 | 설정 | 역할 |
+|---|---|---|
+| **`frontend: true`** (주) | 모든 방법 + 딥러닝에 front-end 적용 | **실사용 시나리오.** 실측 장비에서는 front-end를 당연히 쓴다 |
+| `frontend: false` (부록) | 끌 수 있는 모든 방법에서 해제 | 알고리즘 자체의 비교 |
+
+`configs/exp_a.yaml`(주) / `configs/exp_a_nofe.yaml`(부록). **주 결과표는 `frontend: true`다.**
+
+**`M_FE`(front-end만)를 모든 결과표의 필수 행으로 넣는다.** 그래야 각 방법의 이득 중
+얼마가 front-end에서 온 것인지 표에서 바로 읽힌다. (이 행이 없어서
+"`M04`가 baseline wander에서 oracle과 동일"이라는 오독이 실제로 발생했다 — 실은
+`M04` 20.26 dB = `M_FE` 20.26 dB로, SWT thresholding의 기여가 정확히 0이었다.
+baseline wander는 A5에 있고 우리는 A5를 thresholding하지 않기 때문이다.)
 
 ---
 
@@ -117,6 +142,10 @@ bw/ma/em 각각:  [0%,60%) TRAIN   [60%,75%) VAL   [75%,100%] TEST
 ### 3.3 D2 — Arduino noise-only + MIT-BIH clean  *[device adaptation]*
 
 `B-4` 프로토콜(S2~S5)로 수집한 실측 잡음을 MIT-BIH clean ECG와 합성.
+
+> **leakage 규약 (강제)**: fine-tuning에 쓸 수 있는 clean ECG는 **TRAIN split뿐**이다.
+> TEST record의 morphology를 adaptation에 쓰면 F-8과 같은 종류의 leakage다.
+> `splits.assert_adaptation_records()` 가 코드에서 검사한다.
 
 ### 3.4 D3 — Arduino 실측 ECG  *[최종 real-world 평가, ground truth 없음]*
 

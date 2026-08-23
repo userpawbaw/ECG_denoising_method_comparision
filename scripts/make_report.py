@@ -20,10 +20,15 @@ from ecgdn.registry import available, build, meta
 from ecgdn.utils import ensure_dir
 from ecgdn.viz import plots
 
+# 주 지표. R-peak 계열은 세 개를 **함께** 본다 —
+# rpeak_mae_ms 는 '매칭된' peak 만 보므로, beat 를 절반 놓쳐도 작게 나올 수 있다.
+# 따라서 Se(놓치지 않았는가) / PPV(오검출하지 않았는가) 를 같은 그룹으로 승격했다.
 MAIN_METRICS = [
     ("snr_imp_scaled", "SNR improvement [dB]", "↑"),
     ("rmse", "RMSE [mV]", "↓"),
     ("cc", "Pearson CC", "↑"),
+    ("se", "R-peak Se", "↑"),
+    ("ppv", "R-peak PPV", "↑"),
     ("rpeak_mae_ms", "R-peak MAE [ms]", "↓"),
     ("qrs_dur_err_ms", "QRS duration error [ms]", "↓"),
 ]
@@ -34,6 +39,7 @@ AUX_METRICS = [
     ("r_amp_err_pct", "R amplitude error [%]", "↓"),
     ("beat_cc", "beat template CC", "↑"),
     ("hr_err_bpm", "HR error [bpm]", "↓"),
+    ("rpeak_bias_ms", "R-peak bias [ms]", "→0"),
     ("psd_logdist", "PSD log-distance [dB]", "↓"),
     ("rtf", "RTF (latency / signal)", "↓"),
 ]
@@ -332,6 +338,21 @@ def main() -> int:
                     stats.append(s)
             except Exception:
                 pass
+        # SNR 구간별 검정 — 전체 평균 검정은 SNR 교차를 지운다
+        per_snr = []
+        for snr in sorted(a.snr_in_target.unique()):
+            sub = a[a.snr_in_target == snr]
+            try:
+                t2 = compare_methods(sub, "snr_imp_scaled", baseline="M01")
+            except Exception:
+                continue
+            if not t2.empty:
+                t2.insert(0, "snr_in", snr)
+                per_snr.append(t2)
+        if per_snr:
+            ps = pd.concat(per_snr, ignore_index=True)
+            ps.to_csv(out / "table_stats_per_snr.csv", index=False)
+
         if stats:
             st = pd.concat(stats, ignore_index=True)
             st.to_csv(out / "table_stats.csv", index=False)
@@ -345,6 +366,18 @@ def main() -> int:
                 ph = "—" if not np.isfinite(r["p_holm"]) else f"{r['p_holm']:.2e}"
                 md.append(f"| `{r['metric']}` | `{r['method']}` | {r['delta_mean']:+.3f} "
                           f"| {p} | {ph} | {r['effect_r']:+.3f} |")
+            md.append("")
+        if per_snr:
+            md += ["#### T2b. SNR 구간별 검정 (`snr_imp_scaled`, baseline = `M01`)", "",
+                   "전체 평균 검정은 SNR 교차를 지운다. 구간별로 다시 본다. "
+                   "`✓` = Holm 보정 후 p < 0.05.", "",
+                   "| 입력 SNR | 유의하게 우수 | 유의하게 열등 |", "|---|---|---|"]
+            for snr in sorted(ps.snr_in.unique()):
+                sub = ps[(ps.snr_in == snr) & (ps.p_holm < 0.05)]
+                up = ", ".join(f"`{m}`" for m in sub[sub.delta_mean > 0]
+                               .sort_values("delta_mean", ascending=False).method)
+                dn = ", ".join(f"`{m}`" for m in sub[sub.delta_mean < 0].method)
+                md.append(f"| {snr:g} dB | {up or '—'} | {dn or '—'} |")
             md.append("")
 
     # ---------------- EXP-C + Pareto

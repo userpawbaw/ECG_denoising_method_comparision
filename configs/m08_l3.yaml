@@ -18,6 +18,8 @@ data:
   snr_range: [-5.0, 20.0]
   max_per_record: 160     # 에폭당 window 수 상한 (계산량 조절)
   nstdb_root: data/raw/nstdb
+  frontend: true          # 공통 front-end 를 딥러닝에도 동일 적용
+                          # (끄면 DL 만 기저선 제거를 처음부터 학습해야 해 불공정)
 
 train:
   lr: 1.0e-3

@@ -330,7 +330,7 @@ class SameniKalman(BaseDenoiser):
 
 @register_method("M05", family="model", label="Sameni EKS (EKF + RTS smoother)")
 def _m05(**kw):
-    return SameniKalman(smooth=True, **kw)
+    return SameniKalman(smooth=True, **kw)          # use_frontend 를 그대로 받는다
 
 
 @register_method("M05f", family="model", label="Sameni EKF (forward only)")

@@ -31,10 +31,11 @@ class BandpassNotch(BaseDenoiser):
 
 
 @register_method("M01", family="classical", label="Bandpass 0.5-40 Hz + auto notch")
-def _b1(**kw):
+def _b1(use_frontend: bool = True, **kw):
+    # M01 은 front-end 그 자체다. use_frontend 는 무시한다 (끄면 identity 가 된다).
     return BandpassNotch(lp_hz=40.0, name="M01", **kw)
 
 
 @register_method("M01d", family="classical", label="Bandpass 0.5-100 Hz + auto notch")
-def _b2(**kw):
+def _b2(use_frontend: bool = True, **kw):
     return BandpassNotch(lp_hz=100.0, name="M01d", **kw)

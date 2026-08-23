@@ -124,11 +124,12 @@ class OracleWienerDenoiser(BaseDenoiser):
 
 @register_method("B01", family="bound", label="Oracle wavelet threshold (wavelet upper bound)",
                  needs_clean=True)
-def _b01(**kw):
-    return OracleWaveletDenoiser(SWTCfg(**kw) if kw else DEFAULT_SWT)
+def _b01(use_frontend: bool = True, **kw):
+    return OracleWaveletDenoiser(SWTCfg(**kw) if kw else DEFAULT_SWT,
+                                 use_frontend=use_frontend)
 
 
 @register_method("B02", family="bound", label="Oracle Wiener (LTI upper bound)",
                  needs_clean=True)
-def _b02(**kw):
-    return OracleWienerDenoiser(**kw)
+def _b02(use_frontend: bool = True, **kw):
+    return OracleWienerDenoiser(use_frontend=use_frontend, **kw)

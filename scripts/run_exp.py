@@ -30,10 +30,33 @@ from ecgdn.registry import available, build, meta
 from ecgdn.utils import ensure_dir, save_manifest
 
 
+# front-end 를 끌 수 없는 방법: 그 필터 자체가 방법의 정의다
+FE_INTRINSIC = {"M_FE", "M01", "M01d"}
+
+
+def _build_with_fe(mid: str, frontend: bool):
+    """use_frontend 를 받는 팩토리에만 전달한다."""
+    import inspect
+
+    from ecgdn.registry import _REGISTRY  # noqa: PLC2701
+
+    if frontend or mid in FE_INTRINSIC:
+        return build(mid)
+    fn = _REGISTRY[mid]
+    try:
+        params = inspect.signature(fn).parameters
+        if "kw" in params or "use_frontend" in params:
+            return build(mid, use_frontend=False)
+    except (TypeError, ValueError):
+        pass
+    return build(mid)
+
+
 def build_methods(cfg: dict) -> dict:
+    frontend = bool(cfg.get("frontend", True))
     ms: dict = {}
     for mid in cfg.get("methods", []):
-        ms[mid] = build(mid)
+        ms[mid] = _build_with_fe(mid, frontend)
     for mid, spec in (cfg.get("dl_methods") or {}).items():
         from ecgdn.methods.dl_wrapper import DLDenoiser
         if isinstance(spec, str):
@@ -43,7 +66,8 @@ def build_methods(cfg: dict) -> dict:
             print(f"[skip] {mid}: checkpoint not found -> {ck}")
             continue
         ms[mid] = DLDenoiser(ckpt=ck, name=mid, pre=spec.get("pre"),
-                             batch=int(spec.get("batch", 32)))
+                             batch=int(spec.get("batch", 32)),
+                             frontend=bool(spec.get("frontend", frontend)))
     return ms
 
 
@@ -87,7 +111,7 @@ def main() -> int:
     do_spec = bool(ev.get("do_spectral", True))
 
     print(f"[{exp_id}] mode={mode} source={src.kind} items={len(items)} "
-          f"methods={list(methods)}")
+          f"frontend={cfg.get('frontend', True)} methods={list(methods)}")
     rows = []
     t0 = time.perf_counter()
     for i, it in enumerate(items, 1):
