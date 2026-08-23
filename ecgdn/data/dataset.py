@@ -8,6 +8,13 @@
     clean 을 보고 스케일을 정하면 정보 누설이다.
   * 평가용 데이터는 미리 만들어 디스크에 저장한다. 모든 방법이 **완전히 동일한 y** 를 받아야
     비교가 공정하다.
+  * **참조(정답) 신호는 front-end 를 통과한 것이다** (`ref_frontend`).
+    MIT-BIH 는 clean 이 아니라 이미 기저선 변동을 담고 있어서, 원본을 정답으로 두면
+    front-end 가 그 성분을 제거할수록 정답에서 **멀어져** SNR 이 떨어진다. 실측:
+    잡음 없이 front-end 만 통과했을 때 원본과의 SNR 이 D0 는 53.2 dB(무해)인데
+    D1 은 9.3 dB 였고, 그 결과 10 dB 조건에서 무처리(M00)가 M04 보다 높게 나왔다.
+    즉 평가가 아무것도 구분하지 못한다. 그래서 목표를 **"0.5~100 Hz 대역의 ECG 를
+    복원한다"** 로 명시하고 참조도 그 대역으로 맞춘다 (docs/02_procedure.md F-12).
 """
 from __future__ import annotations
 
@@ -58,7 +65,8 @@ class ECGDenoiseDataset:
                  banks: dict[str, Any] | None = None,
                  salt: Any = 0, max_per_record: int | None = None,
                  normalize: bool = True, pre_denoise: str | None = None,
-                 frontend: bool = True, fe_margin_s: float = EVAL_GUARD_S):
+                 frontend: bool = True, fe_margin_s: float = EVAL_GUARD_S,
+                 ref_frontend: bool = True):
         self.source = source or get_source("auto")
         self.split = split
         self.win, self.hop = int(win), int(hop)
@@ -74,6 +82,9 @@ class ECGDenoiseDataset:
         # '기저선 제거를 처음부터 학습해야 하는' 불공정이 생긴다 (실측: baseline wander 조건에서
         # FE 단독 +20.3 dB vs FE 없는 U-Net +6.3 dB). 학습·추론 모두에 동일하게 적용한다.
         self.frontend = bool(frontend)
+        # 학습 타깃도 참조와 같은 대역이어야 한다. 다르면 신경망이 front-end 를
+        # 되돌리는 법을 배우게 된다.
+        self.ref_frontend = bool(ref_frontend)
         self.fe_margin_s = float(fe_margin_s)
         self._fe = None
         self.index = _index_windows(self.source, split, self.win, self.hop, max_per_record)
@@ -132,10 +143,11 @@ class ECGDenoiseDataset:
         if pre is not None:
             y_seg = pre(y_seg, rec.fs)   # DSP 전처리 (물리 스케일에서 수행)
 
-        # 가운데 창만 사용. target 은 **필터를 통과하지 않은 clean** 이다 —
-        # 모든 방법이 raw clean 기준으로 평가되므로 학습 목표도 그것과 같아야 한다.
+        # 가운데 창만 사용. target 은 **참조와 같은 대역** 이어야 한다 (위 규약).
+        # y 와 동일하게 margin 을 포함한 채 필터링한 뒤 가운데만 잘라낸다.
+        x_seg = fe(seg, rec.fs) if (fe is not None and self.ref_frontend) else seg
         y = y_seg[m:m + self.win]
-        x = seg[m:m + self.win]
+        x = x_seg[m:m + self.win]
 
         scale = robust_scale(y) if self.normalize else 1.0
         return dict(y=(y / scale).astype(np.float32),
@@ -156,13 +168,20 @@ def build_eval_set(source: CleanSource | None = None, split: str = "test",
                    noise_conditions: Sequence[str] = ("mixed",),
                    banks: dict[str, Any] | None = None,
                    n_seg_per_record: int = 3, seed: Any = "eval",
+                   ref_frontend: bool = True,
                    out: str | Path | None = None) -> list[dict[str, Any]]:
     """모든 방법이 공유할 **고정** 평가 세트를 만든다.
 
-    각 항목: clean x, noisy y, r_peaks, symbols, 조건 라벨.
+    각 항목: 참조 x, noisy y, r_peaks, symbols, 조건 라벨.
+    `x` 는 **front-end 를 통과한 참조**이고, `x_raw` 는 원본이다. 잡음은 원본에
+    섞는다(실제 취득 상황) — 참조만 대역을 맞춘다.
     `out` 이 주어지면 npz 로 저장한다.
     """
     src = source or get_source("auto")
+    _fe = None
+    if ref_frontend:
+        from ..methods.frontend import FrontEnd
+        _fe = FrontEnd()
     items: list[dict[str, Any]] = []
     for name in src.records(split):
         rec = src.get(name)
@@ -172,7 +191,8 @@ def build_eval_set(source: CleanSource | None = None, split: str = "test",
         # 기록 안에서 균등 간격으로 구간을 고른다 (결정론적)
         starts = np.linspace(0, rec.x.size - n_seg, n_seg_per_record).astype(int)
         for si, st in enumerate(starts):
-            x = rec.x[st:st + n_seg]
+            x_raw = rec.x[st:st + n_seg]
+            x = _fe(x_raw, rec.fs) if _fe is not None else x_raw
             rp = rec.r_peaks[(rec.r_peaks >= st) & (rec.r_peaks < st + n_seg)] - st
             sy = rec.symbols[(rec.r_peaks >= st) & (rec.r_peaks < st + n_seg)]
             for cond in noise_conditions:
@@ -186,9 +206,12 @@ def build_eval_set(source: CleanSource | None = None, split: str = "test",
                     from .noise import make_noise
                     nz, w = make_noise(cond, n_seg, rec.fs, g, banks=banks), {cond: 1.0}
                 for snr in snr_grid:
-                    y, _, _ = mix_at_snr(x, nz, float(snr))
+                    # 잡음은 **원본** 에 섞는다 — 취득계는 대역제한 전 신호를 본다
+                    y, _, _ = mix_at_snr(x_raw, nz, float(snr))
                     items.append(dict(record=name, seg=si, cond=cond, snr=float(snr),
-                                      x=x.astype(np.float32), y=y.astype(np.float32),
+                                      x=x.astype(np.float32),
+                                      x_raw=x_raw.astype(np.float32),
+                                      y=y.astype(np.float32),
                                       r_peaks=rp.astype(np.int64), symbols=sy,
                                       fs=float(rec.fs), weights=w))
     if out is not None:
@@ -202,6 +225,7 @@ def save_eval_set(items: list[dict[str, Any]], out: str | Path) -> Path:
     np.savez_compressed(
         p,
         x=np.stack([it["x"] for it in items]),
+        x_raw=np.stack([it.get("x_raw", it["x"]) for it in items]),
         y=np.stack([it["y"] for it in items]),
         fs=np.array([it["fs"] for it in items]),
         snr=np.array([it["snr"] for it in items]),
@@ -217,6 +241,8 @@ def save_eval_set(items: list[dict[str, Any]], out: str | Path) -> Path:
 def load_eval_set(path: str | Path) -> list[dict[str, Any]]:
     d = np.load(Path(path), allow_pickle=True)
     n = len(d["x"])
-    return [dict(x=d["x"][i], y=d["y"][i], fs=float(d["fs"][i]), snr=float(d["snr"][i]),
+    has_raw = "x_raw" in d
+    return [dict(x=d["x"][i], x_raw=(d["x_raw"][i] if has_raw else d["x"][i]),
+                 y=d["y"][i], fs=float(d["fs"][i]), snr=float(d["snr"][i]),
                  record=str(d["record"][i]), cond=str(d["cond"][i]), seg=int(d["seg"][i]),
                  r_peaks=d["r_peaks"][i], symbols=d["symbols"][i]) for i in range(n)]

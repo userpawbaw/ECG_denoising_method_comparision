@@ -35,7 +35,8 @@ def test_dataset_deterministic():
 
 
 def test_dataset_shapes_and_denormalization():
-    ds = ECGDenoiseDataset(_src(), "train", salt=0)
+    """`ref_frontend=False` 면 타깃은 원본 그대로여야 한다."""
+    ds = ECGDenoiseDataset(_src(), "train", salt=0, ref_frontend=False)
     y, x, m = ds[0]
     assert y.shape == (1, 1024) and x.shape == (1, 1024)
     d = ds.raw_item(0)
@@ -43,6 +44,56 @@ def test_dataset_shapes_and_denormalization():
     rec = ds.source.get(d["record"])
     x_orig = rec.x[d["start"]:d["start"] + 1024]
     assert np.max(np.abs(d["x"] * d["scale"] - x_orig)) < 1e-4
+
+
+def test_reference_is_band_limited_by_default():
+    """기본 타깃은 **front-end 를 통과한** 참조다.
+
+    MIT-BIH 는 clean 이 아니라 이미 기저선 변동을 담고 있어서, 원본을 정답으로
+    두면 front-end 가 그 성분을 지울수록 정답에서 멀어져 SNR 이 떨어진다.
+    실측에서 그 결과 무처리(M00)가 M04 보다 높게 나왔다 — 평가가 아무것도
+    구분하지 못한다 (docs/02_procedure.md F-12).
+
+    학습 타깃도 같은 대역이어야 한다. 다르면 신경망이 front-end 를 되돌리는
+    법을 배운다.
+    """
+    from ecgdn.methods.frontend import FrontEnd
+
+    ds = ECGDenoiseDataset(_src(), "train", salt=0)          # 기본 = True
+    d = ds.raw_item(0)
+    rec = ds.source.get(d["record"])
+    x_raw = rec.x[d["start"]:d["start"] + 1024]
+    x_got = d["x"] * d["scale"]
+
+    # 원본과 같지 않아야 한다 (필터가 실제로 걸렸다)
+    assert np.max(np.abs(x_got - x_raw)) > 1e-6
+
+    # 그리고 front-end 를 통과한 참조와 일치해야 한다.
+    # 경계 트랜지언트를 피하려고 margin 을 붙여 필터링하므로 동일 방식으로 비교한다.
+    m = int(round(ds.fe_margin_s * rec.fs))
+    lo, hi = d["start"] - m, d["start"] + 1024 + m
+    pad_l, pad_r = max(0, -lo), max(0, hi - rec.x.size)
+    seg = rec.x[max(lo, 0):min(hi, rec.x.size)]
+    if pad_l or pad_r:
+        seg = np.pad(seg, (pad_l, pad_r), mode="edge")
+    x_ref = FrontEnd()(seg, rec.fs)[m:m + 1024]
+    assert np.max(np.abs(x_got - x_ref)) < 1e-4
+
+
+def test_eval_set_keeps_both_reference_and_raw():
+    """평가 세트는 참조(x)와 원본(x_raw)을 모두 들고 있어야 한다.
+
+    잡음은 원본에 섞고(취득계는 대역제한 전 신호를 본다), EXP-C 의 왜곡 측정도
+    원본을 입력으로 준다 — 참조를 입력으로 주면 front-end 가 두 번 걸린다.
+    """
+    from ecgdn.data.dataset import build_eval_set
+
+    items = build_eval_set(_src(), "test", seg_s=8.0, snr_grid=(10.0,),
+                           n_seg_per_record=1)
+    assert items, "평가 세트가 비었다"
+    it = items[0]
+    assert "x_raw" in it and it["x"].shape == it["x_raw"].shape
+    assert np.max(np.abs(it["x"] - it["x_raw"])) > 1e-6, "참조가 대역제한되지 않았다"
 
 
 def test_scale_uses_only_noisy():

@@ -116,8 +116,10 @@ def main() -> int:
                            n_seg_per_record=int(d.get("n_seg_per_record", 2)),
                            seed=d.get("seed", "eval"))
     if mode == "distortion":
-        for it in items:                       # 잡음 없이 clean 을 그대로 입력
-            it["y"] = it["x"].copy()
+        # 잡음 없이 **원본** 을 그대로 입력한다. 참조(it["x"])는 front-end 를 통과한
+        # 신호이므로 그것을 입력으로 주면 front-end 가 두 번 걸린다.
+        for it in items:
+            it["y"] = it.get("x_raw", it["x"]).copy()
             it["snr"] = float("inf")
     if args.limit:
         items = items[: args.limit]
