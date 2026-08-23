@@ -106,13 +106,28 @@ def main() -> int:
     checks.append(("C6", "진폭 정규화/역정규화", PASS if 0.9 <= g <= 1.1 else FAIL,
                    f"gain_bias = {g:.4f} (0.9 ~ 1.1)"))
 
-    # ---------- DoD: 참 파라미터 주입 시 성능
+    # ---------- DoD: 생성 커널 주입 시 성능 — **합성축에서만 의미가 있다**
+    #
+    # `DEFAULT_KERNEL` 은 `synthetic.py` 가 신호를 만들 때 쓰는 바로 그 커널이다.
+    # 그래서 D0 에서는 이것을 넣는 것이 "참 파라미터를 준다" 에 해당하고,
+    # 파라미터 추정 오차를 배제한 **방법 자체의 잠재력**을 잰다.
+    #
+    # D1(실기록)에서는 그렇지 않다. 실제 ECG 에 대응하는 McSharry 참 파라미터라는
+    # 것은 존재하지 않고, `DEFAULT_KERNEL` 은 그 환자와 아무 관계가 없는 남의
+    # 커널일 뿐이다. 그것을 넣은 값을 D0 의 값과 나란히 놓으면 **서로 다른 양을
+    # 비교하는 것**이 된다 (F-17). 실제로 D1 에서는 적합 커널(+11.23)이
+    # 주입 커널(+5.91)보다 낫다 — 주입값이 천장이 아니라는 직접 증거다.
     d_true = SameniKalman(smooth=True, kernel=DEFAULT_KERNEL)
     v_true = _imp(s, y, d_true)["snr_imp_scaled"]
     v_fit = v_s
-    dod = v_true >= 8.0
-    checks.append(("DoD", f"참 파라미터 + EKS, 입력 {args.snr:.0f} dB 에서 개선 ≥ 8 dB",
-                   PASS if dod else FAIL, f"{v_true:+.2f} dB"))
+    if args.data == "synthetic":
+        dod = v_true >= 8.0
+        checks.append(("DoD", f"생성 커널 주입 + EKS, 입력 {args.snr:.0f} dB 에서 개선 ≥ 8 dB",
+                       PASS if dod else FAIL, f"{v_true:+.2f} dB"))
+    else:
+        checks.append(("DoD", "생성 커널 주입 (합성축 전용 검사)", "— N/A",
+                       f"{v_true:+.2f} dB — 실기록에는 '참 커널' 이 없어 "
+                       f"이 값은 천장이 아니다 (적합 커널 {v_fit:+.2f} dB 가 더 낫다)"))
 
     # ---------- 그림
     fig, ax = plt.subplots(1, 2, figsize=(13, 4))
@@ -132,7 +147,42 @@ def main() -> int:
     fig.savefig(figd / "sameni_diagnosis.png", dpi=130); plt.close(fig)
 
     # ---------- 문서
+    # N/A(그 축에 해당 없음)는 분모에서도 뺀다. 실패로 세면 구현에 문제가
+    # 있는 것처럼 읽힌다 — D1 의 DoD 가 정확히 그런 경우다.
     n_pass = sum(1 for c in checks if c[2] == PASS)
+    n_applicable = sum(1 for c in checks if c[2] in (PASS, FAIL))
+    n_na = len(checks) - n_applicable
+    # 이 버그 수정 이력은 D0 에서 일어난 일이다. D1 문서에 "수정 전 +5.9" 를
+    # 그대로 실으면 **다른 축의 값과 나란히 놓여 수정이 무효였던 것처럼 보인다**
+    # (실제로 D1 의 v_true 가 우연히 +5.9 라 그렇게 읽혔다).
+    if args.data == "synthetic":
+        fix_history = [
+            f"수정 전후 (합성 ECG, 입력 {args.snr:.0f} dB, EKS + 생성 커널 주입):",
+            "",
+            "| | `snr_imp_scaled` |", "|---|---|",
+            "| 수정 전 | +5.9 dB |", f"| 수정 후 | **{v_true:+.1f} dB** |",
+            "",
+        ]
+    else:
+        fix_history = [
+            "> 위 두 버그의 수정 전후 대조는 합성축에서 이뤄졌다. "
+            "`docs/06_sameni_diagnosis.md` 를 볼 것.",
+            "",
+        ]
+
+    if v_true >= v_fit:
+        conclusion_gap = [
+            f"- 그 차이 **{v_true - v_fit:+.2f} dB** 가 '파라미터를 추정해야 한다' 는 "
+            "조건이 만드는 실용상 한계다.",
+        ]
+    else:
+        conclusion_gap = [
+            f"- **주입 커널이 적합 커널보다 {v_fit - v_true:.2f} dB 나쁘다.** "
+            "이 축에서는 `DEFAULT_KERNEL` 이 '참 파라미터' 가 아니기 때문이다 — "
+            "실제 ECG 에 대응하는 McSharry 참 파라미터는 존재하지 않는다. "
+            "따라서 주입값을 성능의 천장으로 읽으면 안 된다 (F-17).",
+        ]
+
     md = ["# 06. Sameni EKF/EKS 자가진단",
           "", "> 자동 생성: `python scripts/diagnose_sameni.py`", "",
           "## 왜 이 문서가 필요한가",
@@ -141,7 +191,8 @@ def main() -> int:
           "그러나 **약하게 구현된 baseline 을 두고 다른 방법이 이겼다고 결론내면 그 비교는 무효다.**",
           "그래서 비교 실험에 넣기 전에 아래 6개 항목을 자동으로 점검한다.",
           "",
-          f"**결과: {n_pass}/{len(checks)} 통과**", "",
+          f"**결과: {n_pass}/{n_applicable} 통과**"
+          + (f" (그 외 {n_na} 항목은 이 데이터축에 해당 없음)" if n_na else ""), "",
           "| # | 항목 | 결과 | 상세 |", "|---|---|---|---|"]
     for cid, name, res, detail in checks:
         md.append(f"| `{cid}` | {name} | **{res}** | {detail} |")
@@ -164,18 +215,15 @@ def main() -> int:
            "random walk 의 누적 분산은 `L · q_z` 이므로 `L` 로 나눠야 한다.",
            "이 정규화를 빼면 `q_z` 가 수백 배 과대추정되어 필터가 사실상 평활화를 하지 않는다.",
            "",
-           f"수정 전후 (합성 ECG, 입력 {args.snr:.0f} dB, EKS + 참 파라미터):",
-           "",
-           "| | `snr_imp_scaled` |", "|---|---|",
-           "| 수정 전 | +5.9 dB |", f"| 수정 후 | **{v_true:+.1f} dB** |",
-           "",
+           *fix_history,
            "## 결론",
            "",
-           f"- 참 파라미터 주입 시 {v_true:+.2f} dB, template 적합 시 {v_fit:+.2f} dB.",
-           f"- 그 차이 **{v_true - v_fit:+.2f} dB** 가 '파라미터를 추정해야 한다' 는 조건이 만드는 실용상 한계다.",
+           f"- 생성 커널 주입 시 {v_true:+.2f} dB, template 적합 시 {v_fit:+.2f} dB.",
+           *conclusion_gap,
            "- EKS 는 EKF 대비 " f"{v_s - v_f:+.2f} dB 우수하다. **EKF 만 쓰면 안 된다.**",
            "",
-           "## 재현", "", "```bash", "python scripts/diagnose_sameni.py --data synthetic", "```"]
+           "## 재현", "", "```bash",
+           f"python scripts/diagnose_sameni.py --data {args.data}", "```"]
     doc = ensure_dir("docs") / f"06_sameni_diagnosis{suffix}.md"
     doc.write_text("\n".join(md) + "\n")
 
@@ -183,9 +231,10 @@ def main() -> int:
     for cid, name, res, detail in checks:
         print(f"[{res}] {cid:4s} {name:38s} {detail}")
     print("=" * 78)
-    print(f"{n_pass}/{len(checks)} passed  ->  {doc}")
+    print(f"{n_pass}/{n_applicable} passed"
+          + (f" (+{n_na} N/A)" if n_na else "") + f"  ->  {doc}")
     save_manifest("results/sameni_diagnosis", cfg=vars(args))
-    return 0 if n_pass == len(checks) else 1
+    return 0 if n_pass == n_applicable else 1
 
 
 if __name__ == "__main__":

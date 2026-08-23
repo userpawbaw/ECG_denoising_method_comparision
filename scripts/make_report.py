@@ -331,7 +331,8 @@ def main() -> int:
                "집계 단위는 **record**.", "",
                "### T1. 주 지표 (mean ± std, record 단위)", ""]
         md += fmt_table(t, MAIN_METRICS, floor)
-        md += ["", "`*` 표시는 `docs/03_metric_floor.md` 의 지표 분해능(floor p95)보다 "
+        floor_doc = "docs/03_metric_floor.md" if TAG == "d0" else f"docs/03_metric_floor_{TAG}.md"
+        md += ["", f"`*` 표시는 `{floor_doc}` 의 지표 분해능(floor p95)보다 "
                "작은 값 = **구분 불가**.", "",
                "### T1b. 보조 지표", ""]
         md += fmt_table(t, AUX_METRICS, floor)

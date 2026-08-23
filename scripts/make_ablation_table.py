@@ -29,6 +29,24 @@ METRICS = ["snr_imp_scaled", "qrs_dur_err_ms", "beat_cc"]
 LOWER_BETTER = {"qrs_dur_err_ms"}
 
 
+def floor_doc(tag: str) -> str:
+    """축에 맞는 floor 문서 경로. D0 만 접미사가 없다(초기 산출물의 잔재)."""
+    return "docs/03_metric_floor.md" if tag == "d0" else f"docs/03_metric_floor_{tag}.md"
+
+
+def load_floor(tag: str) -> dict[str, float]:
+    """축별 floor. 없으면 빈 dict — 그 경우 분해능 표기를 생략한다.
+
+    **축을 섞지 않는다.** D0 의 floor 로 D1 결과를 판정하면 안 된다.
+    두 축의 `qrs_dur_err_ms` floor 는 0.64 ms 와 28.07 ms 로 44 배 차이난다.
+    """
+    p = Path("results") / tag / "metric_floor" / "floor.csv"
+    if not p.exists():
+        return {}
+    d = pd.read_csv(p)
+    return dict(zip(d["metric"], d["floor_p95"]))
+
+
 def ckpt_provenance(run: str, tag: str) -> dict:
     """체크포인트가 '언제, 어떤 조건에서' 학습됐는지."""
     d = Path("results") / tag / run
@@ -111,30 +129,49 @@ def main() -> int:
         md.append(f"| `{m}` | {p['model']} | {p['loss']} | `{p['frontend']}` | `{p['git']}` |")
     md.append("")
 
+    # 지표의 분해능. 이 표는 방법 간 **차이**를 보는 것이므로, 열 안의
+    # 최대-최소 폭이 floor 보다 작으면 굵게 표시한 '최선' 은 의미가 없다.
+    # D1 에서 실제로 그렇다 — qrs_dur_err_ms 의 floor 가 28.07 ms 인데
+    # loss 간 폭은 3.7 ms 다.
+    floor = load_floor(tag)
+
     for met in METRICS:
         sub = out[out["metric"] == met]
         if sub.empty:
             continue
         arrow = "낮을수록 좋음" if met in LOWER_BETTER else "높을수록 좋음"
         piv = sub.pivot_table(index="method", columns="snr_in", values="mean")
-        md += [f"## `{met}` ({arrow})", "",
-               "| 방법 | " + " | ".join(f"{c:g} dB" for c in piv.columns) + " |",
+        fl = floor.get(met, float("nan"))
+        md += [f"## `{met}` ({arrow})", ""]
+        if np.isfinite(fl):
+            md += [f"> 지표 분해능(floor p95) = **{fl:.4g}**. "
+                   "열 안의 최대−최소가 이보다 작으면 그 열은 방법을 가르지 못한다.", ""]
+        md += ["| 방법 | " + " | ".join(f"{c:g} dB" for c in piv.columns) + " |",
                "|---" * (len(piv.columns) + 1) + "|"]
         best = piv.min() if met in LOWER_BETTER else piv.max()
+        spread = piv.max() - piv.min()
+        # floor 미만의 폭을 가진 열은 굵게 표시하지 않는다.
+        resolvable = {c: (not np.isfinite(fl)) or (spread[c] > fl) for c in piv.columns}
         for m, row in piv.iterrows():
             cells = []
             for c in piv.columns:
                 v = row[c]
-                cells.append(f"**{v:.3f}**" if np.isclose(v, best[c]) else f"{v:.3f}")
+                mark = np.isclose(v, best[c]) and resolvable[c]
+                cells.append(f"**{v:.3f}**" if mark else f"{v:.3f}")
             md.append(f"| `{m}` | " + " | ".join(cells) + " |")
         md.append("")
+        unres = [c for c in piv.columns if not resolvable[c]]
+        if unres:
+            md += [f"**{', '.join(f'{c:g} dB' for c in unres)} 열은 폭"
+                   f"({', '.join(f'{spread[c]:.3g}' for c in unres)})이 분해능 "
+                   f"{fl:.4g} 보다 작다 — 방법 간 차이로 읽지 말 것.**", ""]
 
     md += ["## 읽는 법", "",
            "- `snr_imp_scaled` 만 보고 결론 내리지 않는다. 출력을 매끄럽게 뭉개면",
            "  SNR 은 오르지만 QRS 가 뭉툭해진다. 그래서 `qrs_dur_err_ms` 를 같이 본다.",
            "- `M_FE` 는 공통 front-end 만 적용한 기준선이다. loss 간 차이가 이 기준선",
            "  대비 얼마나 되는지가 실질적 크기다.",
-           "- 차이가 지표의 분해능(`docs/03_metric_floor.md`) 미만이면 차이가 아니다.", ""]
+           f"- 차이가 지표의 분해능(`{floor_doc(tag)}`) 미만이면 차이가 아니다.", ""]
     Path(f"docs/10_loss_ablation_{tag}.md").write_text("\n".join(md) + "\n")
     print(f"[ok] docs/10_loss_ablation_{tag}.md")
     return 2 if mixed else 0

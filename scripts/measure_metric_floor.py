@@ -102,12 +102,18 @@ def main() -> int:
     fl.to_csv(out_dir / "floor.csv", index=False)
 
     # ---- 문서 생성
-    md = ["# 03. Metric noise floor",
+    src_name = "합성 ECG" if args.source == "synthetic" else "MIT-BIH 실기록"
+    axis_desc = ("D0 — 합성 ECG" if args.source == "synthetic"
+                 else "D1 — MIT-BIH 실기록 (TRAIN split)")
+    md = [f"# 03. Metric noise floor ({tag.upper()})",
           "",
-          "> 자동 생성: `python scripts/measure_metric_floor.py`  "
+          "> 자동 생성: "
+          f"`python scripts/measure_metric_floor.py --source {args.source}`  "
           "(수정하지 말 것 — 스크립트를 고칠 것)",
           "",
-          f"합성 ECG {args.n_record} 기록 × {args.dur:.0f} s 에 **{args.probe_snr:.0f} dB "
+          f"> **데이터축: {axis_desc}**",
+          "",
+          f"{src_name} {args.n_record} 기록 × {args.dur:.0f} s 에 **{args.probe_snr:.0f} dB "
           f"AWGN**(거의 무시할 수준의 교란)을 {args.n_seed} 개 seed 로 준 뒤,",
           "각 지표가 이상값에서 얼마나 흔들리는지 측정했다. "
           f"평가 guard = {EVAL_GUARD_S:.0f} s.",
@@ -140,14 +146,26 @@ def main() -> int:
                   "ECG 파워가 거의 없는 주파수 구간에서 log-PSD 차이가 폭발하기 때문이다. "
                   "따라서 `psd_logdist` 는 **절대값으로 해석하지 말고 방법 간 상대 비교로만** 쓴다. "
                   "PSD 는 그림(F3)으로 보이는 것이 주 용도다.")
+    if args.source == "synthetic":
+        limitation_line = (
+            "- 여기서 쓴 것은 **합성 ECG** 다. 파형이 실제보다 규칙적이라 "
+            "`qrs_dur_err_ms` 의 floor 가 낙관적으로 나온다. "
+            "실데이터 floor 는 `docs/03_metric_floor_d1.md` 에 있고, "
+            "**실제로 44 배 크다**(0.64 ms → 28.07 ms). "
+            "D0 결과표의 `n.s.` 판정을 D1 에 그대로 옮기지 말 것.")
+    else:
+        limitation_line = (
+            "- 여기서 쓴 것은 **MIT-BIH 실기록**이다. 합성 ECG 로 잰 floor"
+            "(`docs/03_metric_floor.md`)보다 `qrs_dur_err_ms` 가 44 배 크다"
+            "(0.64 ms → 28.07 ms). 실제 파형은 beat 마다 형태가 달라 "
+            "delineator 가 훨씬 불안정하기 때문이다. "
+            "**이 축에서 QRS duration 은 방법을 가르는 데 쓸 수 없다.**")
+
     md += [
         "",
         "## 이 표의 한계",
         "",
-        "- 여기서 쓴 것은 **합성 ECG** 다. 파형이 실제보다 규칙적이라 "
-        "`qrs_dur_err_ms` 의 floor 가 낙관적으로 나올 수 있다.",
-        "  MIT-BIH 를 확보한 뒤 (STEP 15) **동일 스크립트를 `--source mitdb` 로 다시 돌려** "
-        "실데이터 floor 로 갱신할 것.",
+        limitation_line,
         "- floor 의 정의는 '이상값 대비, 40 dB 교란에서의 편차' 다. "
         "즉 **지표의 실효 분해능**이며, 알고리즘 자체의 불안정성(delineator 실패 등)과 "
         "교란에 대한 정상적 민감도가 합쳐진 값이다.",

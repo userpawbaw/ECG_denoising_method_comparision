@@ -1,8 +1,10 @@
-# 03. Metric noise floor
+# 03. Metric noise floor (D1)
 
-> 자동 생성: `python scripts/measure_metric_floor.py`  (수정하지 말 것 — 스크립트를 고칠 것)
+> 자동 생성: `python scripts/measure_metric_floor.py --source mitdb`  (수정하지 말 것 — 스크립트를 고칠 것)
 
-합성 ECG 5 기록 × 120 s 에 **40 dB AWGN**(거의 무시할 수준의 교란)을 10 개 seed 로 준 뒤,
+> **데이터축: D1 — MIT-BIH 실기록 (TRAIN split)**
+
+MIT-BIH 실기록 5 기록 × 120 s 에 **40 dB AWGN**(거의 무시할 수준의 교란)을 10 개 seed 로 준 뒤,
 각 지표가 이상값에서 얼마나 흔들리는지 측정했다. 평가 guard = 5 s.
 
 **결과표에서 방법 간 차이가 `floor_p95` 보다 작으면 `n.s.`(구분 불가)로 표기한다.**
@@ -33,8 +35,7 @@
 
 ## 이 표의 한계
 
-- 여기서 쓴 것은 **합성 ECG** 다. 파형이 실제보다 규칙적이라 `qrs_dur_err_ms` 의 floor 가 낙관적으로 나올 수 있다.
-  MIT-BIH 를 확보한 뒤 (STEP 15) **동일 스크립트를 `--source mitdb` 로 다시 돌려** 실데이터 floor 로 갱신할 것.
+- 여기서 쓴 것은 **MIT-BIH 실기록**이다. 합성 ECG 로 잰 floor(`docs/03_metric_floor.md`)보다 `qrs_dur_err_ms` 가 44 배 크다(0.64 ms → 28.07 ms). 실제 파형은 beat 마다 형태가 달라 delineator 가 훨씬 불안정하기 때문이다. **이 축에서 QRS duration 은 방법을 가르는 데 쓸 수 없다.**
 - floor 의 정의는 '이상값 대비, 40 dB 교란에서의 편차' 다. 즉 **지표의 실효 분해능**이며, 알고리즘 자체의 불안정성(delineator 실패 등)과 교란에 대한 정상적 민감도가 합쳐진 값이다.
 - `snr_out_*` 는 이상값이 무한대라 이 표에 포함되지 않는다 (대신 `gain_bias` 로 안정성을 본다).
 

@@ -13,14 +13,14 @@
 | # | 항목 | 결과 | 상세 |
 |---|---|---|---|
 | `C1` | 위상 0-crossing 이 R-peak 와 일치 | **PASS** | median |Δ| = 0.00 ms (≤ 10 ms), zero-crossing 105 개 / R-peak 105 개 |
-| `C2` | front-end HPF 를 EKF 앞단에 적용 | **PASS** | baseline wander 포함 조건: FE-ON +16.37 dB vs FE-OFF +4.04 dB (차이 +12.33 dB) |
+| `C2` | front-end HPF 를 EKF 앞단에 적용 | **PASS** | baseline wander 포함 조건: FE-ON +16.39 dB vs FE-OFF +4.04 dB (차이 +12.35 dB) |
 | `C3` | phase-averaged template 에 Gaussian 적합 | **PASS** | R² = 0.9943 (> 0.98), 커널 7개 |
 | `C4` | 측정잡음 R 추정 | **PASS** | 추정/참값 = -1.28 dB (|·| ≤ 3 dB) |
-| `C5` | EKS(평활) 가 EKF(전방) 보다 우수 | **PASS** | EKF +13.75 dB → EKS +15.66 dB (차이 +1.91 dB) |
+| `C5` | EKS(평활) 가 EKF(전방) 보다 우수 | **PASS** | EKF +13.77 dB → EKS +15.68 dB (차이 +1.91 dB) |
 | `C6` | 진폭 정규화/역정규화 | **PASS** | gain_bias = 0.9741 (0.9 ~ 1.1) |
-| `DoD` | 참 파라미터 + EKS, 입력 5 dB 에서 개선 ≥ 8 dB | **PASS** | +16.18 dB |
+| `DoD` | 생성 커널 주입 + EKS, 입력 5 dB 에서 개선 ≥ 8 dB | **PASS** | +16.21 dB |
 
-![diagnosis](../results/fig/sameni_diagnosis.png)
+![diagnosis](../results/d0/fig/sameni_diagnosis.png)
 
 ## 구현 과정에서 실제로 발견된 버그 2개
 
@@ -40,7 +40,7 @@ beat 한 개 길이 `L` 동안 **누적된** 편차다 (위상이 beat 마다 �
 random walk 의 누적 분산은 `L · q_z` 이므로 `L` 로 나눠야 한다.
 이 정규화를 빼면 `q_z` 가 수백 배 과대추정되어 필터가 사실상 평활화를 하지 않는다.
 
-수정 전후 (합성 ECG, 입력 5 dB, EKS + 참 파라미터):
+수정 전후 (합성 ECG, 입력 5 dB, EKS + 생성 커널 주입):
 
 | | `snr_imp_scaled` |
 |---|---|
@@ -49,8 +49,8 @@ random walk 의 누적 분산은 `L · q_z` 이므로 `L` 로 나눠야 한다.
 
 ## 결론
 
-- 참 파라미터 주입 시 +16.18 dB, template 적합 시 +15.66 dB.
-- 그 차이 **+0.52 dB** 가 '파라미터를 추정해야 한다' 는 조건이 만드는 실용상 한계다.
+- 생성 커널 주입 시 +16.21 dB, template 적합 시 +15.68 dB.
+- 그 차이 **+0.53 dB** 가 '파라미터를 추정해야 한다' 는 조건이 만드는 실용상 한계다.
 - EKS 는 EKF 대비 +1.91 dB 우수하다. **EKF 만 쓰면 안 된다.**
 
 ## 재현
