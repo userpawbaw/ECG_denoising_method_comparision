@@ -8,17 +8,17 @@
 그러나 **약하게 구현된 baseline 을 두고 다른 방법이 이겼다고 결론내면 그 비교는 무효다.**
 그래서 비교 실험에 넣기 전에 아래 6개 항목을 자동으로 점검한다.
 
-**결과: 5/7 통과**
+**결과: 6/7 통과**
 
 | # | 항목 | 결과 | 상세 |
 |---|---|---|---|
 | `C1` | 위상 0-crossing 이 R-peak 와 일치 | **PASS** | median |Δ| = 0.00 ms (≤ 10 ms), zero-crossing 105 개 / R-peak 105 개 |
-| `C2` | front-end HPF 를 EKF 앞단에 적용 | **FAIL** | baseline wander 포함 조건: FE-ON +1.86 dB vs FE-OFF +2.92 dB (차이 -1.05 dB) |
+| `C2` | front-end HPF 를 EKF 앞단에 적용 | **PASS** | baseline wander 포함 조건: FE-ON +8.51 dB vs FE-OFF +3.03 dB (차이 +5.48 dB) |
 | `C3` | phase-averaged template 에 Gaussian 적합 | **PASS** | R² = 0.9888 (> 0.98), 커널 7개 |
-| `C4` | 측정잡음 R 추정 | **PASS** | 추정/참값 = -1.04 dB (|·| ≤ 3 dB) |
-| `C5` | EKS(평활) 가 EKF(전방) 보다 우수 | **PASS** | EKF +1.88 dB → EKS +1.94 dB (차이 +0.07 dB) |
-| `C6` | 진폭 정규화/역정규화 | **PASS** | gain_bias = 0.9763 (0.9 ~ 1.1) |
-| `DoD` | 참 파라미터 + EKS, 입력 5 dB 에서 개선 ≥ 8 dB | **FAIL** | +0.40 dB |
+| `C4` | 측정잡음 R 추정 | **PASS** | 추정/참값 = -2.86 dB (|·| ≤ 3 dB) |
+| `C5` | EKS(평활) 가 EKF(전방) 보다 우수 | **PASS** | EKF +10.83 dB → EKS +11.23 dB (차이 +0.41 dB) |
+| `C6` | 진폭 정규화/역정규화 | **PASS** | gain_bias = 0.9739 (0.9 ~ 1.1) |
+| `DoD` | 참 파라미터 + EKS, 입력 5 dB 에서 개선 ≥ 8 dB | **FAIL** | +5.91 dB |
 
 ![diagnosis](../results/d1/fig/sameni_diagnosis.png)
 
@@ -45,13 +45,13 @@ random walk 의 누적 분산은 `L · q_z` 이므로 `L` 로 나눠야 한다.
 | | `snr_imp_scaled` |
 |---|---|
 | 수정 전 | +5.9 dB |
-| 수정 후 | **+0.4 dB** |
+| 수정 후 | **+5.9 dB** |
 
 ## 결론
 
-- 참 파라미터 주입 시 +0.40 dB, template 적합 시 +1.94 dB.
-- 그 차이 **-1.55 dB** 가 '파라미터를 추정해야 한다' 는 조건이 만드는 실용상 한계다.
-- EKS 는 EKF 대비 +0.07 dB 우수하다. **EKF 만 쓰면 안 된다.**
+- 참 파라미터 주입 시 +5.91 dB, template 적합 시 +11.23 dB.
+- 그 차이 **-5.32 dB** 가 '파라미터를 추정해야 한다' 는 조건이 만드는 실용상 한계다.
+- EKS 는 EKF 대비 +0.41 dB 우수하다. **EKF 만 쓰면 안 된다.**
 
 ## 재현
 

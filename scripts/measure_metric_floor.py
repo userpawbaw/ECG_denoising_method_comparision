@@ -68,9 +68,13 @@ def main() -> int:
             rows.append(dict(record=rec, seed=-1, kind="perfect", metric=k,
                              value=base.get(k, np.nan)))
         for sd in range(args.n_seed):
-            _xr = getattr(s, "x_raw", s.x)
-            y, _, _ = mix_at_snr(_xr, awgn(len(_xr), s.fs, rng("floor", rec, sd)),
-                                 args.probe_snr)      # 잡음은 원본에 (F-12)
+            # **여기서는 참조 자체에 미세잡음을 섞는다.** 이 측정의 질문은
+            # "이상적인 출력을 넣었을 때 지표가 얼마나 흔들리는가" 이므로,
+            # 출력이 참조와 같은 대역에 있어야 한다. 원본에 섞으면 front-end
+            # 차이(D1 에서 9.3 dB)가 통째로 들어가 floor 가 부풀려진다 —
+            # 실제로 그렇게 해서 r_amp_err_pct floor 가 242 % 로 나왔다.
+            y, _, _ = mix_at_snr(s.x, awgn(len(s.x), s.fs, rng("floor", rec, sd)),
+                                 args.probe_snr)
             m = evaluate(s.x, y, y, s.fs, r_peaks_ref=s.r_peaks)
             for k in REPORT:
                 rows.append(dict(record=rec, seed=sd, kind="probe", metric=k,
