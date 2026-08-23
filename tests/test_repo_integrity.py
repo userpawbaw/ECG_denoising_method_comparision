@@ -149,3 +149,36 @@ def test_status_table_has_no_completed_step_without_artifact():
             if not (ROOT / ref).exists():
                 bad.append(ref)
     assert not bad, f"✅ 로 표시된 STEP 이 없는 산출물을 가리킨다: {sorted(set(bad))}"
+
+def test_every_package_source_file_is_tracked_by_git():
+    """디스크에 있는 소스가 전부 git 에 들어 있어야 한다.
+
+    `.gitignore` 에 `data/` 라고 쓰면 git 은 **모든 경로의** data 디렉터리를
+    무시한다. 그래서 `ecgdn/data/` 의 10개 파일(mitdb, nstdb, dataset, sources,
+    splits, noise, mixer, windows, synthetic, arduino)이 커밋된 적 없이 남아
+    있었다 — 저장소를 클론하면 프로젝트가 import 조차 되지 않는 상태였다.
+
+    로컬 작업 디렉터리에서는 파일이 멀쩡히 보이므로 어떤 테스트도, 어떤 실행도
+    이걸 잡지 못한다. git 이 무엇을 담고 있는지 직접 물어야만 드러난다.
+    """
+    import subprocess
+    tracked = set(subprocess.run(["git", "ls-files"], cwd=ROOT, check=True,
+                                 capture_output=True, text=True).stdout.split())
+    on_disk = set()
+    for sub in ("ecgdn", "scripts", "tests", "configs"):
+        for f in (ROOT / sub).rglob("*"):
+            if f.is_file() and f.suffix in (".py", ".yaml", ".sh") \
+                    and "__pycache__" not in f.parts:
+                on_disk.add(str(f.relative_to(ROOT)))
+    missing = sorted(on_disk - tracked)
+    assert not missing, f"디스크에 있으나 git 에 없는 소스: {missing}"
+
+
+def test_gitignore_data_rule_is_anchored_to_repo_root():
+    """`data` 무시 규칙은 반드시 선행 슬래시로 루트에 고정해야 한다."""
+    lines = [l.strip() for l in (ROOT / ".gitignore").read_text().splitlines()]
+    bad = [l for l in lines
+           if l and not l.startswith("#") and not l.startswith("!")
+           and l.rstrip("/*") == "data"]
+    assert not bad, (f"루트에 고정되지 않은 data 규칙 {bad} — 이러면 ecgdn/data/ 같은 "
+                     f"하위 패키지가 통째로 무시된다. '/data/*' 로 쓸 것")
