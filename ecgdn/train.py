@@ -129,6 +129,14 @@ class Trainer:
             print(f"이미 {self.state.epoch} epoch 까지 끝났다 (목표 {self.cfg.epochs}). "
                   f"더 돌리려면 --epochs 를 늘릴 것.")
             return self.state
+        # early stopping 으로 끝난 학습을 재개하면, 조건 재확인이 epoch 을 한 번
+        # 돌고 난 뒤에 일어나 1 epoch 을 헛돈다. 재개 시점에 미리 확인한다.
+        if (self.state.best_epoch > 0
+                and self.state.epoch - self.state.best_epoch >= self.cfg.patience):
+            print(f"이미 early stopping 조건을 만족한다 "
+                  f"(epoch {self.state.epoch}, best {self.state.best_epoch}, "
+                  f"patience {self.cfg.patience}). 재학습하지 않는다.")
+            return self.state
 
         lr = self.cfg.lr           # 재개 직후 첫 로그 줄을 위한 초기값
         for ep in range(start_ep, self.cfg.epochs + 1):

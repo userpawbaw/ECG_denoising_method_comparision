@@ -47,9 +47,9 @@ def _loss(xhat, x, s_hat=None, s=None):
     return t, {"total": t}
 
 
-def _make(tmp_path, epochs):
+def _make(tmp_path, epochs, patience=99):
     torch.manual_seed(0)
-    cfg = TrainCfg(epochs=epochs, batch_size=4, patience=99, lr=1e-3)
+    cfg = TrainCfg(epochs=epochs, batch_size=4, patience=patience, lr=1e-3)
     return Trainer(_TinyModel(), _loss, _TinyDS(), _TinyDS(seed=1), cfg,
                    out_dir=tmp_path / "run", device="cpu")
 
@@ -147,4 +147,24 @@ def test_recovery_survives_a_missing_log(tmp_path):
     t2 = _make(tmp_path, 4)
     assert t2.try_resume() is True
     assert t2.state.epoch == 2
+
+def test_resume_skips_a_run_that_already_early_stopped(tmp_path):
+    """early stopping 으로 끝난 학습을 재개하면 헛돌지 않아야 한다.
+
+    조건 재확인이 epoch 을 한 번 돌고 난 뒤에 일어나면 1 epoch 을 낭비한다.
+    D1 학습이 컨테이너 재시작으로 중단됐을 때 실제로 드러난 문제다.
+    """
+    t1 = _make(tmp_path, 6, patience=2)
+    st1 = t1.fit()
+    # patience 2 로 조기 종료됐거나 6 epoch 을 다 돈 상태
+    stopped_early = st1.epoch - st1.best_epoch >= 2
+
+    t2 = _make(tmp_path, 12, patience=2)
+    t2.try_resume()
+    n_before = len(t2.state.history)
+    st2 = t2.fit()
+
+    if stopped_early:
+        assert len(st2.history) == n_before, "끝난 학습을 다시 돌렸다"
+        assert st2.epoch == st1.epoch
 
