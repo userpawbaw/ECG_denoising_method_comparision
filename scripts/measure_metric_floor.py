@@ -20,6 +20,7 @@ import pandas as pd
 from ecgdn.config import EVAL_GUARD_S, FS
 from ecgdn.data.mixer import mix_at_snr
 from ecgdn.data.noise import awgn
+from ecgdn.data.sources import real_clean_segments
 from ecgdn.data.synthetic import synth_ecg
 from ecgdn.eval.engine import evaluate
 from ecgdn.utils import ensure_dir, rng, save_manifest
@@ -46,11 +47,22 @@ def main() -> int:
     ap.add_argument("--n-seed", type=int, default=10)
     ap.add_argument("--dur", type=float, default=120.0)
     ap.add_argument("--n-record", type=int, default=5)
+    ap.add_argument("--source", default="synthetic", choices=("synthetic", "mitdb"),
+                    help="config 없이 도는 보조 스크립트다. synthetic 이 기본 — D0 결과(이미 보고서에 인용된 값)와의 연속성을 지킨다")
     args = ap.parse_args()
 
+    tag = "d0" if args.source == "synthetic" else "d1"
+    suffix = "" if tag == "d0" else "_d1"
+
+    if args.source == "mitdb":
+        # TRAIN split 을 쓴다 — 지표의 분해능을 재는 일이 TEST 에 새어들면 안 된다.
+        segs = real_clean_segments(args.n_record, args.dur, fs=FS, split="train")
+    else:
+        segs = [synth_ecg(args.dur, fs=FS, hr_bpm=60 + 8 * rec, seed=100 + rec)
+                for rec in range(args.n_record)]
+
     rows = []
-    for rec in range(args.n_record):
-        s = synth_ecg(args.dur, fs=FS, hr_bpm=60 + 8 * rec, seed=100 + rec)
+    for rec, s in enumerate(segs):
         base = evaluate(s.x, None, s.x.copy(), s.fs, r_peaks_ref=s.r_peaks)
         for k in REPORT:
             rows.append(dict(record=rec, seed=-1, kind="perfect", metric=k,
@@ -64,7 +76,7 @@ def main() -> int:
                                  value=m.get(k, np.nan)))
 
     df = pd.DataFrame(rows)
-    out_dir = ensure_dir("results/metric_floor")
+    out_dir = ensure_dir(f"results/{tag}/metric_floor")
     df.to_csv(out_dir / "raw.csv", index=False)
 
     # floor = |probe - perfect| 의 평균 및 95 퍼센타일
@@ -139,7 +151,7 @@ def main() -> int:
         "",
         "## 재현", "", "```bash", "python scripts/measure_metric_floor.py", "```",
     ]
-    doc = ensure_dir("docs") / "03_metric_floor.md"
+    doc = ensure_dir("docs") / f"03_metric_floor{suffix}.md"
     doc.write_text("\n".join(md) + "\n")
     save_manifest(out_dir, cfg=vars(args))
     print(fl.to_string(index=False))

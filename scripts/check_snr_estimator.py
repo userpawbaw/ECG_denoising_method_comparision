@@ -19,6 +19,7 @@ from ecgdn.config import FS
 from ecgdn.data.mixer import mix_at_snr
 from ecgdn.data.noise import (awgn, baseline_synth, emg_synth, impulse,
                               mixed_noise, motion_synth, pli)
+from ecgdn.data.sources import real_clean_segments
 from ecgdn.data.synthetic import synth_ecg
 from ecgdn.eval.engine import trim_guard
 from ecgdn.eval.signal_metrics import snr_db
@@ -36,10 +37,14 @@ SHORT = {"snr_beat_residual_db": "(A) beat-resid",
          "snr_isoelectric_db": "(C) isoelectric"}
 
 
-def run(dur, snrs, n_rep, fe):
+def run(dur, snrs, n_rep, fe, source="synthetic", split="train"):
+    if source == "mitdb":
+        segs = real_clean_segments(n_rep, dur, fs=FS, split=split)
+    else:
+        segs = [synth_ecg(dur, fs=FS, hr_bpm=62 + 7 * rep, seed=300 + rep)
+                for rep in range(n_rep)]
     rows = []
-    for rep in range(n_rep):
-        s = synth_ecg(dur, fs=FS, hr_bpm=62 + 7 * rep, seed=300 + rep)
+    for rep, s in enumerate(segs):
         for nname in list(NOISES) + ["mixed"]:
             for snr in snrs:
                 g = rng("cal", nname, snr, rep)
@@ -90,11 +95,16 @@ def main() -> int:
     ap.add_argument("--dur", type=float, default=120.0)
     ap.add_argument("--n-rep", type=int, default=3)
     ap.add_argument("--snrs", type=int, nargs="+", default=[0, 5, 10, 15, 20])
+    ap.add_argument("--source", default="synthetic", choices=("synthetic", "mitdb"),
+                    help="synthetic 이 기본 — D0 결과(보고서 인용값)와의 연속성을 지킨다")
     args = ap.parse_args()
 
-    df = pd.concat([run(args.dur, args.snrs, args.n_rep, fe) for fe in (False, True)],
-                   ignore_index=True)
-    out = ensure_dir("results/snr_calibration")
+    tag = "d0" if args.source == "synthetic" else "d1"
+    suffix = "" if tag == "d0" else "_d1"
+
+    df = pd.concat([run(args.dur, args.snrs, args.n_rep, fe, args.source)
+                    for fe in (False, True)], ignore_index=True)
+    out = ensure_dir(f"results/{tag}/snr_calibration")
     df.to_csv(out / "raw.csv", index=False)
     save_manifest(out, cfg=vars(args))
 
@@ -164,7 +174,7 @@ def main() -> int:
           "",
           "## 재현", "", "```bash", "python scripts/check_snr_estimator.py", "```",
           ]
-    doc = ensure_dir("docs") / "04_snr_estimator_calibration.md"
+    doc = ensure_dir("docs") / f"04_snr_estimator_calibration{suffix}.md"
     doc.write_text("\n".join(md) + "\n")
 
     print("=== bias (front-end OFF) ==="); print(b_off.to_string())

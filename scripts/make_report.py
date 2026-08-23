@@ -56,7 +56,11 @@ def load_exp(name: str):
 
 
 def load_floor() -> dict[str, float]:
-    p = Path("results/metric_floor/floor.csv")   # floor 는 아직 축 공통 (P-6)
+    # floor 도 데이터축을 따라간다 — 지표의 분해능은 신호 특성에 의존하므로
+    # D0 의 floor 로 D1 결과의 유의성을 판정하면 안 된다.
+    p = Path("results") / TAG / "metric_floor" / "floor.csv"
+    if not p.exists():                      # 축별 측정 전이면 축 공통 위치로 폴백
+        p = Path("results/metric_floor/floor.csv")
     if not p.exists():
         return {}
     d = pd.read_csv(p)

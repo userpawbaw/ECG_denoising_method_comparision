@@ -98,18 +98,40 @@ abl_loss(37,884) · exp_e · report. 문서는 `90_results_d0.md`,
 - STEP 19 DoD 충족: `M06` 은 L2/L3 가 L1 을 지배(trade-off 없음),
   `M08` 의 L4 는 SNR 을 얻고 `beat_cc` 를 잃는다.
 
-### 3.4 보조 산출물 — 전부 **합성 고정**
+### 3.4 보조 산출물 — 소스 선택 가능 (P-6)
 
-| 문서 | 스크립트 | 데이터 | D1 재실행 필요 |
-|---|---|---|---|
-| `03_metric_floor.md` | `measure_metric_floor.py` | `synth_ecg` 직접 호출 | 필요 |
-| `04_snr_estimator_calibration.md` | `check_snr_estimator.py` | `synth_ecg` 직접 호출 | 필요 |
-| `05_swt_tuning.md` | `tune_swt.py` | `synth_ecg` 직접 호출 | **필수** — `00_review` B-1 이 "MIT-BIH 확보 후 TRAIN split 으로 재탐색" 을 명시 |
-| `06_sameni_diagnosis.md` | `diagnose_sameni.py` | `synth_ecg` 직접 호출 | 필요 |
-| `07_safety_probe_d0.md` | `run_safety_probe.py` | `get_source("auto")` | 자동 전환됨 |
+| 문서 | 스크립트 | D1 재실행 |
+|---|---|---|
+| `03_metric_floor.md` | `measure_metric_floor.py` | `--source mitdb` |
+| `04_snr_estimator_calibration.md` | `check_snr_estimator.py` | `--source mitdb` |
+| `05_swt_tuning.md` | `tune_swt.py` | `--source mitdb` |
+| `06_sameni_diagnosis.md` | `diagnose_sameni.py` | `--source mitdb` |
+| `07_safety_probe_d0.md` | `run_safety_probe.py` | `--source mitdb` |
 
-앞의 4개는 `get_source` 를 쓰지 않으므로 **D1 데이터가 있어도 자동으로 바뀌지 않는다.**
-→ 미해결 항목 M-2.
+`--source mitdb` 는 **TRAIN split** 을 쓴다. 이 스크립트들은 파라미터를 정하거나
+지표의 분해능을 재는 쪽이라 TEST 를 쓰면 그 선택이 평가에 새어 들어간다.
+
+산출물은 `results/{tag}/`, 문서는 D1 일 때 `_d1` 접미사가 붙는다. 접미사 없는
+파일은 D0 기준이다.
+
+**synthetic 경로는 기존 동작을 그대로 유지한다** — 보고서가 인용하는 floor 값
+(`qrs_dur_err_ms` 0.6397 등)이 어긋나지 않도록 확인했다.
+
+#### D1 스모크에서 이미 보이는 신호 `[미확정]`
+
+축소 설정(수십 초 × 2 record)으로 경로만 확인한 것이라 **결론이 아니다.**
+다만 D0 와 방향이 크게 달라 P-7 에서 확인할 지점을 적어 둔다.
+
+| 항목 | D0 (정식) | D1 스모크 |
+|---|---|---|
+| Sameni DoD (5 dB 개선) | +16.2 dB | **+1.53 dB** (기준 ≥8 미달) |
+| SWT 튜닝 최적점 | `sigma=d2`, +11.4 dB | `sigma=d1`, tune **−0.15** / holdout +0.50 |
+
+두 방법 모두 **합성에서 잘 되고 실데이터에서 안 되는** 쪽으로 나타난다.
+Sameni 는 그럴 만한 이유가 있다 — D0 는 EKF 의 상태방정식과 **같은 생성 모델**
+(McSharry ODE)로 만들어져 "모델이 정확히 맞는" 이상적 조건이기 때문이다.
+사실이라면 F-8(합성이 딥러닝을 과대평가)의 대칭형, 즉 **합성이 모델 기반 방법을
+과대평가**하는 사례가 된다. P-7 에서 정식 측정으로 확인해야 한다.
 
 ### 3.5 승인된 파이프라인 수정 6개 항목 — 코드 대조 완료
 
@@ -154,7 +176,7 @@ abl_loss(37,884) · exp_e · report. 문서는 `90_results_d0.md`,
 | ID | 문제 | 영향 |
 |---|---|---|
 | ~~M-1~~ | ~~`source: auto` 가 D0/D1 을 조용히 바꾼다~~ | **해결(P-1)**: `--source` 명시 + `results/{tag}/` 분리. auto 는 해석 결과를 출력한다 |
-| **M-2** | 보조 스크립트 4개가 `synth_ecg` 하드코딩 | D1 로 재실행할 수단이 없다. 특히 SWT 튜닝은 TRAIN split 재탐색이 설계상 필수 |
+| ~~M-2~~ | ~~보조 스크립트가 `synth_ecg` 하드코딩~~ | **해결(P-6)**: 4개 전부 `--source` 지원, 산출물은 `results/{tag}/`, 문서는 `_d1` 접미사 |
 | ~~M-3~~ | ~~D0 학습 미완~~ | **해결(P-3)**: 7종 전부 완료, STEP 19 DoD 표 생성 |
 | ~~M-4~~ | ~~장시간 작업이 죽으면 재개 수단이 없다~~ | **해결(P-2)**: `--resume` 으로 optimizer·LR 위치·best 추적까지 복원. 러너는 기본 재개 켬 |
 | ~~M-5~~ | ~~D0 실험 결과 무효~~ | **해결(P-4/P-5)**: 전 실험 재실행, 보고서 5장 재작성, 경고 배너 해제 |
@@ -190,7 +212,7 @@ D0 는 파이프라인 검증 역할이고, D0/D1 비교 자체가 "합성 벤�
 | ~~P-3~~ | ✅ D0 학습 완결 | 7종 전부 `frontend: true` · `source: synthetic` · 동일 커밋 |
 | ~~P-4~~ | ✅ D0 실험 재실행 | exp_a/b/c/e + abl_loss + 리포트, STEP 19 DoD 충족 |
 | ~~P-5~~ | ✅ 결과 해석 + 문서 갱신 | 5장 재작성(5.7 에 수정 전후 대조), 7·8장 갱신, F-11 기록, 상태표 정정 |
-| **P-6** | M-2 해결: 보조 스크립트 4개에 소스 선택 추가 | D1 로 재실행 가능 |
+| ~~P-6~~ | ✅ 보조 스크립트 4개 소스 선택 | synthetic 경로 무회귀 확인, D1 경로 4개 전부 스모크 통과 |
 | **P-7** | D1 사전 작업: metric floor, **SWT 튜닝(TRAIN split)**, Sameni 진단 재측정 | D1 기준 파라미터 확정 |
 | **P-8** | D1 학습 + 실험 + 보고 | D0/D1 비교표 |
 | P-9 | STEP 28~30 (Arduino 수집 → 실측 SNR → EXP-F) | 하드웨어 대기 |

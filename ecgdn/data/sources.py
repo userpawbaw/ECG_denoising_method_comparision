@@ -15,7 +15,8 @@ from ..config import FS
 from .splits import MITDB_SPLIT
 
 __all__ = ["CleanRecord", "CleanSource", "SyntheticSource", "MITDBSource",
-           "get_source", "resolve_source_kind", "source_tag", "SOURCE_TAG"]
+           "get_source", "resolve_source_kind", "source_tag", "SOURCE_TAG",
+           "CleanSegment", "real_clean_segments"]
 
 # 산출물 경로에 붙일 데이터축 태그. D0 와 D1 의 결과가 같은 경로를 쓰면
 # 서로를 덮어쓰고, 표에서 어느 쪽 숫자인지 구분할 수 없게 된다.
@@ -152,3 +153,51 @@ def resolve_source_kind(kind: str = "auto", root: str | Path = "data/raw/mitdb")
 def source_tag(kind: str = "auto", root: str | Path = "data/raw/mitdb") -> str:
     """산출물 경로에 쓸 태그. synthetic -> d0, mitdb -> d1."""
     return SOURCE_TAG[resolve_source_kind(kind, root)]
+
+
+@dataclass
+class CleanSegment:
+    """보조 스크립트가 쓰는 최소 인터페이스 (`synth_ecg` 반환값과 호환).
+
+    metric floor 측정, SWT 튜닝, Sameni 진단, SNR 추정기 교정은 모두
+    "clean ECG 한 토막"만 있으면 되고 `.x` / `.fs` / `.r_peaks` 만 참조한다.
+    """
+    x: np.ndarray
+    fs: float
+    r_peaks: np.ndarray
+    beat_labels: np.ndarray
+    name: str = ""
+
+
+def real_clean_segments(n: int, dur_s: float, *, fs: float = FS,
+                        split: str = "train", root: str | Path = "data/raw/mitdb",
+                        offset_s: float = 0.0) -> list[CleanSegment]:
+    """MIT-BIH 에서 clean 구간 `n` 개를 뽑는다 (보조 스크립트용).
+
+    **TRAIN split 이 기본이다.** 이 함수의 소비자는 파라미터를 정하거나 지표의
+    분해능을 재는 쪽이라, TEST 를 쓰면 그 선택이 평가에 새어 들어간다
+    (docs/01_design.md 3.2 의 leakage 규약).
+
+    MIT-BIH 는 '깨끗한 신호' 가 아니라 실제 기록이므로, 여기서 얻는 것은
+    엄밀한 clean 이 아니라 **참조 신호**다. metric floor 처럼 '이상적인 입력에서
+    지표가 얼마나 흔들리는가' 를 재는 용도에서는 이 차이를 해석에 반영해야 한다.
+    """
+    from .mitdb import load_record
+
+    recs = MITDB_SPLIT[split]
+    out: list[CleanSegment] = []
+    n_want = int(round(dur_s * fs))
+    o = int(round(offset_s * fs))
+    for name in recs[:n]:
+        r = load_record(name, root, fs_out=fs)
+        if r.x.size < o + n_want:
+            o2 = max(0, r.x.size - n_want)
+        else:
+            o2 = o
+        x = r.x[o2:o2 + n_want]
+        sel = (r.r_peaks >= o2) & (r.r_peaks < o2 + x.size)
+        out.append(CleanSegment(x=x, fs=float(r.fs),
+                                r_peaks=(r.r_peaks[sel] - o2).astype(np.int64),
+                                beat_labels=np.asarray(r.symbols)[sel],
+                                name=name))
+    return out

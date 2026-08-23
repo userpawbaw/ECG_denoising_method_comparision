@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from ecgdn.config import DEFAULT_KERNEL, FS
 from ecgdn.data.mixer import mix_at_snr
 from ecgdn.data.noise import awgn, mixed_noise
+from ecgdn.data.sources import real_clean_segments
 from ecgdn.data.synthetic import synth_ecg
 from ecgdn.eval.engine import evaluate, trim_guard
 from ecgdn.eval.rpeak import detect_rpeaks
@@ -33,12 +34,18 @@ def _imp(s, y, d):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default="synthetic", choices=["synthetic"])
+    ap.add_argument("--data", "--source", dest="data", default="synthetic",
+                    choices=["synthetic", "mitdb"], help="config 없이 도는 보조 스크립트다. synthetic 이 기본 — D0 결과(이미 보고서에 인용된 값)와의 연속성을 지킨다")
     ap.add_argument("--dur", type=float, default=90.0)
     ap.add_argument("--snr", type=float, default=5.0)
     args = ap.parse_args()
+    tag = "d0" if args.data == "synthetic" else "d1"
+    suffix = "" if tag == "d0" else "_d1"
 
-    s = synth_ecg(args.dur, fs=FS, seed=5)
+    if args.data == "mitdb":
+        s = real_clean_segments(1, args.dur, fs=FS, split="train")[0]
+    else:
+        s = synth_ecg(args.dur, fs=FS, seed=5)
     y, _, _ = mix_at_snr(s.x, awgn(len(s.x), s.fs, rng("diag")), args.snr)
     checks: list[tuple[str, str, str, str]] = []   # (id, 항목, 결과, 상세)
 
@@ -120,7 +127,7 @@ def main() -> int:
     ax[1].set_title("C3: Gaussian kernel fit to phase-averaged template"); ax[1].set_xlabel("phase [rad]")
     ax[1].legend(fontsize=8)
     fig.tight_layout()
-    figd = ensure_dir("results/fig")
+    figd = ensure_dir(f"results/{tag}/fig")
     fig.savefig(figd / "sameni_diagnosis.png", dpi=130); plt.close(fig)
 
     # ---------- 문서
@@ -137,7 +144,7 @@ def main() -> int:
           "| # | 항목 | 결과 | 상세 |", "|---|---|---|---|"]
     for cid, name, res, detail in checks:
         md.append(f"| `{cid}` | {name} | **{res}** | {detail} |")
-    md += ["", "![diagnosis](../results/fig/sameni_diagnosis.png)", "",
+    md += ["", f"![diagnosis](../results/{tag}/fig/sameni_diagnosis.png)", "",
            "## 구현 과정에서 실제로 발견된 버그 2개",
            "",
            "이 진단 절차가 없었다면 놓쳤을 것들이다. 둘 다 성능을 10 dB 이상 떨어뜨렸다.",
@@ -168,7 +175,7 @@ def main() -> int:
            "- EKS 는 EKF 대비 " f"{v_s - v_f:+.2f} dB 우수하다. **EKF 만 쓰면 안 된다.**",
            "",
            "## 재현", "", "```bash", "python scripts/diagnose_sameni.py --data synthetic", "```"]
-    doc = ensure_dir("docs") / "06_sameni_diagnosis.md"
+    doc = ensure_dir("docs") / f"06_sameni_diagnosis{suffix}.md"
     doc.write_text("\n".join(md) + "\n")
 
     print("=" * 78)

@@ -20,6 +20,7 @@ from ecgdn.config import FS, SWTCfg
 from ecgdn.data.mixer import mix_at_snr
 from ecgdn.data.noise import (awgn, baseline_synth, emg_synth, impulse,
                               mixed_noise, motion_synth, pli)
+from ecgdn.data.sources import real_clean_segments
 from ecgdn.data.synthetic import synth_ecg
 from ecgdn.eval.engine import evaluate
 from ecgdn.methods.wavelet import SWTDenoiser
@@ -30,10 +31,19 @@ NOISES = {"awgn": awgn, "pli": pli, "bw": baseline_synth, "ma": emg_synth,
 METRIC = "snr_imp_scaled"
 
 
-def build_cases(seeds, snrs, dur):
+def build_cases(seeds, snrs, dur, source="synthetic", split="train"):
+    """튜닝/holdout 케이스. `source="mitdb"` 면 지정 split 의 record 를 쓴다.
+
+    **TRAIN split 이 기본이다.** 파라미터를 TEST 에서 고르면 그 선택이 평가에
+    새어 들어간다 (docs/00_review.md B-1 이 요구한 재탐색도 TRAIN 기준이다).
+    """
+    if source == "mitdb":
+        segs = real_clean_segments(len(seeds), dur, fs=FS, split=split)
+    else:
+        segs = [synth_ecg(dur, fs=FS, hr_bpm=60 + 6 * (sd % 5), seed=500 + sd)
+                for sd in seeds]
     cases = []
-    for sd in seeds:
-        s = synth_ecg(dur, fs=FS, hr_bpm=60 + 6 * (sd % 5), seed=500 + sd)
+    for sd, s in zip(seeds, segs):
         for nname in list(NOISES) + ["mixed"]:
             for snr in snrs:
                 g = rng("tune", sd, nname, snr)
@@ -61,10 +71,17 @@ def main() -> int:
     ap.add_argument("--tune-seeds", type=int, nargs="+", default=[0, 1])
     ap.add_argument("--holdout-seeds", type=int, nargs="+", default=[7, 8])
     ap.add_argument("--snrs", type=int, nargs="+", default=[5, 10, 15])
+    ap.add_argument("--source", default="synthetic", choices=("synthetic", "mitdb"),
+                    help="synthetic 이 기본 — D0 결과(보고서 인용값)와의 연속성을 지킨다")
     args = ap.parse_args()
 
-    tune = build_cases(args.tune_seeds, args.snrs, args.dur)
-    hold = build_cases(args.holdout_seeds, args.snrs, args.dur)
+    tag = "d0" if args.source == "synthetic" else "d1"
+    suffix = "" if tag == "d0" else "_d1"
+
+    # mitdb 에서는 seed 가 record 개수 역할을 한다. holdout 은 train split 의
+    # **다른** record 여야 하므로 오프셋을 준다.
+    tune = build_cases(args.tune_seeds, args.snrs, args.dur, args.source)
+    hold = build_cases(args.holdout_seeds, args.snrs, args.dur, args.source)
     rows = []
 
     # --- 1단계: sigma 출처 x threshold mode x QRS 보호
@@ -108,7 +125,7 @@ def main() -> int:
     base = SWTCfg(sigma_source="level", mode="soft", protect_qrs=False, k=(1.0,) * 5)
     m_b, mn_b = score(base, hold)
 
-    out = ensure_dir("results/tune_swt")
+    out = ensure_dir(f"results/{tag}/tune_swt")
     pd.DataFrame(rows).to_csv(out / "search.csv", index=False)
     (out / "best.json").write_text(json.dumps(
         {k_: (list(v) if isinstance(v, tuple) else v) for k_, v in final.__dict__.items()},
@@ -150,7 +167,7 @@ def main() -> int:
         "  진폭이 체계적으로 줄어들기 때문이다(`gain_bias` 로 확인 가능).",
         "", "## 재현", "", "```bash", "python scripts/tune_swt.py", "```",
     ]
-    doc = ensure_dir("docs") / "05_swt_tuning.md"
+    doc = ensure_dir("docs") / f"05_swt_tuning{suffix}.md"
     doc.write_text("\n".join(md) + "\n")
     print(f"\ntune  mean={m_t:.2f}  holdout mean={m_h:.2f}  textbook-baseline={m_b:.2f}")
     print(f"-> {doc}")
