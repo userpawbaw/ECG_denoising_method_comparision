@@ -46,7 +46,8 @@ def main() -> int:
         s = real_clean_segments(1, args.dur, fs=FS, split="train")[0]
     else:
         s = synth_ecg(args.dur, fs=FS, seed=5)
-    y, _, _ = mix_at_snr(s.x, awgn(len(s.x), s.fs, rng("diag")), args.snr)
+    _xr = getattr(s, "x_raw", s.x)
+    y, _, _ = mix_at_snr(_xr, awgn(len(_xr), s.fs, rng("diag")), args.snr)  # F-12
     checks: list[tuple[str, str, str, str]] = []   # (id, 항목, 결과, 상세)
 
     # ---------- C1  위상

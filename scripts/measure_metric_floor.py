@@ -68,8 +68,9 @@ def main() -> int:
             rows.append(dict(record=rec, seed=-1, kind="perfect", metric=k,
                              value=base.get(k, np.nan)))
         for sd in range(args.n_seed):
-            y, _, _ = mix_at_snr(s.x, awgn(len(s.x), s.fs, rng("floor", rec, sd)),
-                                 args.probe_snr)
+            _xr = getattr(s, "x_raw", s.x)
+            y, _, _ = mix_at_snr(_xr, awgn(len(_xr), s.fs, rng("floor", rec, sd)),
+                                 args.probe_snr)      # 잡음은 원본에 (F-12)
             m = evaluate(s.x, y, y, s.fs, r_peaks_ref=s.r_peaks)
             for k in REPORT:
                 rows.append(dict(record=rec, seed=sd, kind="probe", metric=k,

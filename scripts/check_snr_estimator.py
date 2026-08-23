@@ -48,11 +48,12 @@ def run(dur, snrs, n_rep, fe, source="synthetic", split="train"):
         for nname in list(NOISES) + ["mixed"]:
             for snr in snrs:
                 g = rng("cal", nname, snr, rep)
+                xr = getattr(s, "x_raw", s.x)
                 if nname == "mixed":
-                    n, _ = mixed_noise(len(s.x), s.fs, g)
+                    n, _ = mixed_noise(len(xr), s.fs, g)
                 else:
-                    n = NOISES[nname](len(s.x), s.fs, g)
-                y, _, _ = mix_at_snr(s.x, n, snr)
+                    n = NOISES[nname](len(xr), s.fs, g)
+                y, _, _ = mix_at_snr(xr, n, snr)      # 잡음은 원본에 (F-12)
                 if fe:
                     # front-end 는 신호와 잡음을 모두 바꾼다. 따라서 참조 SNR 도
                     # 필터 후 기준으로 다시 계산해야 한다. 그렇지 않으면

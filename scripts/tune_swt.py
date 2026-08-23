@@ -47,9 +47,11 @@ def build_cases(seeds, snrs, dur, source="synthetic", split="train"):
         for nname in list(NOISES) + ["mixed"]:
             for snr in snrs:
                 g = rng("tune", sd, nname, snr)
-                n = (mixed_noise(len(s.x), s.fs, g)[0] if nname == "mixed"
-                     else NOISES[nname](len(s.x), s.fs, g))
-                y, _, _ = mix_at_snr(s.x, n, snr)
+                xr = getattr(s, "x_raw", s.x)
+                n = (mixed_noise(len(xr), s.fs, g)[0] if nname == "mixed"
+                     else NOISES[nname](len(xr), s.fs, g))
+                # 잡음은 **원본** 에 섞고 평가 기준은 대역제한 참조 s.x 다 (F-12).
+                y, _, _ = mix_at_snr(xr, n, snr)
                 cases.append((s, y, nname, snr))
     return cases
 

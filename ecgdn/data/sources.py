@@ -159,28 +159,37 @@ def source_tag(kind: str = "auto", root: str | Path = "data/raw/mitdb") -> str:
 class CleanSegment:
     """보조 스크립트가 쓰는 최소 인터페이스 (`synth_ecg` 반환값과 호환).
 
-    metric floor 측정, SWT 튜닝, Sameni 진단, SNR 추정기 교정은 모두
-    "clean ECG 한 토막"만 있으면 되고 `.x` / `.fs` / `.r_peaks` 만 참조한다.
+    `x` 는 **평가 기준이 되는 대역제한 참조**이고 `x_raw` 는 원본이다.
+    잡음은 `x_raw` 에 섞고 평가는 `x` 기준으로 한다 — MIT-BIH 원본을 정답으로
+    두면 front-end 를 쓰는 방법이 전부 부당하게 진다 (F-12).
+    합성 소스에서는 둘이 사실상 같다(front-end 가 53 dB 무해).
     """
     x: np.ndarray
     fs: float
     r_peaks: np.ndarray
     beat_labels: np.ndarray
     name: str = ""
+    x_raw: np.ndarray | None = None
+
+    def __post_init__(self):
+        if self.x_raw is None:
+            self.x_raw = self.x
 
 
 def real_clean_segments(n: int, dur_s: float, *, fs: float = FS,
                         split: str = "train", root: str | Path = "data/raw/mitdb",
-                        offset_s: float = 0.0) -> list[CleanSegment]:
+                        offset_s: float = 0.0,
+                        ref_frontend: bool = True) -> list[CleanSegment]:
     """MIT-BIH 에서 clean 구간 `n` 개를 뽑는다 (보조 스크립트용).
 
     **TRAIN split 이 기본이다.** 이 함수의 소비자는 파라미터를 정하거나 지표의
     분해능을 재는 쪽이라, TEST 를 쓰면 그 선택이 평가에 새어 들어간다
     (docs/01_design.md 3.2 의 leakage 규약).
 
-    MIT-BIH 는 '깨끗한 신호' 가 아니라 실제 기록이므로, 여기서 얻는 것은
-    엄밀한 clean 이 아니라 **참조 신호**다. metric floor 처럼 '이상적인 입력에서
-    지표가 얼마나 흔들리는가' 를 재는 용도에서는 이 차이를 해석에 반영해야 한다.
+    MIT-BIH 는 '깨끗한 신호' 가 아니라 실제 기록이다. 그래서 `ref_frontend=True`
+    (기본)이면 `x` 에 front-end 를 걸어 **"우리가 복원하려는 0.5~100 Hz 대역"**
+    으로 맞추고, 원본은 `x_raw` 에 남긴다. 이렇게 하지 않으면 front-end 가 원본의
+    기저선 변동을 지울수록 정답에서 멀어져 SNR 이 떨어진다 (F-12).
     """
     from .mitdb import load_record
 
@@ -194,10 +203,15 @@ def real_clean_segments(n: int, dur_s: float, *, fs: float = FS,
             o2 = max(0, r.x.size - n_want)
         else:
             o2 = o
-        x = r.x[o2:o2 + n_want]
-        sel = (r.r_peaks >= o2) & (r.r_peaks < o2 + x.size)
+        x_raw = r.x[o2:o2 + n_want]
+        if ref_frontend:
+            from ..methods.frontend import FrontEnd
+            x = FrontEnd()(x_raw, float(r.fs))
+        else:
+            x = x_raw
+        sel = (r.r_peaks >= o2) & (r.r_peaks < o2 + x_raw.size)
         out.append(CleanSegment(x=x, fs=float(r.fs),
                                 r_peaks=(r.r_peaks[sel] - o2).astype(np.int64),
                                 beat_labels=np.asarray(r.symbols)[sel],
-                                name=name))
+                                name=name, x_raw=x_raw))
     return out
