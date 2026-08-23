@@ -40,6 +40,8 @@ for c in $RUNS; do
   python3 scripts/train.py -c "configs/$c.yaml" --source "$SOURCE" $RESUME_FLAG \
       --workers 2 --threads 4 \
       2>&1 | tee "results/logs/train_${SOURCE}_$c.log" \
-           | grep -E "^\[|^ep|^best|^early|^이미" || echo "FAILED: $c"
+           | grep --line-buffered -E "^\[|^ep|^best|^early|^이미" || echo "FAILED: $c"
+  # --line-buffered 가 없으면 grep 이 4KB 블록을 채울 때까지 출력을 붙들고 있어,
+  # 학습이 정상인데도 진행 상황이 전혀 보이지 않는다 (tee 가 쓰는 로그만 갱신됨).
 done
 echo "ALL DONE"
