@@ -122,14 +122,16 @@ class OracleWienerDenoiser(BaseDenoiser):
         return np.fft.irfft(Y * h, n=n) + mean
 
 
-@register_method("B01", family="bound", label="Oracle wavelet threshold (wavelet upper bound)",
+@register_method("B01", family="oracle",
+                 label="Oracle wavelet threshold (wavelet thresholding 계열의 상한)",
                  needs_clean=True)
 def _b01(use_frontend: bool = True, **kw):
     return OracleWaveletDenoiser(SWTCfg(**kw) if kw else DEFAULT_SWT,
                                  use_frontend=use_frontend)
 
 
-@register_method("B02", family="bound", label="Oracle Wiener (LTI upper bound)",
+@register_method("B02", family="oracle",
+                 label="Oracle Wiener (LTI 계열의 상한)",
                  needs_clean=True)
 def _b02(use_frontend: bool = True, **kw):
     return OracleWienerDenoiser(use_frontend=use_frontend, **kw)

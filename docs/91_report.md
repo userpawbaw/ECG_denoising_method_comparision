@@ -582,7 +582,7 @@ snr_distortion = 10 log10( P(x) / P(method(x) − x) )
 | `M06` | deep | **Residual 1D U-Net** (976 K params) |
 | `M07` | hybrid | SWT → Residual U-Net (순차) |
 | `M08` | hybrid | **Wavelet-subband Residual U-Net** (993 K params) |
-| `B01`/`B02` | bound | Oracle wavelet / Oracle Wiener |
+| `B01`/`B02` | oracle | Oracle wavelet / Oracle Wiener (**각자 자기 계열의 상한**) |
 
 ## 5.1 RQ1 — 입력 SNR에 따라 답이 바뀐다
 
@@ -624,7 +624,7 @@ snr_distortion = 10 log10( P(x) / P(method(x) − x) )
 
 | 방법 | Δmean [dB] | p (Holm) | effect r | 유의? |
 |---|---|---|---|---|
-| `B01` | +6.13 | < 1e-4 | 1.000 | ✓ (bound) |
+| `B01` | +6.13 | < 1e-4 | 1.000 | ✓ (oracle) |
 | `M07` | +4.32 | 1.0e-4 | 0.945 | **✓** |
 | `B02` | +3.58 | < 1e-4 | 1.000 | ✓ (bound) |
 | `M04` | +2.68 | 5.0e-4 | 0.874 | **✓** |
