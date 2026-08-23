@@ -7,10 +7,13 @@ mkdir -p results
 if ! mkdir "$LOCK" 2>/dev/null; then echo "another run holds $LOCK; abort"; exit 1; fi
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 
-for c in exp_c exp_a exp_b; do
+for c in exp_c exp_a exp_b abl_loss; do
   echo "=============== $c ==============="
   python3 scripts/run_exp.py -c "configs/$c.yaml" 2>&1 | tee "results/run_$c.log" | tail -20
 done
+echo "=============== loss ablation 표 (STEP 19 DoD) ==============="
+# 종료코드 2 = 체크포인트의 학습 조건이 섞여 비교가 성립하지 않음 (F-9)
+python3 scripts/make_ablation_table.py 2>&1 | tail -5
 echo "=============== exp_e (safety probe) ==============="
 python3 scripts/run_safety_probe.py 2>&1 | tee results/run_exp_e.log | tail -5
 echo "=============== SNR 추정기 교정표 재생성 ==============="
