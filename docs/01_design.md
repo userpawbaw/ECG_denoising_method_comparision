@@ -289,7 +289,7 @@ L_band  = Σ_j w_j * mean( (ŝ_j - s_j)² )
 | 지표 | 실험 | 의미 |
 |---|---|---|
 | `snr_distortion` | EXP-C | clean 입력 시 출력 SNR = **왜곡 상한** |
-| `oracle_gap` | EXP-A | `B01` 대비 부족분 (dB) |
+| `oracle_gap` | EXP-A | `B01` 대비 부족분 (dB). **`M03`/`M04` 등 wavelet thresholding 계열에만 적용한다** — `B01` 은 그 계열의 상한이지 모든 방법의 상한이 아니다. 실제로 `M07` 은 저 SNR 에서 `B01` 을 넘는다 |
 | `halluc_energy` | EXP-E | 삭제 구간(P1/P2)에서 출력이 만들어낸 에너지 |
 | `pvc_beat_cc` | EXP-E | PVC beat만의 template correlation |
 | `hsc` | 실측 | half-sample consistency (ground truth 불필요) |
