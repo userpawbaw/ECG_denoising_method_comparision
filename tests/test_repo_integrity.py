@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -206,4 +207,18 @@ def test_runner_scripts_require_an_explicit_data_axis():
         t = (ROOT / "scripts" / name).read_text()
         assert "SOURCE=" in t and "synthetic|mitdb" in t, \
             f"{name} 에 데이터축 인자 처리가 없다"
+
+def test_record_keeping_convention_is_followed():
+    """기록 규약(docs/19_record_keeping.md)이 실제로 지켜지는지.
+
+    규약을 만들어 놓고 새 항목을 기존 방식으로 적으면 의미가 없다. 실제로
+    이 검사를 넣기 전에는 F-1~F-9 대부분에 **"놓쳤다면"** 이 빠져 있었다 —
+    보고서에서 인용 가치가 가장 높은 항목인데도.
+
+    잠정([잠정]) 항목은 아직 못 채운 것이 정상이므로 예외로 둔다.
+    """
+    import subprocess
+    r = subprocess.run([sys.executable, "scripts/check_records.py"],
+                       cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, f"기록 규약 미충족:\n{r.stdout[-1500:]}"
 
