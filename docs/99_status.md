@@ -242,7 +242,7 @@ D0 는 파이프라인 검증 역할이고, D0/D1 비교 자체가 "합성 벤�
 |---|---|---|---|---|
 | m06_l1 | L1 | **+3.437 dB** | 34 | ✅ (ep 46 early stop) |
 | m08_l1 | L1 | **+3.236 dB** | 26 | ✅ (ep 38 early stop) |
-| m07_l1 | L1 | — | — | 진행 중 또는 대기 |
+| m07_l1 | L1 | — | — | 진행 중 |
 | m06_l2 | L2 | — | — | 대기 |
 | m06_l3 | L3 | — | — | 대기 |
 | m08_l3 | L3 | — | — | 대기 |
@@ -251,6 +251,15 @@ D0 는 파이프라인 검증 역할이고, D0/D1 비교 자체가 "합성 벤�
 진행 확인: `results/logs/train_mitdb_*.log` 의 `best epoch` 줄.
 중단됐으면 **`bash scripts/run_all_training.sh mitdb`** 로 재개한다
 (재개가 기본이고 끝난 것은 건너뛴다 — O-2 참조).
+
+`another training run holds results/.train.lock; abort` 가 나오는데 학습
+프로세스가 없으면 강제 종료로 락만 남은 것이다 (`trap ... EXIT` 는 SIGKILL 에
+실행되지 않는다). `rmdir results/.train.lock` 후 재개한다.
+`python3 scripts/check_ckpts.py --source mitdb` 가 이 상태를 진단해 준다.
+
+**소요 시간 추정**: D1 은 D0 보다 early stop 이 늦다 (m06_l1 46 ep, m08_l1
+38 ep vs D0 20~26 ep). epoch 당 70~130 s 이므로 남은 5 런에 **4~5 시간**
+정도가 더 필요하다. `[추론]`
 
 ### 6.2 `[미확정]` D1 VAL 이 D0 의 절반 수준이다
 
@@ -280,6 +289,11 @@ D0 와 크게 다르지 않을 것이다. 1번이 맞다면 `M_FE` 대비로 봐
 ```bash
 bash scripts/run_all_experiments.sh mitdb     # exp_c/a/b/abl_loss + 프로브 + 리포트
 ```
+
+이 러너는 시작 전에 `scripts/check_ckpts.py` 로 **7종이 전부 학습됐고 학습이
+돌고 있지 않은지** 확인하고, 아니면 종료코드 2 로 멈춘다 (D-10). 게이트가
+없으면 `run_exp.py` 가 없는 체크포인트를 `[skip]` 하고 표를 짧게 만들거나,
+학습 중인 `best.pt` 를 읽어 덜 학습된 모델을 표에 싣는다.
 
 산출물은 `results/d1/`, 문서는 `90_results_d1.md` · `07_safety_probe_d1.md` ·
 `10_loss_ablation_d1.md` 로 나온다. SWT 파라미터는 `results/d1/tune_swt/best.json`

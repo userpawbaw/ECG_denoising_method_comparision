@@ -222,3 +222,61 @@ def test_record_keeping_convention_is_followed():
                        cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0, f"기록 규약 미충족:\n{r.stdout[-1500:]}"
 
+
+
+# --------------------------------------------------------------------------
+# 체크포인트 게이트 (scripts/check_ckpts.py)
+# --------------------------------------------------------------------------
+
+def test_experiment_runner_gates_on_checkpoints():
+    """실험 러너는 첫 실험 전에 체크포인트 게이트를 통과해야 한다.
+
+    run_exp.py 는 체크포인트가 없으면 `[skip]` 한 줄만 찍고 그 방법을 뺀 채
+    표를 만든다. 학습이 덜 끝난 상태로 실험을 돌리는 사고가 실제로 가능하고,
+    그 결과물은 정상적으로 보인다. 게이트 호출이 사라지면 그 방어가 사라진다.
+    """
+    t = (ROOT / "scripts" / "run_all_experiments.sh").read_text()
+    assert "check_ckpts.py" in t, "실험 러너에 체크포인트 게이트 호출이 없다"
+    gate = t.index("check_ckpts.py")
+    # 주석에도 run_exp.py 가 나오므로 실제 호출 위치를 본다.
+    first = t.index("python3 scripts/run_exp.py")
+    assert gate < first, "게이트가 첫 실험보다 뒤에 있다 — 막지 못한다"
+
+
+def test_ckpt_gate_covers_every_config_the_runner_runs():
+    """게이트의 기본 config 목록이 실험 러너가 실제로 도는 것을 전부 덮어야 한다.
+
+    러너에 실험을 추가하면서 게이트 목록을 안 고치면, 그 실험만 조용히
+    검사 밖으로 빠진다.
+    """
+    runner = (ROOT / "scripts" / "run_all_experiments.sh").read_text()
+    ran = set(re.findall(r"configs/(\w+)\.yaml", runner))
+    ran |= {m for m in re.findall(r"for c in ([\w ]+); do", runner)
+            for m in m.split()}
+    # run_safety_probe.py 는 config 이름을 인자로 받지 않고 exp_e 를 직접 읽는다.
+    ran.add("exp_e")
+    ran = {c for c in ran if (ROOT / "configs" / f"{c}.yaml").exists()}
+
+    src = (ROOT / "scripts" / "check_ckpts.py").read_text()
+    m = re.search(r"DEFAULT_CONFIGS = \(([^)]+)\)", src)
+    assert m, "check_ckpts.py 에서 DEFAULT_CONFIGS 를 찾지 못했다"
+    covered = set(re.findall(r'"(\w+)"', m.group(1)))
+
+    # dl_methods 가 있는 config 만 게이트 대상이다.
+    needs_ckpt = {c for c in ran
+                  if (yaml.safe_load((ROOT / "configs" / f"{c}.yaml").read_text())
+                      or {}).get("dl_methods")}
+    assert not (needs_ckpt - covered), \
+        f"러너가 돌지만 게이트가 검사하지 않는 config: {sorted(needs_ckpt - covered)}"
+
+
+def test_ckpt_gate_refuses_while_training_runs():
+    """학습 중에는 게이트가 막아야 한다.
+
+    `best.pt` 는 epoch 마다 갱신되므로 학습 도중에도 파일은 존재한다. 파일
+    존재만 보면 게이트를 통과하고, 덜 학습된 모델이 그대로 표에 들어간다.
+    """
+    src = (ROOT / "scripts" / "check_ckpts.py").read_text()
+    assert "def training_in_progress(" in src, \
+        "게이트에 학습 진행 중 검사가 없다"
+    assert ".train.lock" in src, "게이트가 학습 락을 보지 않는다"

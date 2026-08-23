@@ -19,6 +19,11 @@ mkdir -p results results/logs
 if ! mkdir "$LOCK" 2>/dev/null; then echo "another run holds $LOCK; abort"; exit 1; fi
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 
+# 학습이 끝났는지 먼저 확인한다. run_exp.py 는 체크포인트가 없으면 `[skip]` 한
+# 줄만 찍고 그 방법을 뺀 채 표를 정상적으로 만들어 내므로, 학습이 덜 끝난 상태로
+# 여기까지 오면 결과가 조용히 짧아진다 (F-9 와 같은 계열).
+python3 scripts/check_ckpts.py --source "$SOURCE" || exit 2
+
 for c in exp_c exp_a exp_b abl_loss; do
   echo "=============== $c  (source=$SOURCE) ==============="
   python3 scripts/run_exp.py -c "configs/$c.yaml" --source "$SOURCE" \
