@@ -156,7 +156,8 @@ def main() -> int:
     df = pd.DataFrame(rows)
     out = ensure_dir(f"results/{_TAG[0]}/exp_e")
     df.to_csv(out / "probe.csv", index=False)
-    save_manifest(out, cfg=cfg)
+    save_manifest(out, cfg=cfg, sources=[
+        "scripts/run_safety_probe.py", "ecgdn/eval/engine.py", "ecgdn/eval/signal_metrics.py", "ecgdn/eval/morphology.py", "ecgdn/eval/rpeak.py"])
 
     axis = "D0 — 합성 ECG" if _TAG[0] == "d0" else "D1 — MIT-BIH + NSTDB"
     md = [f"# 07. 안전성 프로브 (EXP-E, {_TAG[0].upper()})", "",

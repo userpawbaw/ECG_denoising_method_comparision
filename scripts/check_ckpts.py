@@ -93,6 +93,8 @@ def main() -> int:
                     help="config 이름 또는 경로 (기본: 실험 러너가 도는 전부)")
     ap.add_argument("--ignore-lock", action="store_true",
                     help="학습이 돌고 있어도 통과시킨다 (의도적 부분 실행용)")
+    ap.add_argument("--ignore-stale", action="store_true",
+                    help="학습 코드가 바뀐 체크포인트도 통과시킨다")
     a = ap.parse_args()
 
     tag = source_tag(a.source)
@@ -130,6 +132,27 @@ def main() -> int:
         print(f"    bash scripts/run_all_training.sh {tag_to_source(tag)} "
               f"{' '.join(runs)}")
         return 2
+
+    # 체크포인트를 만든 코드가 그 뒤로 바뀌었는가 (F-9).
+    # 파일이 존재하고 조건이 같아도, 학습 경로가 바뀌었으면 그 체크포인트는
+    # 이미 다른 파이프라인의 산물이다. 표에는 그 사실이 나타나지 않는다.
+    from ecgdn.utils import stale_sources
+    stale: dict[Path, list[str]] = {}
+    for ck in present:
+        mf = ck.parent / "manifest.json"
+        if not mf.exists():
+            continue
+        bad = stale_sources(mf)
+        if bad and bad != ["(sources 미기록)"]:
+            stale[ck] = bad
+    if stale:
+        print("[ckpt-gate] **학습 코드가 바뀐 뒤 재학습되지 않은 체크포인트가 있다.**")
+        for ck, bad in sorted(stale.items()):
+            print(f"  STALE  {ck.parent.name}   바뀐 코드: {', '.join(bad)}")
+        print("  이 체크포인트는 지금 파이프라인의 산물이 아니다 (F-9).")
+        print("  재학습하거나, 의도한 것이면 --ignore-stale 을 줄 것.")
+        if not a.ignore_stale:
+            return 2
 
     flags = frontend_flags(present)
     distinct = set(flags.values())

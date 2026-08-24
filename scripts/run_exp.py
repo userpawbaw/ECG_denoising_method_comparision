@@ -196,7 +196,9 @@ def main() -> int:
     df = pd.DataFrame(rows)
     df.to_parquet(out / "metrics.parquet", index=False)
     cfg = dict(cfg, _swt_applied=load_swt_tuning(tag))
-    save_manifest(out, cfg=cfg, extra={"n_items": len(items), "methods": list(methods)})
+    save_manifest(out, cfg=cfg, extra={"n_items": len(items), "methods": list(methods)},
+                  sources=["scripts/run_exp.py", "ecgdn/data/dataset.py",
+                           "ecgdn/methods/frontend.py", "ecgdn/eval/engine.py", "ecgdn/eval/signal_metrics.py", "ecgdn/eval/morphology.py", "ecgdn/eval/rpeak.py"])
     print(f"\nrows={len(df)}  -> {out/'metrics.parquet'}")
 
     key = "snr_imp_scaled" if mode != "distortion" else "snr_out_strict"

@@ -107,7 +107,8 @@ def main() -> int:
                     for fe in (False, True)], ignore_index=True)
     out = ensure_dir(f"results/{tag}/snr_calibration")
     df.to_csv(out / "raw.csv", index=False)
-    save_manifest(out, cfg=vars(args))
+    save_manifest(out, cfg=vars(args), sources=[
+        "scripts/check_snr_estimator.py", "ecgdn/eval/snr_estimation.py"])
 
     b_off, b_on = bias_table(df, False), bias_table(df, True)
 

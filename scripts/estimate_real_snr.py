@@ -66,7 +66,8 @@ def main() -> int:
 
     df = pd.DataFrame(rows)
     df.to_csv(Path(out) / "real_snr.csv", index=False)
-    save_manifest(out, cfg=vars(args))
+    save_manifest(out, cfg=vars(args), sources=[
+        "scripts/estimate_real_snr.py", "ecgdn/eval/snr_estimation.py"])
 
     ecg = df[df.kind == "ecg"] if "kind" in df else df
     md = ["# 08b. 실측 신호 SNR 추정 결과", "",

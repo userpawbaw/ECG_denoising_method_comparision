@@ -233,7 +233,8 @@ def main() -> int:
     print("=" * 78)
     print(f"{n_pass}/{n_applicable} passed"
           + (f" (+{n_na} N/A)" if n_na else "") + f"  ->  {doc}")
-    save_manifest("results/sameni_diagnosis", cfg=vars(args))
+    save_manifest(f"results/{tag}/sameni_diagnosis", cfg=vars(args), sources=[
+        "scripts/diagnose_sameni.py", "ecgdn/methods/kalman_sameni.py", "ecgdn/eval/engine.py", "ecgdn/eval/signal_metrics.py", "ecgdn/eval/morphology.py", "ecgdn/eval/rpeak.py"])
     return 0 if n_pass == n_applicable else 1
 
 

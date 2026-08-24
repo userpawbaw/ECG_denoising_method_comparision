@@ -23,7 +23,7 @@ from ecgdn.data.noise import awgn
 from ecgdn.data.sources import real_clean_segments
 from ecgdn.data.synthetic import synth_ecg
 from ecgdn.eval.engine import evaluate
-from ecgdn.utils import ensure_dir, rng, save_manifest
+from ecgdn.utils import archive_run, ensure_dir, rng, save_manifest
 
 # 방향: 이상값이 무엇인지 (표시용)
 IDEAL = {
@@ -176,7 +176,10 @@ def main() -> int:
     ]
     doc = ensure_dir("docs") / f"03_metric_floor{suffix}.md"
     doc.write_text("\n".join(md) + "\n")
-    save_manifest(out_dir, cfg=vars(args))
+    save_manifest(out_dir, cfg=vars(args), sources=[
+        "scripts/measure_metric_floor.py", "ecgdn/data/synthetic.py",
+        "ecgdn/data/sources.py", "ecgdn/eval/engine.py", "ecgdn/eval/signal_metrics.py", "ecgdn/eval/morphology.py", "ecgdn/eval/rpeak.py"])
+    archive_run(out_dir)   # O-11: 낡은 산출물을 나중에 대조할 수 있게
     print(fl.to_string(index=False))
     print(f"\n-> {doc}")
     return 0

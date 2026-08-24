@@ -81,7 +81,13 @@ class Trainer:
         save_manifest(self.out, cfg=asdict(cfg),
                       extra={"model": model_name,
                              "n_params": sum(p.numel() for p in model.parameters()),
-                             **(extra_manifest or {})})
+                             **(extra_manifest or {})},
+                      # F-9 가 정확히 이 지점에서 일어났다 — 데이터 파이프라인을
+                      # 고치면 그 전에 학습한 체크포인트가 전부 무효가 되는데,
+                      # 체크포인트만 봐서는 드러나지 않는다.
+                      sources=["ecgdn/train.py", "ecgdn/data/dataset.py",
+                               "ecgdn/data/sources.py", "ecgdn/methods/frontend.py",
+                               "ecgdn/models/losses.py"])
 
     # ---------------- 내부
     def _loader(self, ds, shuffle: bool):

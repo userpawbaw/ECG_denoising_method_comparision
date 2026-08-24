@@ -24,7 +24,7 @@ from ecgdn.data.sources import real_clean_segments
 from ecgdn.data.synthetic import synth_ecg
 from ecgdn.eval.engine import evaluate
 from ecgdn.methods.wavelet import SWTDenoiser
-from ecgdn.utils import ensure_dir, rng, save_manifest
+from ecgdn.utils import ensure_dir, rng, archive_run, save_manifest
 
 NOISES = {"awgn": awgn, "pli": pli, "bw": baseline_synth, "ma": emg_synth,
           "em": motion_synth, "impulse": impulse}
@@ -132,7 +132,9 @@ def main() -> int:
     (out / "best.json").write_text(json.dumps(
         {k_: (list(v) if isinstance(v, tuple) else v) for k_, v in final.__dict__.items()},
         indent=2))
-    save_manifest(out, cfg=vars(args))
+    save_manifest(out, cfg=vars(args), sources=[
+        "scripts/tune_swt.py", "ecgdn/methods/wavelet.py", "ecgdn/eval/engine.py", "ecgdn/eval/signal_metrics.py", "ecgdn/eval/morphology.py", "ecgdn/eval/rpeak.py"])
+    archive_run(out)   # O-10: 재실행이 이전 탐색 기록을 덮지 않도록
 
     md = [
         "# 05. SWT thresholding 파라미터 튜닝",
