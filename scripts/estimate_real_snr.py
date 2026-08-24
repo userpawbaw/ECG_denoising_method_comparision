@@ -15,7 +15,11 @@ import pandas as pd
 from ecgdn.config import FS
 from ecgdn.data.arduino import NOISE_ONLY, load_dir
 from ecgdn.eval.rpeak import detect_rpeaks
-from ecgdn.eval.snr_estimation import SNR_CEILING_DB, estimate_snr_all
+from ecgdn.eval.snr_estimation import SNR_CEILING_BY_AXIS, estimate_snr_all
+
+# 실측 장비 신호는 **실데이터**다. 합성에서 정한 천장(22 dB)을 쓰면 추정치가
+# 이미 천장인데도 경고가 뜨지 않는다 (F-18). 실기록에서 잰 값을 쓴다.
+CEILING_DB = SNR_CEILING_BY_AXIS["d1"]
 from ecgdn.eval.spectral import pli_ratio, welch_psd
 from ecgdn.methods.frontend import apply_frontend
 from ecgdn.utils import ensure_dir, power, save_manifest
@@ -57,8 +61,8 @@ def main() -> int:
                              "noise_rms": float(np.sqrt(power(fe))),
                              "n_beats": 0.0})
                 continue
-            est_raw = estimate_snr_all(seg, r.fs)
-            est_fe = estimate_snr_all(fe, r.fs)
+            est_raw = estimate_snr_all(seg, r.fs, ceiling_db=CEILING_DB)
+            est_fe = estimate_snr_all(fe, r.fs, ceiling_db=CEILING_DB)
             rows.append({**base, "kind": "ecg",
                          "n_beats": est_fe["n_beats"],
                          **{f"raw_{k}": v for k, v in est_raw.items() if k != "n_beats"},
@@ -85,7 +89,7 @@ def main() -> int:
                f"| 전체 중앙값 SNR | **{ecg['fe_snr_median_db'].median():.1f} dB** |",
                f"| 추정기 간 최대 불일치 (평균) | {ecg['fe_snr_spread_db'].mean():.1f} dB |",
                f"| 상관잡음 경고 비율 | {ecg.get('fe_correlated_noise_warning', pd.Series([0])).mean()*100:.0f} % |",
-               f"| 포화 경고 비율 (≥ {SNR_CEILING_DB:.0f} dB) | "
+               f"| 포화 경고 비율 (≥ {CEILING_DB:.0f} dB) | "
                f"{ecg.get('fe_ceiling_warning', pd.Series([0])).mean()*100:.0f} % |",
                f"| 60 Hz PLI ratio (중앙값) | {ecg['pli_ratio_60'].median():.1f} "
                "(≥ 10 이면 notch 적용 대상) |", ""]

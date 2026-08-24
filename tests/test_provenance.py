@@ -153,3 +153,60 @@ def test_declared_sources_exist():
                 if not (ROOT / m.group(1)).exists():
                     bad.append(f"{p.name} -> {m.group(1)}")
     assert not bad, f"실재하지 않는 출처 경로: {bad}"
+
+
+# --------------------------------------------------------------------------
+# F-18 — 경고 장치의 임계값도 축을 따라가야 한다
+# --------------------------------------------------------------------------
+
+def test_snr_ceiling_is_axis_specific_and_lower_on_real_data():
+    """추정기의 천장은 실기록에서 8 dB 낮다 (실측, docs/04_*).
+
+    상수 하나로 두면 실기록에서 추정치가 이미 천장인데도 경고가 뜨지 않는다.
+    """
+    from ecgdn.eval.snr_estimation import SNR_CEILING_BY_AXIS
+    assert set(SNR_CEILING_BY_AXIS) == {"d0", "d1"}
+    assert SNR_CEILING_BY_AXIS["d1"] < SNR_CEILING_BY_AXIS["d0"], \
+        "실기록 천장이 합성보다 낮아야 한다"
+
+
+def test_ceiling_warning_respects_the_passed_threshold():
+    """같은 신호라도 임계값에 따라 경고가 달라져야 한다.
+
+    이 검사가 없으면 `ceiling_db` 를 받기만 하고 쓰지 않아도 통과한다 —
+    F-18 의 원래 버그가 정확히 '값은 있는데 아무 일도 하지 않는' 형태였다.
+    """
+    import numpy as np
+    from ecgdn.eval.snr_estimation import estimate_snr_all
+
+    fs = 250.0
+    t = np.arange(int(fs * 20)) / fs
+    # 아주 깨끗한 주기 신호 — 추정치가 높게 나온다
+    x = np.zeros_like(t)
+    for k in range(20):
+        c = int((0.2 + k) * fs)
+        if c + 20 < len(x):
+            x[c - 10:c + 10] += np.hanning(20)
+    x += 1e-4 * np.random.default_rng(0).standard_normal(len(x))
+
+    lo = estimate_snr_all(x, fs, ceiling_db=-100.0)
+    hi = estimate_snr_all(x, fs, ceiling_db=1e6)
+    assert lo["ceiling_warning"] == 1.0
+    assert hi["ceiling_warning"] == 0.0
+    assert lo["ceiling_db"] == -100.0
+
+
+def test_real_snr_script_uses_the_real_data_ceiling():
+    """실측 장비 신호는 실데이터다 — 합성 천장을 쓰면 경고가 뜨지 않는다."""
+    t = (ROOT / "scripts" / "estimate_real_snr.py").read_text()
+    assert 'SNR_CEILING_BY_AXIS["d1"]' in t, \
+        "estimate_real_snr.py 가 실기록 천장을 쓰지 않는다"
+    assert "SNR_CEILING_DB" not in t, "합성 기본 상수를 아직 참조한다"
+
+
+def test_calibration_doc_reports_the_measured_ceiling():
+    """교정 문서에 천장 표가 실려 있어야 한다 — 편향의 원인이기 때문이다."""
+    for f in ("04_snr_estimator_calibration.md",
+              "04_snr_estimator_calibration_d1.md"):
+        t = (ROOT / "docs" / f).read_text()
+        assert "추정기의 천장" in t, f"{f} 에 천장 절이 없다"

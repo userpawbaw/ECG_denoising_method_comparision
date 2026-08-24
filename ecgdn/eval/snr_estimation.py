@@ -33,9 +33,24 @@ from ..utils import power
 
 __all__ = ["estimate_snr_beat_residual", "estimate_snr_hsc", "estimate_snr_hsc_far",
            "estimate_snr_isoelectric", "beat_resid_lag1_corr", "per_beat_snr_db",
-           "estimate_snr_all", "SNR_CEILING_DB"]
+           "estimate_snr_all", "SNR_CEILING_DB", "SNR_CEILING_BY_AXIS"]
 
-SNR_CEILING_DB = 22.0     # 이 값 이상이면 포화 경고
+# 추정기가 이 값 이상을 보고하면 포화로 본다.
+#
+# **이 값은 데이터축마다 다르다.** 세 추정기 모두 "beat 가 반복되고 그 잔차가
+# 잡음" 이라는 가정 위에 서 있는데, 실제 ECG 는 beat 마다 형태가 달라 그 변동이
+# 전부 잡음으로 계산된다. 그래서 잡음이 하나도 없어도 추정치가 유한하다.
+# 잡음 없는 신호에 추정기를 돌려 실측한 값이 아래다
+# (`docs/04_snr_estimator_calibration{,_d1}.md` 의 '추정기의 천장' 절):
+#
+#   축   (A) beat-resid  (B) half-sample  (C) isoelectric
+#   D0        19.6            19.8             16.8
+#   D1        11.9            12.8             15.6
+#
+# D1 이 8 dB 낮다. 22.0 은 D0 조차 넘지 못하는 값이라 경고가 사실상 뜨지
+# 않았다 — 실기록에서는 추정치가 이미 천장인데도 조용했다 (F-18).
+SNR_CEILING_BY_AXIS = {"d0": 19.0, "d1": 12.0}
+SNR_CEILING_DB = 22.0     # 하위 호환 기본값. 실데이터에는 d1 값을 넘길 것.
 LAG1_WARN = 0.15          # beat 간 잔차 상관이 이보다 크면 (A),(B) 는 낙관적
 
 
@@ -196,7 +211,8 @@ def estimate_snr_isoelectric(x: np.ndarray, fs: float,
 
 
 def estimate_snr_all(x: np.ndarray, fs: float,
-                     r_peaks: np.ndarray | None = None) -> dict[str, float]:
+                     r_peaks: np.ndarray | None = None,
+                     ceiling_db: float | None = None) -> dict[str, float]:
     """세 추정기 + 가정 위반 진단을 한 번에.
 
     해석 지침
@@ -204,8 +220,12 @@ def estimate_snr_all(x: np.ndarray, fs: float,
       - `beat_resid_lag1_corr` > 0.15  -> (A),(B) 는 낙관적. (C) 를 더 신뢰하고,
         잡음이 beat 시간척도에서 상관을 갖는다고 보고한다.
       - `snr_spread_db` 가 크다 (> 5 dB) -> 추정이 불안정. 단일 값으로 인용하지 말 것.
-      - `ceiling_warning` = 1 -> "22 dB 이상" 으로만 해석.
+      - `ceiling_warning` = 1 -> "그 값 이상" 으로만 해석. 임계값은 `ceiling_db`
+        이고, 생략하면 `SNR_CEILING_DB`(하위 호환 기본값)를 쓴다.
+        **실데이터에는 `SNR_CEILING_BY_AXIS["d1"]` 을 넘겨야 한다** — 기본값은
+        D0 를 보고 정한 것이라 실기록에서는 절대 뜨지 않는다 (F-18).
     """
+    ceil = SNR_CEILING_DB if ceiling_db is None else float(ceiling_db)
     # R-peak 검출과 beat 정렬은 비싸므로 **한 번만** 계산해 모든 추정기에 넘긴다.
     if r_peaks is None:
         r_peaks = detect_rpeaks(x, fs)
@@ -245,7 +265,8 @@ def estimate_snr_all(x: np.ndarray, fs: float,
         "artifact_beat_frac": float(frac_art),
         "beat_resid_lag1_corr": lag1,
         "n_beats": float(beats.shape[0]),
-        "ceiling_warning": float(any(v >= SNR_CEILING_DB for v in vals)),
+        "ceiling_warning": float(any(v >= ceil for v in vals)),
+        "ceiling_db": ceil,
         "correlated_noise_warning": float(
             (np.isfinite(lag1) and lag1 > LAG1_WARN)
             or (np.isfinite(b) and np.isfinite(bf) and (b - bf) > 3.0)),
