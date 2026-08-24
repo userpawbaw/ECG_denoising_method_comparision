@@ -25,3 +25,6 @@ results/
 *.ckpt
 *.parquet
 *.npz
+
+# 발표용 그림은 스크립트로 재생성한다 (results/slides/).
+# 색인(docs/93_slides.md)은 추적한다.

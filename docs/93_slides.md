@@ -1,0 +1,38 @@
+# 93. 발표용 그림 색인
+
+> 자동 생성: `python scripts/make_slides.py` (수정하지 말 것 — 스크립트를 고칠 것)
+
+보고서 그림(`results/{d0,d1}/report/`)은 **모든 방법을 빠짐없이 싣는 기록용**
+이고, 이것은 **화면에 띄워 설명하는 용도**다. 방법을 6 개로 줄이고,
+차이가 보이는 -5 dB 를 주력으로 쓰고, 잔차를 나란히 그린다.
+
+한글 폰트가 없는 환경에서는 라벨이 영문으로 자동 대체된다
+(`apt-get install -y fonts-nanum` 후 matplotlib 폰트 캐시 삭제).
+
+| 그림 | 무엇을 보여주는가 |
+|---|---|
+| [`S1_input.png`](../results/slides/S1_input.png) | **도입.** 무엇을 되살려야 하는가. D1 의 큰 아래쪽 치우침이 기저선 변동이다. |
+| [`S2_methods_d0.png`](../results/slides/S2_methods_d0.png) | D0 방법별 출력 + 잔차. **잔차 열이 핵심** — 출력만 보면 다 비슷하다. |
+| [`S2_methods_d1.png`](../results/slides/S2_methods_d1.png) | D1 같은 그림. M08 +21.8 dB vs 나머지 +17.3~17.6 dB, 잔차가 눈에 띄게 평평하다. |
+| [`S3_qrs_d0.png`](../results/slides/S3_qrs_d0.png) | D0 beat 평균 템플릿 — 잡음을 평균으로 지우고 **체계적 왜곡만** 남긴다. |
+| [`S3_qrs_d1.png`](../results/slides/S3_qrs_d1.png) | D1 같은 그림. **M01(bandpass)이 QRS 를 가장 크게 왜곡**(±0.09 mV)하고 M04(SWT)는 거의 평평하다 — 40 Hz 절단의 대가다. |
+| [`S4_noise_d0.png`](../results/slides/S4_noise_d0.png) | D0 잡음 종류별. 어느 계열이 어디에 강한가. |
+| [`S4_noise_d1.png`](../results/slides/S4_noise_d1.png) | **가장 설득력 있는 그림.** 기저선 변동은 front-end 가 다 해결하고(M_FE ≈ M04 ≈ +20.0 dB), 임펄스는 딥러닝만 해결한다(+6.4 → +20.1 dB). 임펄스 행에서 스파이크가 M_FE·M04 에 그대로 남아 있는 것이 눈으로 보인다. |
+| [`S5_crossover.png`](../results/slides/S5_crossover.png) | **핵심 슬라이드.** 딥러닝이 front-end 위에 더하는 값이 입력 SNR 에 따라 줄고, **D1 에서는 13 dB 부근에서 0 을 지난다.** 저 SNR(-5 dB)에서는 두 축이 거의 같다(+7.9 vs +7.1) — 합성이 딥러닝을 과대평가한 것이 아니라 **도움이 되는 SNR 범위**가 좁아진 것이다. |
+| [`S6_safety.png`](../results/slides/S6_safety.png) | 없는 파형을 지어내는가. **딥러닝이 두 축·두 프로브 모두에서 가장 낮다** — residual 구조(출력 = 입력 - 예측잡음)의 직접적 결과이고, "딥러닝이 파형을 지어낸다" 는 통념과 반대다. |
+
+## 색 배정 (그림마다 바뀌지 않는다)
+
+| 방법 | 색 |
+|---|---|
+| `M01` | `#2a78d6` |
+| `M04` | `#eb6834` |
+| `M08` | `#1baf7a` |
+| `M05` | `#eda100` |
+| `M_FE` | `#e87ba4` |
+
+참조는 회색 굵은 선으로 뒤에 깔고, 입력(잡음)은 진한 중성색이다.
+색은 dataviz 팔레트에서 가져와 **색각이상 분리도를 검증**했다.
+`M_FE`(magenta)와 `M04`(orange)는 정상시야 분리도가 기준 미달이라
+**겹쳐 그리지 않는다** — 패싯으로만 쓴다.
+
