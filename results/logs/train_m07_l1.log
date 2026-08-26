@@ -1,9 +1,0 @@
-[m07_l1] source=synthetic train_windows=2610 val_windows=580 model=resunet1d params=976,489 loss=L1
-ep   1  train 0.00422  val 0.00212  snr_imp  -2.20 dB  gain 1.008  67.2s
-ep   2  train 0.00156  val 0.00104  snr_imp  -0.48 dB  gain 0.991  69.9s
-ep   3  train 0.00151  val 0.00127  snr_imp  -0.35 dB  gain 0.983  70.4s
-ep   4  train 0.00137  val 0.00097  snr_imp  -0.06 dB  gain 1.001  107.9s
-ep   5  train 0.00103  val 0.00085  snr_imp  +0.76 dB  gain 0.987  69.5s
-ep   6  train 0.00084  val 0.00079  snr_imp  +0.82 dB  gain 1.009  70.0s
-ep   7  train 0.00072  val 0.00080  snr_imp  +0.56 dB  gain 1.008  68.7s
-ep   8  train 0.00081  val 0.00078  snr_imp  +0.86 dB  gain 1.023  70.0s

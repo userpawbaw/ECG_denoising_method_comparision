@@ -1,7 +1,0 @@
-[stage1] sigma=d1 mode=hard protect=False mean=12.32
-[stage2 iter0] k=(0.8, 0.2, 0.4, 0.3, 0.3) mean=12.42
-[stage2 iter1] k=(0.6, 0.2, 0.1, 0.3, 0.3) mean=12.47
-[stage2 iter2] k=(0.6, 0.2, 0.1, 0.3, 0.3) mean=12.47
-
-tune  mean=12.47  holdout mean=12.58  textbook-baseline=1.30
--> docs/05_swt_tuning_d1.md
