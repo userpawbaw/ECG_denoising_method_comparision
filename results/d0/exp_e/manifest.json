@@ -2,7 +2,7 @@
   "env": {
     "python": "3.11.15",
     "platform": "Linux-6.18.44-fc-v21-x86_64-with-glibc2.39",
-    "git": "bfcf1ae",
+    "git": "661f40e",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -40,7 +40,17 @@
       },
       "M08": {
         "ckpt": "results/{tag}/m08_l1/best.pt"
+      },
+      "M10": {
+        "ckpt": "results/{tag}/m10_l1/best.pt"
       }
     }
+  },
+  "sources": {
+    "scripts/run_safety_probe.py": "ab4059be686de7fe",
+    "ecgdn/eval/engine.py": "191230413ed4946d",
+    "ecgdn/eval/signal_metrics.py": "2eef95f349c0e83c",
+    "ecgdn/eval/morphology.py": "81f09c5b706f4b72",
+    "ecgdn/eval/rpeak.py": "7fc1e662149e64c4"
   }
 }
