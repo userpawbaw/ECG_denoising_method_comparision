@@ -24,6 +24,7 @@ dl_methods:
   M06: {ckpt: "results/{tag}/m06_l1/best.pt"}
   M07: {ckpt: "results/{tag}/m07_l1/best.pt", pre: M04}
   M08: {ckpt: "results/{tag}/m08_l1/best.pt"}
+  M10: {ckpt: "results/{tag}/m10_l1/best.pt"}
 
 eval:
   do_morph: true
