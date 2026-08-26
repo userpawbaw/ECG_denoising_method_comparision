@@ -72,13 +72,43 @@ def summarize(values: np.ndarray) -> dict[str, float]:
                 median=float(np.median(v)), q1=float(q1), q3=float(q3))
 
 
+def load_floor(axis: str, root=None) -> dict[str, float]:
+    """`results/{axis}/metric_floor/floor.csv` 의 `floor_p95` 를 읽는다.
+
+    산출물이 없으면 빈 dict 를 준다 — **없는 것과 0 은 다르다.**
+    """
+    import csv
+    from pathlib import Path as _P
+
+    base = _P(root) if root is not None else _P(__file__).resolve().parents[2]
+    f = base / "results" / axis / "metric_floor" / "floor.csv"
+    if not f.exists():
+        return {}
+    return {r["metric"]: float(r["floor_p95"]) for r in csv.DictReader(f.open())}
+
+
 def compare_methods(df, metric: str, baseline: str, *, unit: str = "record",
-                    method_col: str = "method"):
+                    method_col: str = "method", floor=None):
     """baseline 대비 각 방법의 paired 검정표.
 
     df : long-format (unit, method, metric, value)
+
+    floor : 지표 분해능. 축 이름(`"d0"`/`"d1"`) 이나 `{metric: floor_p95}` 를
+        준다. 주면 `floor_p95` · `floor_ratio`(= |Δ|/floor) · `resolvable`
+        열이 붙는다.
+
+        **`resolvable` 이 False 면 p 값과 무관하게 "구분 불가" 다.** 유의성
+        검정("이 차이가 우연인가")과 분해능("이 차이를 잴 수는 있는가")은
+        다른 질문이고 후자가 먼저다. 이 구분을 빼먹어 floor 의 0.7 배인
+        차이를 `p = 0.012` 만 보고 실을 뻔했다 (O-14, F-20).
+
+        floor 가 없는 지표(`snr_imp_scaled` 등)는 NaN 으로 남는다 —
+        **누락이 아니라 부재**다.
     """
     import pandas as pd
+
+    if isinstance(floor, str):
+        floor = load_floor(floor)
 
     sub = df[df["metric"] == metric]
     wide = sub.pivot_table(index=unit, columns=method_col, values="value", aggfunc="mean")
@@ -104,4 +134,11 @@ def compare_methods(df, metric: str, baseline: str, *, unit: str = "record",
     if not out.empty:
         out["p_holm"] = holm(out["p"].to_numpy())
         out = out.sort_values("delta_mean", ascending=False).reset_index(drop=True)
+        if floor is not None:
+            fl = floor.get(metric)
+            out["floor_p95"] = fl if fl is not None else np.nan
+            out["floor_ratio"] = (out["delta_mean"].abs() / fl
+                                  if fl else np.nan)
+            out["resolvable"] = (out["floor_ratio"] >= 1.0
+                                 if fl else True)
     return out
