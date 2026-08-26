@@ -2,7 +2,7 @@
   "env": {
     "python": "3.11.15",
     "platform": "Linux-6.18.44-fc-v21-x86_64-with-glibc2.39",
-    "git": "031d5f5",
+    "git": "5ee11bf",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -59,12 +59,41 @@
       },
       "M08": {
         "ckpt": "results/{tag}/m08_l1/best.pt"
+      },
+      "M10": {
+        "ckpt": "results/{tag}/m10_l1/best.pt"
       }
     },
     "eval": {
       "do_morph": true,
       "do_spectral": true
+    },
+    "_swt_applied": {
+      "wavelet": "sym4",
+      "level": 5,
+      "sigma_source": "d2",
+      "k": [
+        2.5,
+        2.0,
+        0.6,
+        0.4,
+        0.3
+      ],
+      "mode": "garrote",
+      "protect_qrs": true,
+      "protect_ms": 60.0,
+      "protect_rho": 0.3,
+      "threshold_approx": false
     }
+  },
+  "sources": {
+    "scripts/run_exp.py": "502d7715e68f8cba",
+    "ecgdn/data/dataset.py": "d5d0883966a22890",
+    "ecgdn/methods/frontend.py": "b764ed73a82083ba",
+    "ecgdn/eval/engine.py": "191230413ed4946d",
+    "ecgdn/eval/signal_metrics.py": "2eef95f349c0e83c",
+    "ecgdn/eval/morphology.py": "81f09c5b706f4b72",
+    "ecgdn/eval/rpeak.py": "7fc1e662149e64c4"
   },
   "n_items": 308,
   "methods": [
@@ -81,6 +110,7 @@
     "B02",
     "M06",
     "M07",
-    "M08"
+    "M08",
+    "M10"
   ]
 }
