@@ -1,0 +1,73 @@
+{
+  "env": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v21-x86_64-with-glibc2.39",
+    "git": "031d5f5",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": "0.2.13",
+    "torch": "2.13.0+cu130"
+  },
+  "config": {
+    "exp_id": "abl_loss",
+    "frontend": true,
+    "mode": "snr",
+    "data": {
+      "source": "synthetic",
+      "split": "test",
+      "seg_s": 60.0,
+      "n_seg_per_record": 2,
+      "snr_grid": [
+        0,
+        10,
+        20
+      ],
+      "conditions": [
+        "mixed"
+      ],
+      "noise_split": "test",
+      "dur_s": 300.0,
+      "n_test": 22,
+      "seed": "eval_abl"
+    },
+    "methods": [
+      "M_FE"
+    ],
+    "dl_methods": {
+      "M06-L1": {
+        "ckpt": "results/{tag}/m06_l1/best.pt"
+      },
+      "M06-L2": {
+        "ckpt": "results/{tag}/m06_l2/best.pt"
+      },
+      "M06-L3": {
+        "ckpt": "results/{tag}/m06_l3/best.pt"
+      },
+      "M08-L1": {
+        "ckpt": "results/{tag}/m08_l1/best.pt"
+      },
+      "M08-L3": {
+        "ckpt": "results/{tag}/m08_l3/best.pt"
+      },
+      "M08-L4": {
+        "ckpt": "results/{tag}/m08_l4/best.pt"
+      }
+    },
+    "eval": {
+      "do_morph": true,
+      "do_spectral": false
+    }
+  },
+  "n_items": 132,
+  "methods": [
+    "M_FE",
+    "M06-L1",
+    "M06-L2",
+    "M06-L3",
+    "M08-L1",
+    "M08-L3",
+    "M08-L4"
+  ]
+}

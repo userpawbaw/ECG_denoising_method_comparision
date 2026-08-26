@@ -1,0 +1,26 @@
+[m08_l1] source=mitdb train_windows=2880 val_windows=640 model=wavelet_unet params=993,390 loss=L1
+[resume] epoch 16 까지 완료된 상태에서 재개 (best 15: +2.789 dB)
+ep  17  train 0.00162  val 0.00154  snr_imp  +2.14 dB  gain 1.009  69.3s
+ep  18  train 0.00145  val 0.00165  snr_imp  +2.15 dB  gain 1.014  71.9s
+ep  19  train 0.00153  val 0.00164  snr_imp  +2.43 dB  gain 1.011  72.8s
+ep  20  train 0.00145  val 0.00172  snr_imp  +2.36 dB  gain 1.020  69.7s
+ep  21  train 0.00153  val 0.00198  snr_imp  +0.75 dB  gain 1.021  71.3s
+ep  22  train 0.00137  val 0.00143  snr_imp  +2.80 dB  gain 1.013  72.2s
+ep  23  train 0.00128  val 0.00145  snr_imp  +2.49 dB  gain 1.012  72.3s
+ep  24  train 0.00135  val 0.00156  snr_imp  +2.29 dB  gain 1.033  72.0s
+ep  25  train 0.00138  val 0.00175  snr_imp  +1.47 dB  gain 1.025  70.8s
+ep  26  train 0.00135  val 0.00136  snr_imp  +3.24 dB  gain 1.003  72.4s
+ep  27  train 0.00127  val 0.00158  snr_imp  +2.09 dB  gain 1.014  70.4s
+ep  28  train 0.00138  val 0.00146  snr_imp  +2.62 dB  gain 1.014  71.6s
+ep  29  train 0.00123  val 0.00147  snr_imp  +2.49 dB  gain 1.009  72.4s
+ep  30  train 0.00124  val 0.00146  snr_imp  +2.65 dB  gain 1.012  72.8s
+ep  31  train 0.00123  val 0.00153  snr_imp  +2.40 dB  gain 1.006  71.0s
+ep  32  train 0.00119  val 0.00168  snr_imp  +2.37 dB  gain 1.018  73.0s
+ep  33  train 0.00119  val 0.00149  snr_imp  +2.51 dB  gain 1.014  73.7s
+ep  34  train 0.00112  val 0.00147  snr_imp  +2.53 dB  gain 1.009  73.2s
+ep  35  train 0.00119  val 0.00145  snr_imp  +2.73 dB  gain 1.010  74.2s
+ep  36  train 0.00116  val 0.00171  snr_imp  +1.78 dB  gain 1.025  70.9s
+ep  37  train 0.00116  val 0.00156  snr_imp  +2.65 dB  gain 1.012  118.7s
+ep  38  train 0.00121  val 0.00181  snr_imp  +1.68 dB  gain 1.022  69.5s
+early stop at epoch 38 (best 26: +3.24 dB)
+best epoch 26: +3.236 dB  -> results/d1/m08_l1

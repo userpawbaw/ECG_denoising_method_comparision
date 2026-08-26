@@ -280,3 +280,67 @@ def test_ckpt_gate_refuses_while_training_runs():
     assert "def training_in_progress(" in src, \
         "게이트에 학습 진행 중 검사가 없다"
     assert ".train.lock" in src, "게이트가 학습 락을 보지 않는다"
+
+
+# --------------------------------------------------------------------------
+# 산출물이 저장소에 실제로 남아 있는가 (O-13)
+# --------------------------------------------------------------------------
+
+def _tracked() -> set[str]:
+    import subprocess
+    return set(subprocess.run(["git", "ls-files"], cwd=ROOT, check=True,
+                              capture_output=True, text=True).stdout.split())
+
+
+def test_deployment_artifacts_are_tracked_by_git():
+    """실시간 처리에 그대로 쓰이는 산출물은 저장소에 남아야 한다.
+
+    `.gitignore` 에 `results/` 한 줄이 있어서 **SWT 튜닝값과 지표 교정표가
+    저장소에 하나도 올라가지 않았다**(O-13). 컨테이너가 회수되면 탐색을
+    다시 해야 하고, 무엇보다 이 값들은 장비에 그대로 이식할 산출물이다.
+
+    `a893f2b`(`data/` 규칙이 `ecgdn/data/` 패키지를 통째로 삼킨 건)와 같은
+    원인이다 — 규칙이 의도보다 넓었고, 산출물만 봐서는 드러나지 않았다.
+    """
+    tracked = _tracked()
+    need = []
+    for tag in ("d0", "d1"):
+        need += [f"results/{tag}/tune_swt/best.json",
+                 f"results/{tag}/tune_swt/manifest.json",
+                 f"results/{tag}/metric_floor/floor.csv"]
+    missing = [p for p in need if p not in tracked and (ROOT / p).exists()]
+    assert not missing, (
+        f"디스크에 있으나 git 에 없는 배포 산출물: {missing}")
+
+
+def test_trained_checkpoints_are_tracked_with_their_provenance():
+    """체크포인트는 **출처와 함께** 추적해야 쓸모가 있다.
+
+    `best.pt` 만 있고 `manifest.json`(학습 조건·코드 해시)이 없으면
+    그 가중치가 어느 파이프라인의 산물인지 알 수 없다 (F-9).
+    """
+    tracked = _tracked()
+    bad = []
+    for p in sorted(ROOT.glob("results/d[01]/*/best.pt")):
+        rel = p.relative_to(ROOT)
+        if str(rel) not in tracked:
+            bad.append(f"{rel} (체크포인트 미추적)")
+        elif str(rel.parent / "manifest.json") not in tracked:
+            bad.append(f"{rel.parent}/manifest.json (출처 미추적)")
+    assert not bad, bad
+
+
+def test_gitignore_never_reintroduces_a_blanket_results_rule():
+    """`results/` 한 줄로 되돌리면 O-13 이 그대로 재발한다."""
+    for line in (ROOT / ".gitignore").read_text().splitlines():
+        t = line.split("#")[0].strip()
+        assert t not in ("results/", "results", "/results/", "/results"), (
+            "`results/` 통째 무시는 배포 산출물까지 지운다 — "
+            "큰 파일만 패턴으로 제외할 것 (O-13)")
+
+
+def test_resume_only_state_is_not_tracked():
+    """`last.pt` 는 재개 전용이고 182 MB 다. 이력에 쌓으면 안 된다."""
+    tracked = _tracked()
+    bad = [p for p in tracked if p.endswith("last.pt")]
+    assert not bad, f"재개 전용 파일이 추적되고 있다: {bad[:5]}"

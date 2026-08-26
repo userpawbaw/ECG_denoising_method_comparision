@@ -1,0 +1,17 @@
+{
+  "wavelet": "sym4",
+  "level": 5,
+  "sigma_source": "d1",
+  "k": [
+    0.6,
+    0.2,
+    0.1,
+    0.3,
+    0.3
+  ],
+  "mode": "hard",
+  "protect_qrs": false,
+  "protect_ms": 60.0,
+  "protect_rho": 0.3,
+  "threshold_approx": false
+}

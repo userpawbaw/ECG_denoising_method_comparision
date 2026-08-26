@@ -1,0 +1,54 @@
+[swt] d1 튜닝값 적용 -> {'wavelet': 'sym4', 'level': 5, 'sigma_source': 'd1', 'k': (0.6, 0.2, 0.1, 0.3, 0.3), 'mode': 'hard', 'protect_qrs': False, 'protect_ms': 60.0, 'protect_rho': 0.3, 'threshold_approx': False}
+[exp_b] mode=snr source=mitdb tag=d1 items=308 frontend=True methods=['M00', 'M_FE', 'M01', 'M02', 'M03', 'M04', 'M04np', 'M05f', 'M05', 'B01', 'B02', 'M06', 'M07', 'M08', 'M10']
+  10/308  121s  (eta 3603s)
+  20/308  238s  (eta 3431s)
+  30/308  362s  (eta 3351s)
+  40/308  513s  (eta 3434s)
+  50/308  638s  (eta 3294s)
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+  60/308  786s  (eta 3247s)
+  70/308  891s  (eta 3029s)
+  80/308  1019s  (eta 2903s)
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+  90/308  1129s  (eta 2735s)
+  100/308  1254s  (eta 2608s)
+  110/308  1395s  (eta 2511s)
+  120/308  1526s  (eta 2390s)
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+  130/308  1650s  (eta 2259s)
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+  140/308  1768s  (eta 2122s)
+  150/308  1887s  (eta 1988s)
+  160/308  2003s  (eta 1853s)
+  170/308  2148s  (eta 1744s)
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+  180/308  2317s  (eta 1648s)
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))

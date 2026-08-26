@@ -1,0 +1,30 @@
+[m08_l4] source=synthetic train_windows=2610 val_windows=580 model=wavelet_unet params=993,390 loss=L4
+[resume] last.pt 가 없다. 처음부터 학습한다.
+ep   1  train 0.02695  val 0.02217  snr_imp  +1.60 dB  gain 0.917  45.3s
+ep   2  train 0.01808  val 0.01689  snr_imp  +1.84 dB  gain 0.973  46.8s
+ep   3  train 0.01518  val 0.01321  snr_imp  +3.76 dB  gain 0.980  47.2s
+ep   4  train 0.01302  val 0.01203  snr_imp  +4.87 dB  gain 0.971  48.7s
+ep   5  train 0.01238  val 0.01166  snr_imp  +4.98 dB  gain 0.990  48.2s
+ep   6  train 0.01114  val 0.01111  snr_imp  +5.36 dB  gain 0.991  50.5s
+ep   7  train 0.01066  val 0.01067  snr_imp  +5.40 dB  gain 0.995  47.9s
+ep   8  train 0.01007  val 0.01018  snr_imp  +6.00 dB  gain 0.994  47.3s
+ep   9  train 0.01024  val 0.00970  snr_imp  +6.65 dB  gain 0.994  48.0s
+ep  10  train 0.00964  val 0.01027  snr_imp  +5.80 dB  gain 0.994  47.2s
+ep  11  train 0.00954  val 0.01058  snr_imp  +5.93 dB  gain 1.000  46.4s
+ep  12  train 0.00919  val 0.01028  snr_imp  +5.84 dB  gain 0.991  49.3s
+ep  13  train 0.00900  val 0.00954  snr_imp  +6.28 dB  gain 0.996  48.6s
+ep  14  train 0.00877  val 0.00910  snr_imp  +6.84 dB  gain 0.991  47.9s
+ep  15  train 0.00825  val 0.00942  snr_imp  +6.52 dB  gain 0.988  47.7s
+ep  16  train 0.00857  val 0.00984  snr_imp  +5.94 dB  gain 1.000  47.1s
+ep  17  train 0.00849  val 0.01012  snr_imp  +5.79 dB  gain 0.998  45.8s
+ep  18  train 0.00817  val 0.01013  snr_imp  +5.69 dB  gain 1.006  49.0s
+ep  19  train 0.00784  val 0.01139  snr_imp  +4.88 dB  gain 1.011  46.9s
+ep  20  train 0.00797  val 0.01040  snr_imp  +5.43 dB  gain 1.003  48.1s
+ep  21  train 0.00814  val 0.01103  snr_imp  +5.15 dB  gain 1.005  48.1s
+ep  22  train 0.00803  val 0.01133  snr_imp  +4.80 dB  gain 1.004  48.3s
+ep  23  train 0.00741  val 0.01189  snr_imp  +4.30 dB  gain 1.015  48.9s
+ep  24  train 0.00748  val 0.01128  snr_imp  +4.52 dB  gain 1.012  47.1s
+ep  25  train 0.00727  val 0.01195  snr_imp  +4.26 dB  gain 1.013  47.5s
+ep  26  train 0.00749  val 0.01082  snr_imp  +4.86 dB  gain 1.004  47.2s
+early stop at epoch 26 (best 14: +6.84 dB)
+best epoch 14: +6.843 dB  -> results/d0/m08_l4

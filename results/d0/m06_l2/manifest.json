@@ -1,0 +1,37 @@
+{
+  "env": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v21-x86_64-with-glibc2.39",
+    "git": "bdc7b90",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": "0.2.13",
+    "torch": "2.13.0+cu130"
+  },
+  "config": {
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 64,
+    "epochs": 60,
+    "warmup_frac": 0.05,
+    "patience": 12,
+    "grad_clip": 1.0,
+    "seeds": [
+      0,
+      1,
+      2
+    ]
+  },
+  "model": "resunet1d",
+  "n_params": 976489,
+  "exp_id": "m06_l2",
+  "source": "synthetic",
+  "source_requested": "synthetic",
+  "tag": "d0",
+  "loss": "L2",
+  "pre_denoise": null,
+  "frontend": true,
+  "model_kwargs": {}
+}

@@ -1,0 +1,6 @@
+[m06_l1] source=mitdb train_windows=2880 val_windows=640 model=resunet1d params=976,489 loss=L1
+ep   1  train 0.15702  val 0.04662  snr_imp  +0.09 dB  gain 0.906  48.7s
+ep   2  train 0.09193  val 0.04087  snr_imp  -0.60 dB  gain 0.938  48.8s
+ep   3  train 0.06267  val 0.07506  snr_imp  -0.20 dB  gain 0.996  48.3s
+ep   4  train 0.04297  val 0.05381  snr_imp  +0.27 dB  gain 0.988  47.2s
+ep   5  train 0.03276  val 0.04109  snr_imp  +0.95 dB  gain 0.966  48.6s

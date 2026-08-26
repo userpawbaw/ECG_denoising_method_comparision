@@ -1,0 +1,44 @@
+{
+  "env": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v21-x86_64-with-glibc2.39",
+    "git": "1416c86",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": "0.2.13",
+    "torch": "2.13.0+cu130"
+  },
+  "config": {
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 64,
+    "epochs": 60,
+    "warmup_frac": 0.05,
+    "patience": 12,
+    "grad_clip": 1.0,
+    "seeds": [
+      0,
+      1,
+      2
+    ]
+  },
+  "sources": {
+    "ecgdn/train.py": "008770ec5ba95907",
+    "ecgdn/data/dataset.py": "d5d0883966a22890",
+    "ecgdn/data/sources.py": "c9d6cc9fd7ed3966",
+    "ecgdn/methods/frontend.py": "b764ed73a82083ba",
+    "ecgdn/models/losses.py": "6880f5c2dd215078"
+  },
+  "model": "dilated_resnet1d",
+  "n_params": 979926,
+  "exp_id": "m10_l1",
+  "source": "synthetic",
+  "source_requested": "synthetic",
+  "tag": "d0",
+  "loss": "L1",
+  "pre_denoise": null,
+  "frontend": true,
+  "model_kwargs": {}
+}

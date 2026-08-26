@@ -1,0 +1,38 @@
+[m06_l2] source=mitdb train_windows=2880 val_windows=640 model=resunet1d params=976,489 loss=L2
+[resume] last.pt 가 없다. 처음부터 학습한다.
+ep   1  train 0.02984  val 0.02059  snr_imp  -0.34 dB  gain 0.960  64.0s
+ep   2  train 0.01796  val 0.01648  snr_imp  +0.75 dB  gain 0.987  64.3s
+ep   3  train 0.01497  val 0.01662  snr_imp  +2.36 dB  gain 0.947  64.8s
+ep   4  train 0.01610  val 0.01390  snr_imp  +2.40 dB  gain 0.995  65.5s
+ep   5  train 0.01430  val 0.01439  snr_imp  +1.78 dB  gain 1.009  66.1s
+ep   6  train 0.01288  val 0.01269  snr_imp  +3.05 dB  gain 0.992  65.0s
+ep   7  train 0.01269  val 0.01238  snr_imp  +3.18 dB  gain 0.992  67.3s
+ep   8  train 0.01187  val 0.01221  snr_imp  +3.33 dB  gain 0.989  68.3s
+ep   9  train 0.01221  val 0.01236  snr_imp  +3.43 dB  gain 0.995  65.3s
+ep  10  train 0.01186  val 0.01272  snr_imp  +2.99 dB  gain 1.005  66.1s
+ep  11  train 0.01180  val 0.01493  snr_imp  +1.91 dB  gain 1.028  64.9s
+ep  12  train 0.01218  val 0.01314  snr_imp  +2.45 dB  gain 1.021  63.9s
+ep  13  train 0.01153  val 0.01236  snr_imp  +3.38 dB  gain 0.989  63.7s
+ep  14  train 0.01110  val 0.01188  snr_imp  +3.66 dB  gain 1.014  65.9s
+ep  15  train 0.01112  val 0.01376  snr_imp  +2.04 dB  gain 1.016  65.8s
+ep  16  train 0.01130  val 0.01256  snr_imp  +2.90 dB  gain 1.002  63.5s
+ep  17  train 0.01130  val 0.01165  snr_imp  +3.78 dB  gain 0.993  63.4s
+ep  18  train 0.01070  val 0.01225  snr_imp  +3.27 dB  gain 1.006  62.8s
+ep  19  train 0.01064  val 0.01180  snr_imp  +3.19 dB  gain 1.005  64.3s
+ep  20  train 0.01059  val 0.01255  snr_imp  +2.93 dB  gain 1.005  64.8s
+ep  21  train 0.01049  val 0.01282  snr_imp  +2.51 dB  gain 1.009  66.2s
+ep  22  train 0.01025  val 0.01152  snr_imp  +3.92 dB  gain 1.006  65.9s
+ep  23  train 0.00981  val 0.01193  snr_imp  +3.59 dB  gain 1.004  65.3s
+ep  24  train 0.00998  val 0.01196  snr_imp  +3.06 dB  gain 1.009  64.3s
+ep  25  train 0.01007  val 0.01167  snr_imp  +3.20 dB  gain 1.002  63.3s
+ep  26  train 0.01010  val 0.01180  snr_imp  +3.50 dB  gain 1.008  65.3s
+ep  27  train 0.00958  val 0.01160  snr_imp  +3.54 dB  gain 1.002  65.0s
+ep  28  train 0.01004  val 0.01169  snr_imp  +3.61 dB  gain 1.005  64.3s
+ep  29  train 0.00941  val 0.01296  snr_imp  +2.49 dB  gain 1.013  64.3s
+ep  30  train 0.00953  val 0.01169  snr_imp  +3.22 dB  gain 1.005  63.6s
+ep  31  train 0.00929  val 0.01297  snr_imp  +2.54 dB  gain 1.010  63.2s
+ep  32  train 0.00936  val 0.01285  snr_imp  +2.23 dB  gain 1.012  64.5s
+ep  33  train 0.00928  val 0.01237  snr_imp  +2.94 dB  gain 1.004  63.2s
+ep  34  train 0.00911  val 0.01249  snr_imp  +2.68 dB  gain 1.001  64.2s
+early stop at epoch 34 (best 22: +3.92 dB)
+best epoch 22: +3.921 dB  -> results/d1/m06_l2

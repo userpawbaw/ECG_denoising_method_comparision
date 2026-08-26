@@ -1,0 +1,4 @@
+[m06_l1] source=mitdb train_windows=2880 val_windows=640 model=resunet1d params=976,489 loss=L1
+[resume] epoch 46 까지 완료된 상태에서 재개 (best 34: +3.437 dB)
+이미 early stopping 조건을 만족한다 (epoch 46, best 34, patience 12). 재학습하지 않는다.
+best epoch 34: +3.437 dB  -> results/d1/m06_l1

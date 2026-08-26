@@ -1,0 +1,35 @@
+[swt] d1 튜닝값 적용 -> {'wavelet': 'sym4', 'level': 5, 'sigma_source': 'd1', 'k': (0.6, 0.2, 0.1, 0.3, 0.3), 'mode': 'hard', 'protect_qrs': False, 'protect_ms': 60.0, 'protect_rho': 0.3, 'threshold_approx': False}
+[abl_loss] mode=snr source=mitdb tag=d1 items=132 frontend=True methods=['M_FE', 'M06-L1', 'M06-L2', 'M06-L3', 'M08-L1', 'M08-L3', 'M08-L4']
+  10/132  57s  (eta 697s)
+  20/132  107s  (eta 599s)
+  30/132  151s  (eta 513s)
+  40/132  193s  (eta 445s)
+  50/132  241s  (eta 396s)
+  60/132  290s  (eta 348s)
+  70/132  343s  (eta 304s)
+  80/132  399s  (eta 259s)
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+/home/user/ECG_denoising_method_comparision/ecgdn/eval/morphology.py:319: RuntimeWarning: All-NaN slice encountered
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+  90/132  447s  (eta 209s)
+  100/132  501s  (eta 160s)
+  110/132  554s  (eta 111s)
+  120/132  600s  (eta 60s)
+  130/132  654s  (eta 10s)
+  132/132  665s  (eta 0s)
+
+rows=37884  -> results/d1/abl_loss/metrics.parquet
+
+=== snr_imp_scaled (mean) ===
+snr_in_target   0.0    10.0   20.0
+method                            
+M06-L1         16.20  12.53  11.70
+M06-L2         16.00  13.33  13.76
+M06-L3         16.06  13.33  13.64
+M08-L1         15.74  13.00  12.95
+M08-L3         16.28  13.78  14.73
+M08-L4         15.34  13.91  15.42
+M_FE            8.98  10.08  16.54

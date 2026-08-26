@@ -1,0 +1,17 @@
+[m06_l1] source=synthetic train_windows=2610 val_windows=580 model=resunet1d params=976,489 loss=L1
+[resume] results/d0/m06_l1/last.pt 에 optimizer 상태가 없다 (구버전 체크포인트). 가중치만 복원하므로 모멘텀과 LR 위치는 초기화된다.
+[resume] epoch 24 까지 완료된 상태에서 재개 (best 24: +6.214 dB)
+ep  25  train 0.00041  val 0.00068  snr_imp  +4.45 dB  gain 1.017  40.1s
+ep  26  train 0.00039  val 0.00064  snr_imp  +4.79 dB  gain 1.017  42.3s
+ep  27  train 0.00045  val 0.00082  snr_imp  +3.58 dB  gain 1.015  42.0s
+ep  28  train 0.00050  val 0.00080  snr_imp  +3.90 dB  gain 1.001  43.3s
+ep  29  train 0.00050  val 0.00073  snr_imp  +4.33 dB  gain 1.015  42.3s
+ep  30  train 0.00042  val 0.00062  snr_imp  +4.96 dB  gain 1.005  43.0s
+ep  31  train 0.00037  val 0.00066  snr_imp  +4.76 dB  gain 1.020  42.2s
+ep  32  train 0.00039  val 0.00074  snr_imp  +3.62 dB  gain 1.008  42.9s
+ep  33  train 0.00039  val 0.00080  snr_imp  +3.29 dB  gain 1.023  43.2s
+ep  34  train 0.00040  val 0.00067  snr_imp  +4.41 dB  gain 1.008  44.0s
+ep  35  train 0.00041  val 0.00092  snr_imp  +3.10 dB  gain 1.027  43.3s
+ep  36  train 0.00043  val 0.00066  snr_imp  +4.43 dB  gain 1.022  42.8s
+early stop at epoch 36 (best 24: +6.21 dB)
+best epoch 24: +6.214 dB  -> results/d0/m06_l1

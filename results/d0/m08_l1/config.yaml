@@ -1,0 +1,28 @@
+exp_id: m08_l1
+seed: 0
+model:
+  name: wavelet_unet
+  kwargs: {}
+loss: L1
+data:
+  source: synthetic
+  dur_s: 300.0
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 1024
+  hop: 512
+  snr_range:
+  - -5.0
+  - 20.0
+  max_per_record: 160
+  nstdb_root: data/raw/nstdb
+  frontend: true
+train:
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  epochs: 60
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0

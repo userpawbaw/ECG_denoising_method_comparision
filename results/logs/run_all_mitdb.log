@@ -1,0 +1,99 @@
+[ckpt-gate] source=mitdb tag=d1 필요 7개 / 존재 7개
+[ckpt-gate] 통과.
+=============== exp_c  (source=mitdb) ===============
+
+rows=28952  -> results/d1/exp_c/metrics.parquet
+
+=== snr_out_strict (mean) ===
+snr_in_target     inf
+method               
+B01             71.57
+B02             50.41
+M00             10.35
+M01             27.79
+M02             19.62
+M03             21.50
+M04             40.14
+M04np           40.14
+M05             18.92
+M05f            17.76
+M06             22.22
+M07             20.07
+M08             23.51
+M_FE           147.29
+=============== exp_a  (source=mitdb) ===============
+
+rows=173712  -> results/d1/exp_a/metrics.parquet
+
+=== snr_imp_scaled (mean) ===
+snr_in_target  -5.0    0.0    5.0    10.0   15.0   20.0
+method                                                 
+B01            18.36  17.01  16.31  16.65  18.24  21.03
+B02            19.86  17.76  16.40  16.18  17.34  19.67
+M00             6.90   3.73   1.92   1.15   0.87   0.78
+M01            14.25  12.51  11.78  11.99  13.07  14.59
+M02            13.65  11.82  10.63   9.90   9.56   9.47
+M03            12.22  10.65   9.82   9.59   9.83  10.33
+M04            13.12  11.49  11.06  11.92  14.04  17.08
+M04np          13.12  11.49  11.06  11.92  14.04  17.08
+M05            14.49  12.76  11.31   9.89   9.05   8.68
+M05f           12.72  10.98   9.65   8.44   7.62   7.28
+M06            18.97  16.74  14.33  12.61  11.83  11.72
+M07            17.90  15.70  13.33  11.50  10.48  10.04
+M08            18.33  16.42  14.45  13.07  12.71  12.98
+M_FE           11.26   9.77   9.64  10.94  13.62  17.43
+=============== exp_b  (source=mitdb) ===============
+
+rows=202664  -> results/d1/exp_b/metrics.parquet
+
+=== snr_imp_scaled (mean) ===
+snr_in_target   10.0
+method              
+B01            17.22
+B02            16.33
+M00             1.16
+M01            12.10
+M02             9.72
+M03             9.29
+M04            12.56
+M04np          12.56
+M05             9.47
+M05f            8.06
+M06            13.11
+M07            11.93
+M08            13.74
+M_FE           11.47
+=============== abl_loss  (source=mitdb) ===============
+  out["qrs_dur_hat_ms"] = float(np.nanmedian(d_hat[:n]))
+  90/132  447s  (eta 209s)
+  100/132  501s  (eta 160s)
+  110/132  554s  (eta 111s)
+  120/132  600s  (eta 60s)
+  130/132  654s  (eta 10s)
+  132/132  665s  (eta 0s)
+
+rows=37884  -> results/d1/abl_loss/metrics.parquet
+
+=== snr_imp_scaled (mean) ===
+snr_in_target   0.0    10.0   20.0
+method                            
+M06-L1         16.20  12.53  11.70
+M06-L2         16.00  13.33  13.76
+M06-L3         16.06  13.33  13.64
+M08-L1         15.74  13.00  12.95
+M08-L3         16.28  13.78  14.73
+M08-L4         15.34  13.91  15.42
+M_FE            8.98  10.08  16.54
+=============== loss ablation 표 (STEP 19 DoD) ===============
+[ok] results/d1/ablation_loss.csv  (63 행)
+[ok] docs/10_loss_ablation_d1.md
+=============== exp_e (safety probe) ===============
+       M06       15
+       M07       15
+       M08       15
+       M_FE      15
+-> docs/07_safety_probe_d1.md
+=============== report ===============
+-> docs/90_results_d1.md
+-> results/d1/report
+ALL EXPERIMENTS DONE

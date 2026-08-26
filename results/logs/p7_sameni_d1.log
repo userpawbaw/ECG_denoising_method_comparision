@@ -1,0 +1,10 @@
+==============================================================================
+[PASS] C1   위상 0-crossing 이 R-peak 와 일치            median |Δ| = 0.00 ms (≤ 10 ms), zero-crossing 105 개 / R-peak 105 개
+[PASS] C2   front-end HPF 를 EKF 앞단에 적용             baseline wander 포함 조건: FE-ON +8.51 dB vs FE-OFF +3.03 dB (차이 +5.48 dB)
+[PASS] C3   phase-averaged template 에 Gaussian 적합  R² = 0.9888 (> 0.98), 커널 7개
+[PASS] C4   측정잡음 R 추정                              추정/참값 = -2.86 dB (|·| ≤ 3 dB)
+[PASS] C5   EKS(평활) 가 EKF(전방) 보다 우수                EKF +10.83 dB → EKS +11.23 dB (차이 +0.41 dB)
+[PASS] C6   진폭 정규화/역정규화                            gain_bias = 0.9739 (0.9 ~ 1.1)
+[FAIL] DoD  참 파라미터 + EKS, 입력 5 dB 에서 개선 ≥ 8 dB     +5.91 dB
+==============================================================================
+6/7 passed  ->  docs/06_sameni_diagnosis_d1.md
