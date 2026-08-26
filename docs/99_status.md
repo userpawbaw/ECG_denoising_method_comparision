@@ -422,7 +422,7 @@ ablation 에 들어가야 하고(F-9), **TEST 를 보고 고르면 사후 선택
 ```bash
 # 1) 실험이 아직 도는가
 pgrep -fa run_all_experiments || echo "종료됨"
-tail -3 results/logs/run_synthetic_exp_*.log
+tail -3 results/logs/run_synthetic_*.log
 
 # 2) 죽었으면 재개 (게이트가 조건을 먼저 확인한다)
 bash scripts/run_all_experiments.sh synthetic
