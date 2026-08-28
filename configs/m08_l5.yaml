@@ -1,0 +1,31 @@
+exp_id: m08_l5
+seed: 0
+
+model:
+  name: wavelet_unet
+  kwargs: {}
+
+loss: L5
+
+data:
+  source: auto            # auto = MIT-BIH 가 있으면 그것, 없으면 합성
+  dur_s: 300.0            # 합성 소스일 때 기록 길이
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 1024
+  hop: 512
+  snr_range: [-5.0, 20.0]
+  max_per_record: 160     # 에폭당 window 수 상한 (계산량 조절)
+  nstdb_root: data/raw/nstdb
+  frontend: true          # 공통 front-end 를 딥러닝에도 동일 적용
+                          # (끄면 DL 만 기저선 제거를 처음부터 학습해야 해 불공정)
+
+train:
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  batch_size: 64
+  epochs: 60
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0

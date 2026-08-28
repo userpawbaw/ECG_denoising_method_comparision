@@ -100,6 +100,23 @@ class Trainer:
             return self.model(y, return_bands=True)
         return self.model(y), None, None
 
+    def _loss_extra(self, y, x) -> dict:
+        """손실이 요구하는 추가 입력만 만든다.
+
+        `L5` 는 잡음 입력 `y` 가 필요하고, `L6` 는 **clean 을 한 번 더 통과시킨
+        출력**이 필요하다. 손실 쪽 플래그를 보고 필요한 것만 계산하므로 L1~L4
+        에는 비용이 붙지 않는다.
+        """
+        extra: dict = {}
+        if getattr(self.loss_fn, "needs_noisy_input", False):
+            extra["y"] = y
+        if getattr(self.loss_fn, "needs_clean_pass", False):
+            # 배치의 앞 일부만 쓴다 (배치는 이미 섞여 있다). 전부 쓰면 forward 가
+            # 2 배가 된다.
+            k = max(1, int(round(x.shape[0] * float(self.loss_fn.clean_frac))))
+            extra["xhat_clean"] = self._forward(x[:k])[0]
+        return extra
+
     def _lr_at(self, step: int, total: int) -> float:
         warm = max(1, int(self.cfg.warmup_frac * total))
         if step < warm:
@@ -115,7 +132,8 @@ class Trainer:
             for y, x, meta in self._loader(ds, shuffle=False):
                 y, x = y.to(self.device), x.to(self.device)
                 xhat, s, s_hat = self._forward(y)
-                _, parts = self.loss_fn(xhat, x, s_hat, s)
+                _, parts = self.loss_fn(xhat, x, s_hat, s,
+                                        **self._loss_extra(y, x))
                 m = snr_metrics_torch(x[:, 0], y[:, 0], xhat[:, 0])
                 for k, v in m.items():
                     acc.setdefault(k, []).extend(v.detach().cpu().numpy().tolist())
@@ -150,6 +168,14 @@ class Trainer:
                 self.train_ds.set_epoch(ep)
             self.model.train()
             t0, tl, nb = time.perf_counter(), 0.0, 0
+            if len(train_loader) == 0:
+                # drop_last=True 라 window 수가 batch_size 보다 적으면 배치가
+                # 0 개가 된다. 그러면 학습이 **에러 없이 건너뛰어지고** 초기
+                # 가중치가 best.pt 로 저장된다 — 표에는 정상적으로 행이 실린다.
+                raise RuntimeError(
+                    f"학습 배치가 0 개다 (window {len(self.train_ds)}개 < "
+                    f"batch_size {self.cfg.batch_size}). max_per_record 나 "
+                    f"n_train 을 늘리거나 batch_size 를 줄여야 한다.")
             for y, x, meta in train_loader:
                 lr = self._lr_at(step, total_steps)
                 for g in self.opt.param_groups:
@@ -159,7 +185,8 @@ class Trainer:
                 with torch.amp.autocast(self.device.type,
                                         enabled=(self.device.type == "cuda")):
                     xhat, s, s_hat = self._forward(y)
-                    loss, _ = self.loss_fn(xhat, x, s_hat, s)
+                    loss, _ = self.loss_fn(xhat, x, s_hat, s,
+                                           **self._loss_extra(y, x))
                 self.scaler.scale(loss).backward()
                 self.scaler.unscale_(self.opt)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.grad_clip)
