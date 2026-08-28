@@ -366,12 +366,43 @@ rmse 가 20 dB 의 **12 배**(`docs/92_axis_gap.md`). 모델이 어려운 구간
 ablation 에 들어가야 하고(F-9), **TEST 를 보고 고르면 사후 선택이다**(5.8.7).
 손실당 학습 2회(모델 1종 × 2축) ≈ 2 시간 + 실험 재실행.
 
-### 8.2 미결 판단 3건
+### 8.2 미결 판단 — 2 건 정리됨
 
-1. **git LFS 로 옮길 것인가.** 전면 재학습마다 `best.pt` 61 MB 가 이력에
-   영구히 쌓인다(O-13). 지금 저장소 약 200 MB. 손실 실험으로 몇 번 더
-   재학습하면 무거워진다. **사용자 판단 대기.**
-2. **L5 / L6 을 진행할 것인가.** 8.1 참조. **사용자 판단 대기.**
+1. ~~git LFS 로 옮길 것인가.~~ → **옮기지 않는다 (D-12).** 실측하니 이력에
+   낡은 판으로 낭비되는 용량이 **0.0 MB** 라 LFS 의 이득 자체가 없다.
+   (이 칸에 적었던 "재학습마다 `best.pt` 61 MB" 는 **틀렸다** — 61 MB 는
+   체크포인트 16 개의 합계고, 개당 3.8 MB 다.)
+2. ~~L5 / L6 을 진행할 것인가.~~ → **진행 중.** 8.1 의 제안을 구현하면서
+   L5 의 설계를 실측으로 세 번 갈아엎었다. 커밋 `b8d3816` 참조.
 3. **`M09`(CNN+Transformer)는 구현만 되고 학습되지 않았다.** "긴 문맥의
    효용" 슬롯인데, M06 의 수용영역이 이미 window 를 덮으므로(887/1024)
-   그 질문의 답은 이미 거의 나와 있다. **낮은 우선순위.**
+   그 질문의 답은 이미 거의 나와 있다. **낮은 우선순위 — 유일하게 남은 미결.**
+
+### 8.3 재개 절차 (L5/L6 파이프라인)
+
+```bash
+# 1) 아직 도는가
+pgrep -fa 'run_all_training|run_all_experiments' || echo "종료됨"
+tail -5 results/logs/l56_driver.log
+
+# 2) 죽었으면 그대로 다시 (학습은 --resume 이 기본, 끝난 것은 건너뛴다)
+nohup bash -c '
+  bash scripts/run_all_training.sh synthetic m06_l5 m06_l6 m08_l5 m08_l6 &&
+  bash scripts/run_all_training.sh mitdb     m06_l5 m06_l6 m08_l5 m08_l6 &&
+  bash scripts/run_all_experiments.sh mitdb &&
+  bash scripts/run_all_experiments.sh synthetic
+' > results/logs/l56_driver.log 2>&1 &
+
+# 3) 끝났으면
+python3 scripts/check_ckpts.py          # 12/12 이어야 한다
+python3 scripts/analyze_axis_gap.py
+```
+
+**끝난 뒤 할 일**
+
+- `10_loss_ablation_d{0,1}.md` 재생성, `91_report.md` 5.8.7 에 L5/L6 추가.
+- **판정은 TEST 를 보고 고르는 것이 아니다**(5.8.7 · F-9). L5/L6 은 ablation
+  표에 실을 뿐이고, 주 실험의 손실을 바꾸려면 사전 고정 후 재학습이다.
+- L5 설계를 세 번 갈아엎은 실측 근거는 `ecgdn/models/losses.py` 독스트링과
+  커밋 `b8d3816` 에 있다. 결과가 나오면 F 로 승격할지 판단한다.
+- 이 8절을 지운다 (M09 만 남으면 그때).
