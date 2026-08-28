@@ -110,6 +110,116 @@ def check_cited_numbers() -> list[str]:
     return bad
 
 
+
+# ---------------------------------------------------------------- 누락 검사
+#
+# 위의 검사들은 전부 **존재하는 기록이 잘 쓰였는가** 를 본다. 그것만으로는
+# 기록이 **아예 없는** 경우를 잡을 수 없고, 실제로 그렇게 빠졌다
+# (L5·L6 설계 근거가 D/F/보고서 어디에도 0 건이었다 — 19_record_keeping.md 5절).
+#
+# 아래 검사들은 **코드·산출물에서 의무를 유도한다.** 대장(ledger)을 따로 두면
+# 대장에 적는 것을 잊는 같은 실패가 생기므로, 잊을 수 없는 것(레지스트리,
+# preset 목록)에서 뽑는다.
+
+# 보고서 6장 요약을 면제하는 F 와 그 이유. **빈 면제는 두지 않는다** —
+# 이유를 적게 해서 "귀찮아서 면제" 를 막는다.
+F_SUMMARY_EXEMPT = {
+    "F-7": "4장 '(2) SNR sweep에서 잡음 실현을 고정' 에 설계 규칙으로 실려 있다"
+           " — 틀렸다가 고친 이야기가 아니라 방법 규약이라 6장이 아니다",
+}
+
+
+def check_design_choices_have_a_decision() -> list[str]:
+    """모델 레지스트리와 손실 preset 은 전부 D 나 설계 문서에 이름이 있어야 한다.
+
+    새 모델·새 손실을 코드에 넣는 것은 **설계 결정**이다. 그런데 그 결정이
+    실험 결과와 함께 기록되는 습관이 있어서, 결과가 늦으면 기록도 늦고
+    **기각한 후보는 결과가 없으므로 영영 안 실린다.**
+    """
+    bad = []
+    dec = (ROOT / "docs" / "21_decisions.md").read_text()
+    des = (ROOT / "docs" / "01_design.md").read_text()
+    hay = dec + des
+
+    try:
+        sys.path.insert(0, str(ROOT))
+        from ecgdn.models import MODELS
+        from ecgdn.models.losses import LOSS_NAMES, _PRESETS
+    except Exception as e:                      # torch 없는 환경
+        print(f"  (건너뜀: {e})")
+        return []
+
+    for key, ctor in MODELS.items():
+        name = getattr(ctor, "__name__", "")
+        if key not in hay and name not in hay:
+            bad.append(f"모델 '{key}' ({name}): D 기록도 01_design 도 언급하지 않는다")
+    for name in LOSS_NAMES:
+        # 'L1' 같은 짧은 이름은 오탐이 나기 쉬우므로 백틱 표기까지 본다
+        if name not in hay and f"`{name}`" not in hay:
+            bad.append(f"손실 '{name}': D 기록도 01_design 도 언급하지 않는다")
+    _ = _PRESETS
+    return bad
+
+
+def check_findings_reach_the_report() -> list[str]:
+    """모든 F 는 보고서 6장에 요약이 있거나, 이유를 적은 면제 목록에 있어야 한다."""
+    bad = []
+    fnd = (ROOT / "docs" / "20_findings.md").read_text()
+    rep = (ROOT / "docs" / "91_report.md").read_text()
+    for fid in re.findall(r"\n## (F-\d+)\.", fnd):
+        if re.search(rf"\n## {fid}\.", rep):
+            continue
+        if fid in F_SUMMARY_EXEMPT:
+            continue
+        bad.append(f"{fid}: 보고서 6장에 요약이 없고 면제 사유도 없다")
+    for fid in F_SUMMARY_EXEMPT:
+        if not re.search(rf"\n## {fid}\.", fnd):
+            bad.append(f"{fid}: 면제 목록에 있는데 F 기록이 없다 (오래된 면제)")
+    return bad
+
+
+def check_handoff_sections_name_a_destination() -> list[str]:
+    """인수인계 절의 각 소절은 **영구 기록의 목적지**를 적어야 한다.
+
+    `99_status.md` 의 인수인계 절은 "여기 적힌 작업이 끝나면 지운다" 는
+    임시 영역이다. 그런데 지울 때 **그 안에만 있던 내용이 같이 사라진다.**
+    실제로 L5/L6 의 기각 후보 표가 이 절에만 있었다.
+
+    그래서 각 소절이 `-> D-13` / `-> F-21` / `-> 5.8.8` 처럼 목적지를 적게
+    하고, 적힌 목적지가 실제로 존재하는지 확인한다. 아직 못 정했으면
+    `[미정]` 을 적는다 — **빈칸과 '미정' 은 다르다.**
+    """
+    bad = []
+    p = ROOT / "docs" / "99_status.md"
+    if not p.exists():
+        return []
+    text = p.read_text()
+    m = re.search(r"\n## \d+\. 세션 인수인계[^\n]*\n(.*)\Z", text, re.S)
+    if not m:
+        return []                                # 인수인계 절이 없으면 검사 대상 없음
+    body = m.group(1)
+    dec = (ROOT / "docs" / "21_decisions.md").read_text()
+    fnd = (ROOT / "docs" / "20_findings.md").read_text()
+    rep = (ROOT / "docs" / "91_report.md").read_text()
+    for head, sub in re.findall(r"\n### ([^\n]+)\n(.*?)(?=\n### |\Z)", body, re.S):
+        if "[미정]" in sub:
+            continue
+        dests = re.findall(r"\*\*(D-\d+|F-\d+|O-\d+)\*\*|\*\*(\d+\.\d+(?:\.\d+)?)\*\*", sub)
+        flat = [a or b for a, b in dests]
+        if not flat:
+            bad.append(f"인수인계 '{head[:40]}': 목적지 표기가 없다 "
+                       f"(-> **D-n** / **F-n** / **5.8.8** 또는 [미정])")
+            continue
+        for d in flat:
+            if d.startswith("D-") and f"\n## {d}." not in dec:
+                bad.append(f"인수인계 '{head[:30]}' 가 가리키는 {d} 이 없다")
+            elif d.startswith("F-") and f"\n## {d}." not in fnd:
+                bad.append(f"인수인계 '{head[:30]}' 가 가리키는 {d} 이 없다")
+            elif d[0].isdigit() and f"{d} " not in rep:
+                bad.append(f"인수인계 '{head[:30]}' 가 가리키는 보고서 {d} 절이 없다")
+    return bad
+
+
 def main() -> int:
     d = ROOT / "docs"
     problems: list[str] = []
@@ -122,6 +232,30 @@ def main() -> int:
         for e in ev:
             print("  ✗", e)
     problems += ev
+
+    print("\n[누락] 설계 결정이 D 기록에 있는가")
+    dc = check_design_choices_have_a_decision()
+    for b in dc:
+        print("  ✗", b)
+    if not dc:
+        print("  모든 모델·손실이 D 또는 01_design 에 있다")
+    problems += dc
+
+    print("\n[누락] F 가 보고서에 닿는가")
+    fr = check_findings_reach_the_report()
+    for b in fr:
+        print("  ✗", b)
+    if not fr:
+        print(f"  전부 도달 (면제 {len(F_SUMMARY_EXEMPT)}건, 사유 기재됨)")
+    problems += fr
+
+    print("\n[누락] 인수인계 절이 영구 목적지를 적었는가")
+    hs = check_handoff_sections_name_a_destination()
+    for b in hs:
+        print("  ✗", b)
+    if not hs:
+        print("  전부 목적지 명시 (또는 인수인계 절 없음)")
+    problems += hs
 
     num = check_cited_numbers()
     print("\n[수치 대조] 문서 인용 vs 산출물")

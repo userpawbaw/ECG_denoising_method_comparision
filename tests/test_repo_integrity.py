@@ -224,6 +224,60 @@ def test_record_keeping_convention_is_followed():
 
 
 
+def test_record_checker_still_detects_missing_records():
+    """누락 검사 3종이 살아 있고 **실제로 잡는지** 확인한다.
+
+    검사를 만들어 두고 나중에 지워도 스위트는 초록으로 남는다 — 그것이
+    이 프로젝트가 반복해서 겪은 형태다. 그래서 존재만 보지 않고 **가짜
+    누락을 넣어 잡히는지**까지 본다.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_records", ROOT / "scripts" / "check_records.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    for fn in ("check_design_choices_have_a_decision",
+               "check_findings_reach_the_report",
+               "check_handoff_sections_name_a_destination"):
+        assert hasattr(mod, fn), f"누락 검사 {fn} 이 없어졌다"
+
+    # main 이 실제로 호출하는지 (정의만 하고 안 부르면 무의미)
+    src = (ROOT / "scripts" / "check_records.py").read_text()
+    main_body = src[src.index("def main("):]
+    for fn in ("check_design_choices_have_a_decision",
+               "check_findings_reach_the_report",
+               "check_handoff_sections_name_a_destination"):
+        assert fn in main_body, f"{fn} 이 정의만 되고 main 에서 호출되지 않는다"
+
+    # 가짜 모델을 끼워 넣으면 잡아야 한다
+    try:
+        from ecgdn.models import MODELS
+    except Exception:
+        pytest.skip("torch 없음")
+    sentinel = "zzz_model_with_no_decision_record"
+    MODELS[sentinel] = lambda **kw: None
+    try:
+        bad = mod.check_design_choices_have_a_decision()
+        assert any(sentinel in b for b in bad), \
+            f"D 기록 없는 모델을 잡지 못했다: {bad}"
+    finally:
+        MODELS.pop(sentinel, None)
+
+
+def test_report_summary_exemptions_carry_a_reason():
+    """면제는 이유와 함께여야 한다. 빈 면제는 '귀찮아서 뺐다' 와 구분되지 않는다."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_records", ROOT / "scripts" / "check_records.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for fid, why in mod.F_SUMMARY_EXEMPT.items():
+        assert len(why.strip()) > 20, f"{fid} 의 면제 사유가 너무 짧다: {why!r}"
+
+
 # --------------------------------------------------------------------------
 # 체크포인트 게이트 (scripts/check_ckpts.py)
 # --------------------------------------------------------------------------
