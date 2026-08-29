@@ -40,26 +40,14 @@ python3 scripts/check_ckpts.py --source "$SOURCE" ${GATE_FLAGS:-} || exit 2
 # 터지면(실제로 두 번 그랬다) 매번 exp_c 부터 다시 돌았다. 완주 시간이
 # 재시작 간격보다 길면 **영원히 못 끝낸다.**
 #
-# 이미 끝난 실험은 건너뛴다. 판단 근거는 산출물이 **이번 학습보다 새로운가**
-# 다 — 체크포인트가 바뀌었으면 산출물도 다시 만들어야 한다(F-9).
+# 판단은 scripts/exp_is_current.py 가 한다 — 시각이 아니라 **내용**을 본다.
+# 시각 비교는 실험이 config 변경 **전에 시작해 변경 후에 끝나는** 경우를
+# 놓친다(exp_b 가 실제로 그렇게 M09 없이 완주했다).
 # RESUME_EXP=0 으로 주면 전부 다시 돈다.
-newest_ckpt=$(find results/"$TAG" -name best.pt -printf '%T@\n' 2>/dev/null | cut -d. -f1 | sort -rn | head -1)
 for c in exp_c exp_a exp_b abl_loss abl_window; do
-  out="results/$TAG/$c"
-  if [ "${RESUME_EXP:-1}" = "1" ] && [ -n "$newest_ckpt" ]; then
-    for f in "$out/metrics.parquet" "$out/probe.csv"; do
-      if [ -f "$f" ]; then
-        age=$(stat -c %Y "$f")
-        # 체크포인트뿐 아니라 **config 변경**도 재실행 사유다. 방법을 하나
-        # 추가해 놓고 산출물이 최신이라는 이유로 건너뛰면, 그 방법만 빠진
-        # 표가 조용히 살아남는다 (M09 를 exp_a 에 넣으며 실제로 걸렸다).
-        cfg_age=$(stat -c %Y "configs/$c.yaml")
-        if [ "$age" -gt "$newest_ckpt" ] && [ "$age" -gt "$cfg_age" ]; then
-          echo "=============== $c  (건너뜀 — 산출물이 체크포인트보다 새롭다) ==============="
-          continue 2
-        fi
-      fi
-    done
+  if [ "${RESUME_EXP:-1}" = "1" ] && why=$(python3 scripts/exp_is_current.py "$c" "$TAG"); then
+    echo "=============== $c  (건너뜀 — $why) ==============="
+    continue
   fi
   echo "=============== $c  (source=$SOURCE) ==============="
   python3 scripts/run_exp.py -c "configs/$c.yaml" --source "$SOURCE" \
