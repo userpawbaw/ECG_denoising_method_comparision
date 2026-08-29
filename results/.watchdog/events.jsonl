@@ -7,3 +7,5 @@
 {"ts": "2026-08-29T17:21:55+00:00", "state": "idle", "lock": false, "lock_pid": null, "runner_alive": false, "trainers": [], "log_age_s": 35.1, "exp": {"stage": "experiment", "state": "running", "lock": true, "running": true}}
 {"ts": "2026-08-29T18:05:12+00:00", "state": "idle", "lock": false, "lock_pid": null, "runner_alive": false, "trainers": [], "log_age_s": 2067.6, "exp": {"stage": "experiment", "state": "stalled", "lock": true, "running": false}}
 {"ts": "2026-08-29T18:05:41+00:00", "state": "idle", "lock": false, "lock_pid": null, "runner_alive": false, "trainers": [], "log_age_s": 15.1, "exp": {"stage": "experiment", "state": "running", "lock": true, "running": true}}
+{"ts": "2026-08-29T19:04:49+00:00", "state": "idle", "lock": false, "lock_pid": null, "runner_alive": false, "trainers": [], "log_age_s": 3177.0, "exp": {"stage": "experiment", "state": "stalled", "lock": true, "running": false}}
+{"ts": "2026-08-29T19:05:21+00:00", "state": "idle", "lock": false, "lock_pid": null, "runner_alive": false, "trainers": [], "log_age_s": 5.3, "exp": {"stage": "experiment", "state": "running", "lock": true, "running": true}}

@@ -145,7 +145,36 @@ def assess() -> dict:
                 log_age_s=round(log_age, 1))
 
 
-def _record(ev: dict) -> None:
+def _last_recorded() -> dict | None:
+    if not EVENTS.exists():
+        return None
+    lines = [l for l in EVENTS.read_text().splitlines() if l.strip()]
+    for l in reversed(lines):
+        try:
+            return json.loads(l)
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def _record(ev: dict, *, force: bool = False) -> None:
+    """**바뀐 것만** 적는다.
+
+    초판은 점검마다 한 줄씩 남겼다. 그러면 개입 기록이어야 할 파일이 상태
+    스냅샷 로그가 되고, 60 분마다 저장소가 더러워진다(그리고 정작 중요한
+    개입 줄이 no-op 사이에 묻힌다).
+
+    개입(`action` 이 있는 것)은 항상, 그 외에는 **상태가 직전과 다를 때만**
+    적는다.
+    """
+    if not force and not ev.get("action"):
+        prev = _last_recorded()
+        if prev is not None:
+            same = (prev.get("state") == ev.get("state")
+                    and (prev.get("exp") or {}).get("state")
+                        == (ev.get("exp") or {}).get("state"))
+            if same:
+                return
     STATE.mkdir(parents=True, exist_ok=True)
     with EVENTS.open("a") as f:
         f.write(json.dumps(ev, ensure_ascii=False) + "\n")
@@ -181,7 +210,7 @@ def restart(st: dict, cmd: list[str]) -> int:
     if n >= MAX_RESTARTS:
         print(f"[watchdog] 최근 6 시간 재시작 {n} 회 — 상한({MAX_RESTARTS})에 걸렸다. "
               "반복 실패를 재시작으로 가리지 않는다. 로그를 볼 것.")
-        _record(dict(**st, action="restart_blocked", restarts_recent=n))
+        _record(dict(**st, action="restart_blocked", restarts_recent=n), force=True)
         return 2
 
     sys.path.insert(0, str(ROOT))
@@ -212,7 +241,7 @@ def restart(st: dict, cmd: list[str]) -> int:
                             start_new_session=True)
     _record(dict(**st, action="restart", pid=proc.pid, cmd=cmd,
                  archived=archived, stale_lock=str(moved) if moved else None,
-                 restarts_recent=n + 1))
+                 restarts_recent=n + 1), force=True)
     print(f"[watchdog] 재개했다 (pid {proc.pid}). 보존 {len(archived)} 건, "
           f"낡은 락 -> {moved.name if moved else '없음'}")
     return 1

@@ -148,3 +148,21 @@ def test_exit_code_flags_a_stalled_experiment(tmp_path, monkeypatch):
     monkeypatch.setattr(m, "_newest_log_age", lambda: 1.0)
     monkeypatch.setattr(sys, "argv", ["watchdog.py"])
     assert m.main() == 1, "실험 고아 락을 정상으로 보고하면 안 된다"
+
+
+def test_events_log_only_records_changes(tmp_path, monkeypatch):
+    """점검마다 한 줄씩 쌓으면 개입 기록이 no-op 에 묻히고 저장소가 더러워진다."""
+    m = _mod()
+    monkeypatch.setattr(m, "STATE", tmp_path / "wd")
+    monkeypatch.setattr(m, "EVENTS", tmp_path / "wd" / "events.jsonl")
+    ev = dict(ts="t1", state="running", exp=dict(state="running"))
+    m._record(ev)
+    m._record(dict(ev, ts="t2"))          # 같은 상태 — 안 적혀야 한다
+    m._record(dict(ev, ts="t3"))
+    n = len((tmp_path / "wd" / "events.jsonl").read_text().strip().splitlines())
+    assert n == 1, f"같은 상태를 {n} 줄 적었다"
+
+    m._record(dict(ts="t4", state="stalled", exp=dict(state="running")))
+    m._record(dict(ts="t5", state="stalled", action="restart"), force=True)
+    n = len((tmp_path / "wd" / "events.jsonl").read_text().strip().splitlines())
+    assert n == 3, f"상태 변화와 개입은 적혀야 한다 ({n} 줄)"
