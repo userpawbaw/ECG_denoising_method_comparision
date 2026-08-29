@@ -22,7 +22,11 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 # 학습이 끝났는지 먼저 확인한다. run_exp.py 는 체크포인트가 없으면 `[skip]` 한
 # 줄만 찍고 그 방법을 뺀 채 표를 정상적으로 만들어 내므로, 학습이 덜 끝난 상태로
 # 여기까지 오면 결과가 조용히 짧아진다 (F-9 와 같은 계열).
-python3 scripts/check_ckpts.py --source "$SOURCE" || exit 2
+# GATE_FLAGS 로만 게이트를 완화할 수 있게 한다. 기본은 빈 문자열이라
+# 아무것도 통과시키지 않는다. 완화하려면 호출부에서 명시해야 하고, 그러면
+# 근거가 명령줄과 로그에 남는다 (D-10 되돌림 조건: --ignore-stale 이 습관이
+# 되면 게이트가 방어가 아니라 통과 의식이 된다).
+python3 scripts/check_ckpts.py --source "$SOURCE" ${GATE_FLAGS:-} || exit 2
 
 for c in exp_c exp_a exp_b abl_loss; do
   echo "=============== $c  (source=$SOURCE) ==============="
