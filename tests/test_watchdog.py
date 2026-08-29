@@ -113,3 +113,38 @@ def test_lock_is_moved_not_deleted(tmp_path, monkeypatch):
     stale = list(tmp_path.glob(".train.lock.stale-*"))
     assert stale, "락이 **지워지지 않고** 보존돼야 한다"
     assert (stale[0] / "pid").exists(), "증거(옛 PID)가 남아야 한다"
+
+
+# ---------------------------------------------------------------- 실험 단계
+def test_experiment_stage_is_watched_too(tmp_path, monkeypatch):
+    """감시가 학습에서 끝나면 파이프라인 절반이 무방비다.
+
+    실제로 컨테이너 재시작이 **실험 도중**(D1 exp_c 30/44)에 터졌고,
+    `.exp.lock` 이 고아로 남아 **재개 자체를 막았다.** 학습은 `--resume` 이
+    있어 이어지지만 실험은 그렇지 않다.
+    """
+    m = _mod()
+    monkeypatch.setattr(m, "EXP_LOCK", tmp_path / ".exp.lock")
+
+    monkeypatch.setattr(m, "_pids", lambda names: [])
+    assert m.assess_exp()["state"] == "idle", "락도 프로세스도 없으면 idle"
+
+    (tmp_path / ".exp.lock").mkdir()
+    assert m.assess_exp()["state"] == "stalled", "고아 락은 stalled 여야 한다"
+
+    monkeypatch.setattr(m, "_pids", lambda names: [111] if "run_exp.py" in names else [])
+    assert m.assess_exp()["state"] == "running"
+
+
+def test_exit_code_flags_a_stalled_experiment(tmp_path, monkeypatch):
+    """학습이 멀쩡해도 실험 락이 고아면 종료코드가 이상을 알려야 한다."""
+    m = _mod()
+    monkeypatch.setattr(m, "LOCK", tmp_path / ".train.lock")
+    monkeypatch.setattr(m, "EXP_LOCK", tmp_path / ".exp.lock")
+    monkeypatch.setattr(m, "STATE", tmp_path / "wd")
+    monkeypatch.setattr(m, "EVENTS", tmp_path / "wd" / "events.jsonl")
+    (tmp_path / ".exp.lock").mkdir()
+    monkeypatch.setattr(m, "_pids", lambda names: [])
+    monkeypatch.setattr(m, "_newest_log_age", lambda: 1.0)
+    monkeypatch.setattr(sys, "argv", ["watchdog.py"])
+    assert m.main() == 1, "실험 고아 락을 정상으로 보고하면 안 된다"

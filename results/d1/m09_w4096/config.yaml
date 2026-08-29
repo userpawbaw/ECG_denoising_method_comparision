@@ -1,0 +1,28 @@
+exp_id: m09_w4096
+seed: 0
+model:
+  name: cnn_transformer
+  kwargs: {}
+loss: L1
+data:
+  source: mitdb
+  dur_s: 300.0
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 4096
+  hop: 2048
+  snr_range:
+  - -5.0
+  - 20.0
+  max_per_record: 40
+  nstdb_root: data/raw/nstdb
+  frontend: true
+train:
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 16
+  epochs: 60
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0

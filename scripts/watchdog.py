@@ -53,6 +53,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / "results" / ".train.lock"
+EXP_LOCK = ROOT / "results" / ".exp.lock"
 STATE = ROOT / "results" / ".watchdog"
 EVENTS = STATE / "events.jsonl"
 
@@ -91,6 +92,25 @@ def _newest_log_age() -> float:
     if not logs:
         return float("inf")
     return time.time() - max(p.stat().st_mtime for p in logs)
+
+
+def assess_exp() -> dict:
+    """실험 단계도 같은 방식으로 본다.
+
+    초판은 학습만 봤는데, 실제로 컨테이너 재시작이 **실험 도중**(D1 exp_c
+    30/44)에 터졌다. 학습은 `--resume` 이 있어 이어지지만 실험은 그렇지
+    않고, `.exp.lock` 이 고아로 남아 **재개 자체를 막았다.** 감시가 학습에서
+    끝나면 파이프라인의 절반이 무방비다.
+    """
+    running = bool(_pids(("run_exp.py",)))
+    lock = EXP_LOCK.exists()
+    if running:
+        state = "running"
+    elif lock:
+        state = "stalled"          # 락만 남았다 — 고아 락이 재개를 막는다
+    else:
+        state = "idle"
+    return dict(stage="experiment", state=state, lock=lock, running=running)
 
 
 def assess() -> dict:
@@ -235,10 +255,16 @@ def main() -> int:
         return report()
 
     st = assess()
+    ex = assess_exp()
+    st["exp"] = ex
     _record(st)
-    print(f"[watchdog] {st['state']}  락={st['lock']} pid={st['lock_pid']} "
+    print(f"[watchdog] 학습 {st['state']}  락={st['lock']} pid={st['lock_pid']} "
           f"러너생존={st['runner_alive']} 학습프로세스={st['trainers']} "
           f"로그나이={st['log_age_s']}s")
+    print(f"[watchdog] 실험 {ex['state']}  락={ex['lock']} 실행중={ex['running']}")
+    if ex["state"] == "stalled":
+        print("  **실험 락만 남았다.** 재개하려면 먼저 치워야 한다:\n"
+              "    rm -rf results/.exp.lock")
 
     if st["state"] == "orphan_trainer":
         print("  러너 셸은 죽었지만 **학습 프로세스가 살아 있다.** 재시작하지 "
@@ -249,7 +275,8 @@ def main() -> int:
     if a.restart:
         cmd = a.cmd or ["bash", "scripts/run_all_training.sh", "auto"]
         return restart(st, cmd)
-    return 0 if st["state"] in ("running", "orphan_trainer", "idle", "settling") else 1
+    healthy = st["state"] in ("running", "orphan_trainer", "idle", "settling")
+    return 0 if healthy and ex["state"] != "stalled" else 1
 
 
 if __name__ == "__main__":
