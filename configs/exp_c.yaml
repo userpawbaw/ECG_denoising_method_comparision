@@ -25,6 +25,7 @@ dl_methods:
   M07: {ckpt: "results/{tag}/m07_l1/best.pt", pre: M04}
   M08: {ckpt: "results/{tag}/m08_l1/best.pt"}
   M10: {ckpt: "results/{tag}/m10_l1/best.pt"}
+  M09: {ckpt: "results/{tag}/m09_l1/best.pt"}
   # 손실 변형. **L6 의 기제 확인 도구가 바로 이 실험이다** — "깨끗한 입력을
   # 건드리지 마라" 를 손실에 넣었으니, 여기서 출력 SNR 이 올라가야 한다.
   # 이것 없이 abl_loss 의 이득만 보면 왜 좋아졌는지 말할 수 없다.

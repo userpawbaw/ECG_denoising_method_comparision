@@ -50,7 +50,11 @@ for c in exp_c exp_a exp_b abl_loss abl_window; do
     for f in "$out/metrics.parquet" "$out/probe.csv"; do
       if [ -f "$f" ]; then
         age=$(stat -c %Y "$f")
-        if [ "$age" -gt "$newest_ckpt" ]; then
+        # 체크포인트뿐 아니라 **config 변경**도 재실행 사유다. 방법을 하나
+        # 추가해 놓고 산출물이 최신이라는 이유로 건너뛰면, 그 방법만 빠진
+        # 표가 조용히 살아남는다 (M09 를 exp_a 에 넣으며 실제로 걸렸다).
+        cfg_age=$(stat -c %Y "configs/$c.yaml")
+        if [ "$age" -gt "$newest_ckpt" ] && [ "$age" -gt "$cfg_age" ]; then
           echo "=============== $c  (건너뜀 — 산출물이 체크포인트보다 새롭다) ==============="
           continue 2
         fi
