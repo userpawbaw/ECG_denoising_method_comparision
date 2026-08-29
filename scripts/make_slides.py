@@ -44,6 +44,13 @@ C = {
     "M05": "#eda100",   # slot 4 yellow  Sameni EKS
     "M_FE": "#e87ba4",  # slot 5 magenta 공통 front-end 단독
 }
+# 손실 L1 -> L3 -> L6 은 **ordinal** 이다 — 순서를 바꾸면 의미가 달라진다
+# (개입이 점점 커진다). 그래서 방법용 categorical 슬롯이 아니라 **단일 색조
+# 램프**를 쓴다. blue 250/400/600 이고 validate_palette.js --ordinal 통과다
+# (단조 L, 인접 간격 >= 0.06, 밝은 끝 2.06:1). 이 그림들에 `M01`(slot 1 blue)
+# 은 등장하지 않으므로 색이 겹치지 않는다.
+LOSS = {"L1": "#86b6ef", "L3": "#3987e5", "L6": "#184f95"}
+
 CLEAN = "#b8b6ae"       # 참조: 뒤에 두껍게 깔아 '목표' 로 읽히게
 NOISY = "#52514e"       # 입력
 INK, INK2 = "#0b0b0b", "#52514e"
@@ -505,6 +512,132 @@ def s6_safety():
     print("  S6_safety.png")
 
 
+# ---------------------------------------------------------------- S7 손실
+def s7_loss_gap(TXT):
+    """손실을 바꾸면 고 SNR 열세가 되돌아온다.
+
+    y 는 **`M_FE` 대비 격차**다 — S5 와 같은 축이라 두 슬라이드가 이어 읽힌다.
+    0 아래면 "front-end 만 쓰는 편이 낫다" 는 뜻이고, L1 -> L3 -> L6 이
+    그 선을 어떻게 밀어 올리는지가 이 그림의 전부다.
+
+    색은 categorical 슬롯이 아니라 **단일 색조 ordinal 램프**다 — L1/L3/L6 은
+    순서가 의미를 갖기 때문이다(개입이 커진다). 색만으로 식별하지 않도록
+    범례와 직접 라벨을 함께 둔다.
+    """
+    import pandas as pd
+    fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.5), sharey=True)
+    axis_lab = {"d0": "D0 합성", "d1": "D1 MIT-BIH"}
+    for ax, tag in zip(axes, ("d0", "d1")):
+        p = Path("results") / tag / "abl_loss" / "metrics.parquet"
+        if not p.exists():
+            continue
+        df = pd.read_parquet(p)
+        s = df[df.metric == "snr_imp_scaled"]
+        w = s.pivot_table(index=["record", "snr_in_target"],
+                          columns="method", values="value").reset_index()
+        snrs = sorted(w.snr_in_target.unique())
+        cross = {}
+        for loss in ("L1", "L3", "L6"):
+            col_m = f"M06-{loss}"
+            if col_m not in w:
+                continue
+            ys = [w[w.snr_in_target == q][col_m].mean()
+                  - w[w.snr_in_target == q]["M_FE"].mean() for q in snrs]
+            ax.plot(snrs, ys, "-o", color=LOSS[loss], lw=2.4, markersize=9,
+                    markeredgecolor=SURFACE, markeredgewidth=1.6, zorder=3,
+                    label=loss)
+            ax.annotate(loss, (snrs[-1], ys[-1]), color=LOSS[loss], fontsize=11,
+                        fontweight="bold", ha="left",
+                        xytext=(8, -3), textcoords="offset points")
+            cross[loss] = ys
+        ax.axhline(0, color=INK2, lw=1.2, zorder=2)
+        # 0 을 지나는 지점 = "여기부터는 front-end 만 쓰는 편이 낫다".
+        # 손실을 바꾸면 이 점이 오른쪽으로 밀리는 것이 이 슬라이드의 요지다.
+        for loss, ys in cross.items():
+            zx = None
+            for i in range(len(snrs) - 1):
+                if ys[i] > 0 >= ys[i + 1]:
+                    zx = snrs[i] + (snrs[i + 1] - snrs[i]) * ys[i] / (ys[i] - ys[i + 1])
+                    break
+            if zx is None:
+                continue
+            ax.plot([zx], [0], marker="v", color=LOSS[loss], markersize=9,
+                    markeredgecolor=SURFACE, markeredgewidth=1.5, zorder=5)
+            ax.annotate(f"{zx:.0f}", (zx, 0), color=LOSS[loss], fontsize=10,
+                        fontweight="bold", ha="center", va="top",
+                        xytext=(0, -12), textcoords="offset points")
+        ax.set_title(axis_lab[tag], fontsize=11.5, color=INK)
+        ax.set_xlabel(TXT["in_snr"]); ax.set_xticks(snrs)
+        ax.margins(x=0.16)
+    axes[0].set_ylabel(TXT["gain"])
+    # 범례는 figure 수준에 가로로 둔다 — 축 안에 두면 주석과 겹친다.
+    h, l = axes[0].get_legend_handles_labels()
+    fig.legend(h, l, loc="upper center", bbox_to_anchor=(0.5, 0.845), ncol=3,
+               fontsize=10, columnspacing=1.8, handletextpad=0.5)
+    axes[0].text(0.03, 0.06, "0 아래 = front-end 만 쓰는 편이 낫다",
+                 transform=axes[0].transAxes, fontsize=9.5, color=INK2)
+    axes[1].text(0.03, 0.06, "▼ = 0 을 지나는 입력 SNR",
+                 transform=axes[1].transAxes, fontsize=9.5, color=INK2)
+    fig.suptitle("손실을 바꾸면 고 SNR 열세가 되돌아온다  (M06, TEST)\n"
+                 "20 dB 에서 D0 는 부호가 뒤집히고(-1.6 → +3.0), "
+                 "D1 은 격차의 74 %가 사라진다(-4.8 → -1.3)", fontsize=12.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    fig.savefig(OUT / "S7_loss_gap.png", dpi=175); plt.close(fig)
+    print("  S7_loss_gap.png")
+
+
+# ---------------------------------------------------------------- S8 clean 보존
+def s8_clean_preservation(TXT):
+    """L6 의 **기제** — 깨끗한 신호를 얼마나 덜 건드리는가 (EXP-C).
+
+    이 그림이 S7 의 "왜" 다. 손실에 "clean 을 건드리지 마라" 를 넣었더니
+    바로 그 지표가 올라갔다는 것을 보인다.
+
+    막대는 모델 × 손실의 **ordinal 쌍**이고, 참조 둘(`M04` SWT, `M00`
+    front-end 몫)은 막대가 아니라 **가로선**으로 둔다 — 비교 대상이 아니라
+    눈금이기 때문이다.
+    """
+    import pandas as pd
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.6), sharey=False)
+    axis_lab = {"d0": "D0 합성", "d1": "D1 MIT-BIH"}
+    for ax, tag in zip(axes, ("d0", "d1")):
+        p = Path("results") / tag / "exp_c" / "metrics.parquet"
+        if not p.exists():
+            continue
+        df = pd.read_parquet(p)
+        s = df[df.metric == "snr_out_strict"].replace([np.inf, -np.inf], np.nan)
+        g = s.groupby("method")["value"].mean()
+        models, w = ["M06", "M08"], 0.34
+        for i, loss in enumerate(("L1", "L6")):
+            vals = [g.get(m if loss == "L1" else f"{m}-{loss}", np.nan) for m in models]
+            xs = np.arange(len(models)) + (i - 0.5) * (w + 0.02)
+            ax.bar(xs, vals, width=w, color=LOSS[loss], zorder=3,
+                   edgecolor=SURFACE, linewidth=2, label=loss)
+            for x, v in zip(xs, vals):
+                if np.isfinite(v):
+                    ax.annotate(f"{v:.1f}", (x, v), ha="center", va="bottom",
+                                fontsize=10, color=INK,
+                                xytext=(0, 3), textcoords="offset points")
+        for key, lab, ls in (("M04", "M04 SWT", "--"), ("M00", "M00 무처리", ":")):
+            v = g.get(key, np.nan)
+            if np.isfinite(v):
+                ax.axhline(v, color=INK2, ls=ls, lw=1.5, zorder=2)
+                ax.annotate(f"{lab}  {v:.1f}", (len(models) - 0.45, v), color=INK2,
+                            fontsize=9.5, ha="right", va="bottom",
+                            xytext=(0, 3), textcoords="offset points")
+        ax.set_xticks(np.arange(len(models))); ax.set_xticklabels(models, fontsize=11)
+        ax.grid(axis="x", visible=False)
+        ax.set_title(axis_lab[tag], fontsize=11.5, color=INK)
+        ax.margins(y=0.22)
+    axes[0].set_ylabel("깨끗한 신호 통과 시 출력 SNR [dB] ↑")
+    axes[0].legend(title="손실", loc="upper left", fontsize=10, title_fontsize=10)
+    fig.suptitle("L6 는 무엇을 고쳤나 — 깨끗한 신호를 덜 건드린다 (EXP-C)\n"
+                 "D1 에서 SWT 와의 17 dB 격차가 1.8 dB 로 줄었다", fontsize=12.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    fig.savefig(OUT / "S8_clean.png", dpi=175); plt.close(fig)
+    print("  S8_clean.png")
+
+
 # ---------------------------------------------------------------- main
 INDEX = [
     ("S1_input.png",
@@ -533,6 +666,16 @@ INDEX = [
      "없는 파형을 지어내는가. **딥러닝이 두 축·두 프로브 모두에서 가장 낮다** — "
      "residual 구조(출력 = 입력 - 예측잡음)의 직접적 결과이고, "
      "\"딥러닝이 파형을 지어낸다\" 는 통념과 반대다."),
+    ("S7_loss_gap.png",
+     "**S5 의 후속.** S5 가 보인 고 SNR 열세를 **손실만 바꿔서** 되돌린다. "
+     "20 dB 에서 D0 는 부호가 뒤집히고(-1.6 → +3.0) D1 은 격차의 74 %가 "
+     "사라진다(-4.8 → -1.3). 구조를 세 번 바꿔도(M07·M08·M10) 안 되던 것이 "
+     "손실 한 항으로 움직였다는 것이 이 슬라이드의 요지다."),
+    ("S8_clean.png",
+     "**S7 의 '왜'.** L6 는 \"입력이 이미 깨끗하면 건드리지 마라\" 를 손실에 "
+     "넣은 것인데, **바로 그 지표(EXP-C)가 올라갔다.** D1 에서 M06 22.2 → "
+     "37.4 dB, M08 23.5 → 38.4 dB 로 SWT(40.1)와의 17 dB 격차가 1.8 dB 가 "
+     "된다. 이득이 우연이 아니라 **의도한 기제를 통해** 왔다는 근거다."),
 ]
 
 
@@ -575,7 +718,8 @@ def main() -> int:
     ap.add_argument("--snr", type=float, default=-5.0,
                     help="파형 그림의 입력 SNR (기본 -5 dB — 차이가 보이는 구간)")
     a = ap.parse_args()
-    want = set(a.only) if a.only else {"S1", "S2", "S3", "S4", "S5", "S6"}
+    want = set(a.only) if a.only else {"S1", "S2", "S3", "S4", "S5", "S6",
+                                       "S7", "S8"}
 
     NAME, TXT = slide_style()
     ensure_dir(OUT)
@@ -610,10 +754,15 @@ def main() -> int:
         s5_crossover()
     if "S6" in want:
         s6_safety()
+    if "S7" in want:
+        s7_loss_gap(TXT)
+    if "S8" in want:
+        s8_clean_preservation(TXT)
 
     save_manifest(OUT, cfg=vars(a), sources=[
         "scripts/make_slides.py", "scripts/run_exp.py", "ecgdn/data/dataset.py",
-        "ecgdn/methods/frontend.py", "ecgdn/eval/engine.py"])
+        "ecgdn/methods/frontend.py", "ecgdn/eval/engine.py",
+        "ecgdn/models/losses.py"])
     write_index()
     return 0
 

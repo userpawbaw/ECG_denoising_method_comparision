@@ -240,6 +240,13 @@ class Trainer:
         ck = {"model": self.model.state_dict(), "model_name": self.model_name,
               "epoch": self.state.epoch, "best_metric": self.state.best_metric,
               "cfg": asdict(self.cfg)}
+        # **학습 window 를 함께 담는다.** 추론(dl_wrapper)은 기본값 1024 를 쓰는데,
+        # 다른 길이로 학습한 체크포인트를 그대로 넣으면 **에러 없이** 어긋난 채
+        # 돌아간다 — 표는 정상적으로 나오고 그 방법만 조용히 틀린다 (F-9 계열).
+        for attr, key in (("win", "data_win"), ("hop", "data_hop")):
+            v = getattr(self.train_ds, attr, None)
+            if v is not None:
+                ck[key] = int(v)
         if name == "last.pt":
             ck["opt"] = self.opt.state_dict()
             ck["scaler"] = self.scaler.state_dict()

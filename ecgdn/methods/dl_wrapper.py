@@ -43,13 +43,13 @@ def load_checkpoint(path: str | Path, device: str = "cpu"):
 
 class DLDenoiser(BaseDenoiser):
     def __init__(self, model=None, ckpt: str | Path | None = None,
-                 name: str = "M06", win: int = WIN, hop: int = HOP,
+                 name: str = "M06", win: int | None = None,
+                 hop: int | None = None,
                  device: str = "cpu", batch: int = 64, normalize: bool = True,
                  pre: str | None = None, frontend: bool | None = None):
         import torch
 
         self.name = name
-        self.win, self.hop = int(win), int(hop)
         self.device = device
         self.batch = int(batch)
         self.normalize = bool(normalize)
@@ -70,8 +70,19 @@ class DLDenoiser(BaseDenoiser):
                           "front-end 없이 학습된 구형 체크포인트로 간주한다 (재학습 권장).")
             if pre is None and ck.get("pre_denoise"):
                 pre = ck["pre_denoise"]
+            # **학습 window 를 따른다.** 다른 길이로 학습한 모델을 기본값 1024 로
+            # 돌리면 에러 없이 어긋난 채 결과가 나온다 (frontend 와 같은 계열).
+            if win is None:
+                if "data_win" in ck:
+                    win, hop = int(ck["data_win"]), int(ck.get("data_hop", ck["data_win"] // 2))
+                else:
+                    print(f"[warn] {Path(ckpt).parent.name}: 체크포인트에 window 기록이 "
+                          f"없다. 기본값 {WIN} 로 간주한다 (그 이전 체크포인트는 "
+                          f"전부 {WIN} 로 학습됐다).")
         if frontend is None:
             frontend = True
+        self.win = int(win) if win is not None else WIN
+        self.hop = int(hop) if hop is not None else self.win // 2
         self.model = model
         self.model.eval()
         self._torch = torch
