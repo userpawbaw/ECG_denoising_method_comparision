@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -320,6 +321,40 @@ def test_report_summary_exemptions_carry_a_reason():
 # --------------------------------------------------------------------------
 # 체크포인트 게이트 (scripts/check_ckpts.py)
 # --------------------------------------------------------------------------
+
+def test_training_gate_ignores_processes_that_merely_mention_the_script():
+    """게이트가 감시 스크립트를 학습으로 오인하면 실험이 영구히 막힌다 (O-17).
+
+    초판은 `/proc` 의 cmdline 에서 "scripts/train.py" 를 **부분 문자열**로
+    찾았다. 그래서 그 문자열을 명령줄에 담은 완료 대기 스크립트 하나가
+    게이트를 3 시간 넘게 막았고, 겉으로는 "아직 학습 중" 과 구별되지 않았다.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_ckpts", ROOT / "scripts" / "check_ckpts.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # 명령줄에 문자열만 담은 프로세스는 학습이 아니다
+    assert not mod._is_training_pid(os.getpid()), \
+        "이 테스트 프로세스 자신이 학습으로 잡힌다 — 부분 문자열 매칭이다"
+
+    # argv 원소로 들어오면 학습이다 (러너를 흉내낸다)
+    import subprocess
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        assert not mod._is_training_pid(proc.pid)
+    finally:
+        proc.kill(); proc.wait()
+
+
+def test_training_lock_records_its_pid():
+    """락이 PID 를 남겨야 게이트가 그 하나만 보고 판정할 수 있다 (O-17)."""
+    runner = (ROOT / "scripts" / "run_all_training.sh").read_text()
+    assert '$$ > "$LOCK/pid"' in runner, "러너가 락에 PID 를 기록하지 않는다"
+    assert 'rm -f "$LOCK/pid"' in runner, "종료 시 PID 파일을 지우지 않는다"
+
 
 def test_experiment_runner_gates_on_checkpoints():
     """실험 러너는 첫 실험 전에 체크포인트 게이트를 통과해야 한다.

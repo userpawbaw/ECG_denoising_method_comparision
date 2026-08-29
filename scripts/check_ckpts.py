@@ -38,23 +38,55 @@ def training_in_progress() -> str | None:
     epoch 마다 갱신되므로, 학습 도중에도 파일은 존재한다. 그 상태로 실험을
     돌리면 **덜 학습된 모델이 표에 들어간다** — 파일이 있으니 게이트도
     통과하고, 결과도 그럴듯하게 나온다.
+
+    **판단 근거는 락이 기록한 PID 다.** 초판은 `/proc` 의 모든 cmdline 에서
+    `"scripts/train.py"` 를 **부분 문자열**로 찾았는데, 그러면 그 문자열을
+    명령줄에 담은 아무 프로세스나(감시 스크립트, 셸, grep) 학습으로 오인한다.
+    실제로 완료 대기 스크립트 하나 때문에 게이트가 영구히 막혔다 (O-17).
     """
     lock = Path("results/.train.lock")
     if not lock.exists():
         return None
-    for pd in Path("/proc").iterdir():
-        if not pd.name.isdigit():
-            continue
+
+    pid_file = lock / "pid"
+    if pid_file.exists():
         try:
-            cmd = (pd / "cmdline").read_bytes().replace(b"\0", b" ").decode(
-                "utf-8", "replace")
-        except OSError:
-            continue
-        if "run_all_training.sh" in cmd or "scripts/train.py" in cmd:
+            pid = int(pid_file.read_text().strip())
+        except (ValueError, OSError):
+            pid = None
+        if pid is not None and _is_training_pid(pid):
+            return f"학습 러너가 실행 중이다 (pid {pid})"
+        return _stale_lock_message()
+
+    # 락에 PID 가 없는 구형 상태 — argv **원소** 일치로만 훑는다.
+    for pd in Path("/proc").iterdir():
+        if pd.name.isdigit() and _is_training_pid(int(pd.name)):
             return f"학습 러너가 실행 중이다 (pid {pd.name})"
+    return _stale_lock_message()
+
+
+def _argv(pid: int) -> list[str]:
+    try:
+        raw = (Path("/proc") / str(pid) / "cmdline").read_bytes()
+    except OSError:
+        return []
+    return [a for a in raw.decode("utf-8", "replace").split("\0") if a]
+
+
+def _is_training_pid(pid: int) -> bool:
+    """argv **원소**가 러너/학습 스크립트인가. 부분 문자열이 아니라 원소다."""
+    for a in _argv(pid):
+        base = a.rsplit("/", 1)[-1]
+        if base in ("run_all_training.sh", "train.py"):
+            return True
+    return False
+
+
+def _stale_lock_message() -> str:
     return ("results/.train.lock 이 남아 있는데 학습 프로세스가 없다. "
-            "컨테이너가 강제 종료되어 락만 남은 상태로 보인다 "
-            "(rmdir results/.train.lock 후 재개할 것)")
+            "컨테이너가 강제 종료되어 락만 남은 상태로 보인다 (O-2). "
+            "학습이 정말 끝나지 않았다면 이어서 돌리고, 아니면 락을 지운다:\n"
+            "    rm -rf results/.train.lock")
 
 
 def required_ckpts(cfg_paths: list[Path], tag: str) -> dict[Path, list[str]]:

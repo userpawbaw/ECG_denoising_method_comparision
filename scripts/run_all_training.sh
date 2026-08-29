@@ -21,7 +21,8 @@ mkdir -p results
 if ! mkdir "$LOCK" 2>/dev/null; then
   echo "another training run holds $LOCK; abort"; exit 1
 fi
-trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+echo $$ > "$LOCK/pid"
+trap 'rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null' EXIT
 
 # 기본값 = 실험이 실제로 쓰는 체크포인트 전부.
 # loss ablation(configs/abl_loss.yaml)은 **모든 loss 를 같은 조건에서** 학습해야
