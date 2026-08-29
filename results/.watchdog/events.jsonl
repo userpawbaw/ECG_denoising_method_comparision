@@ -1,0 +1,2 @@
+{"ts": "2026-08-29T14:02:36+00:00", "state": "running", "lock": true, "lock_pid": 2525, "runner_alive": true, "trainers": [3121, 3796, 3800], "log_age_s": 23.8}
+{"ts": "2026-08-29T14:06:43+00:00", "state": "running", "lock": true, "lock_pid": 2525, "runner_alive": true, "trainers": [3121, 4112, 4116], "log_age_s": 2.2}
