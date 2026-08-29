@@ -220,6 +220,59 @@ def check_handoff_sections_name_a_destination() -> list[str]:
     return bad
 
 
+def check_report_matches_generated_docs() -> list[str]:
+    """보고서 본문의 수치가 **자동 생성 문서**의 현재 값과 맞는지.
+
+    O-11 은 "코드를 고치고 산출물을 재생성 안 함", O-16 은 반대로 **"산출물을
+    재생성하고 보고서를 안 맞춤"** 이었다. 후자는 사흘 동안 5.3 절이 낡은
+    값을 실었고, 숫자만이 아니라 **해석이 틀렸다** — 걷힌 천장을 여전히
+    있다고 서술했다.
+
+    자동 생성 문서에서 `| \`METHOD\` | 값 |` 행을 읽어, 보고서가 그 방법의
+    왜곡 하한을 인용한다면 현재 값과 맞는지 본다. 보고서에 없는 방법은
+    검사하지 않는다 — **모든 값을 본문에 실을 의무는 없다.**
+    """
+    bad = []
+    rep_p = ROOT / "docs" / "91_report.md"
+    if not rep_p.exists():
+        return []
+    rep = rep_p.read_text()
+    for axis, sect in (("d0", "## 5.3 RQ3"),):
+        gen = ROOT / "docs" / f"90_results_{axis}.md"
+        if not gen.exists() or sect not in rep:
+            continue
+        # 보고서의 해당 절만 잘라낸다
+        s = rep.index(sect)
+        e = rep.find("\n## ", s + 1)
+        block = rep[s:e if e > 0 else len(rep)]
+        # 자동 생성 문서의 왜곡 하한 표
+        m = re.search(r"distortion floor.*?\n\|[^\n]*\n\|[-| ]+\n((?:\|[^\n]*\n)+)",
+                      gen.read_text(), re.S)
+        if not m:
+            continue
+        for line in m.group(1).splitlines():
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if len(cells) < 2 or not cells[0].startswith("`"):
+                continue
+            meth, val = cells[0], cells[1]
+            try:
+                v = float(val)
+            except ValueError:
+                continue
+            # 보고서가 이 방법 행을 싣고 있는가
+            rm = re.search(rf"\|\s*\*{{0,2}}{re.escape(meth)}\*{{0,2}}\s*\|"
+                           rf"\s*\*{{0,2}}([0-9.]+)", block)
+            if not rm:
+                continue
+            got = float(rm.group(1))
+            # EXP-C 는 잡음이 없어 결정론적이다. 여유를 크게 두면 O-16 처럼
+            # 19 dB 어긋난 것도 통과할 수 있는 값이 섞인다.
+            if abs(got - v) > 0.05:
+                bad.append(f"{axis} {meth}: 보고서 {got} vs 산출물 {v:.2f} "
+                           f"({gen.name} 재생성 후 본문 미갱신 — O-16)")
+    return bad
+
+
 def main() -> int:
     d = ROOT / "docs"
     problems: list[str] = []
@@ -256,6 +309,14 @@ def main() -> int:
     if not hs:
         print("  전부 목적지 명시 (또는 인수인계 절 없음)")
     problems += hs
+
+    print("\n[누락] 보고서 본문이 재생성된 산출물과 맞는가")
+    rg = check_report_matches_generated_docs()
+    for b in rg:
+        print("  ✗", b)
+    if not rg:
+        print("  일치 (또는 대조할 행 없음)")
+    problems += rg
 
     num = check_cited_numbers()
     print("\n[수치 대조] 문서 인용 vs 산출물")

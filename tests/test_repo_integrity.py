@@ -266,6 +266,45 @@ def test_record_checker_still_detects_missing_records():
         MODELS.pop(sentinel, None)
 
 
+def test_report_body_matches_regenerated_artifacts():
+    """보고서 본문이 자동 생성 문서와 어긋나면 잡아야 한다.
+
+    O-16 — 참조 정의가 바뀌어 D0 산출물이 재생성됐는데 보고서 5.3 절을
+    사흘 동안 안 맞췄다. 숫자만이 아니라 **해석이 틀렸다**: 걷힌 천장을
+    여전히 있다고 서술하고 있었다.
+
+    검사가 존재하는지가 아니라 **실제로 잡는지**를 본다. 처음 만든 판은
+    생성 문서의 표 앵커가 틀려서 19 dB 어긋난 값도 통과시켰다 (F-18 계열 —
+    울리지 않는 경고).
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_records", ROOT / "scripts" / "check_records.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    rep = ROOT / "docs" / "91_report.md"
+    if not rep.exists() or not (ROOT / "docs" / "90_results_d0.md").exists():
+        pytest.skip("산출물 없음")
+
+    assert mod.check_report_matches_generated_docs() == [], \
+        "현재 보고서가 이미 산출물과 어긋나 있다"
+
+    original = rep.read_text()
+    try:
+        # 정본과 다른 값을 심는다 (작은 어긋남도 잡혀야 한다)
+        broken = re.sub(r"(\|\s*`M04`\s*\|\s*\*\*)([0-9.]+)(\*\*)",
+                        r"\g<1>99.99\g<3>", original, count=1)
+        assert broken != original, "5.3 절의 M04 행을 찾지 못했다 (표 형식이 바뀌었나)"
+        rep.write_text(broken)
+        bad = mod.check_report_matches_generated_docs()
+        assert any("M04" in b for b in bad), \
+            f"어긋난 값을 잡지 못했다 — 울리지 않는 경고다: {bad}"
+    finally:
+        rep.write_text(original)
+
+
 def test_report_summary_exemptions_carry_a_reason():
     """면제는 이유와 함께여야 한다. 빈 면제는 '귀찮아서 뺐다' 와 구분되지 않는다."""
     import importlib.util
