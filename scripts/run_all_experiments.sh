@@ -28,7 +28,7 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 # 되면 게이트가 방어가 아니라 통과 의식이 된다).
 python3 scripts/check_ckpts.py --source "$SOURCE" ${GATE_FLAGS:-} || exit 2
 
-for c in exp_c exp_a exp_b abl_loss; do
+for c in exp_c exp_a exp_b abl_loss abl_window; do
   echo "=============== $c  (source=$SOURCE) ==============="
   python3 scripts/run_exp.py -c "configs/$c.yaml" --source "$SOURCE" \
       2>&1 | tee "results/logs/run_${SOURCE}_$c.log" | tail -20

@@ -28,7 +28,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # 실험 러너가 실제로 도는 순서. 여기 없는 config 는 게이트 대상이 아니다.
-DEFAULT_CONFIGS = ("exp_c", "exp_a", "exp_b", "abl_loss", "exp_e")
+DEFAULT_CONFIGS = ("exp_c", "exp_a", "exp_b", "abl_loss", "abl_window", "exp_e")
 
 
 def training_in_progress() -> str | None:

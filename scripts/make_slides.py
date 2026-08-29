@@ -596,9 +596,15 @@ def s8_clean_preservation(TXT):
     막대는 모델 × 손실의 **ordinal 쌍**이고, 참조 둘(`M04` SWT, `M00`
     front-end 몫)은 막대가 아니라 **가로선**으로 둔다 — 비교 대상이 아니라
     눈금이기 때문이다.
+
+    **읽어야 하는 것은 막대 높이가 아니라 SWT 선까지의 거리**이므로, 각
+    막대에 그 격차를 숫자로 붙인다. 초판은 붙이지 않아서 정작 요점(17 dB
+    → 1.8 dB)이 그림에서 안 보였다.
     """
     import pandas as pd
-    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.6), sharey=False)
+    from matplotlib.transforms import blended_transform_factory as blend
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.8), sharey=False)
     axis_lab = {"d0": "D0 합성", "d1": "D1 MIT-BIH"}
     for ax, tag in zip(axes, ("d0", "d1")):
         p = Path("results") / tag / "exp_c" / "metrics.parquet"
@@ -607,6 +613,7 @@ def s8_clean_preservation(TXT):
         df = pd.read_parquet(p)
         s = df[df.metric == "snr_out_strict"].replace([np.inf, -np.inf], np.nan)
         g = s.groupby("method")["value"].mean()
+        ref = g.get("M04", np.nan)
         models, w = ["M06", "M08"], 0.34
         for i, loss in enumerate(("L1", "L6")):
             vals = [g.get(m if loss == "L1" else f"{m}-{loss}", np.nan) for m in models]
@@ -614,26 +621,42 @@ def s8_clean_preservation(TXT):
             ax.bar(xs, vals, width=w, color=LOSS[loss], zorder=3,
                    edgecolor=SURFACE, linewidth=2, label=loss)
             for x, v in zip(xs, vals):
-                if np.isfinite(v):
-                    ax.annotate(f"{v:.1f}", (x, v), ha="center", va="bottom",
-                                fontsize=10, color=INK,
-                                xytext=(0, 3), textcoords="offset points")
+                if not np.isfinite(v):
+                    continue
+                ax.annotate(f"{v:.1f}", (x, v), ha="center", va="bottom",
+                            fontsize=10.5, color=INK, zorder=4,
+                            xytext=(0, 3), textcoords="offset points")
+                if np.isfinite(ref):
+                    # 요점은 높이가 아니라 SWT 까지 남은 거리다. 다만 막대 폭이
+                    # 좁아 "SWT 까지 28.5" 는 잘린다 — 기호로 줄이고 뜻은
+                    # 부제에 적는다.
+                    ax.annotate(f"Δ{ref - v:.1f}", (x, v), ha="center",
+                                va="top", fontsize=10, color=SURFACE, zorder=4,
+                                fontweight="bold",
+                                xytext=(0, -7), textcoords="offset points")
+        # 참조선 — 막대 오른쪽에 **빈 띠**를 만들고 거기에 라벨을 둔다.
+        # 초판은 x=len(models)-0.45 라 축 밖으로 잘렸고, 축 좌표로 옮기자
+        # 이번에는 막대 값 라벨과 겹쳤다. 겹칠 자리를 아예 비우는 것이
+        # 두 문제를 한 번에 없앤다.
+        ax.set_xlim(-0.62, len(models) - 1 + 1.05)
         for key, lab, ls in (("M04", "M04 SWT", "--"), ("M00", "M00 무처리", ":")):
             v = g.get(key, np.nan)
-            if np.isfinite(v):
-                ax.axhline(v, color=INK2, ls=ls, lw=1.5, zorder=2)
-                ax.annotate(f"{lab}  {v:.1f}", (len(models) - 0.45, v), color=INK2,
-                            fontsize=9.5, ha="right", va="bottom",
-                            xytext=(0, 3), textcoords="offset points")
+            if not np.isfinite(v):
+                continue
+            ax.axhline(v, color=INK2, ls=ls, lw=1.5, zorder=2)
+            ax.annotate(f"{lab}\n{v:.1f}", (len(models) - 1 + 0.32, v), color=INK2,
+                        fontsize=9.5, ha="left", va="center", zorder=5)
         ax.set_xticks(np.arange(len(models))); ax.set_xticklabels(models, fontsize=11)
         ax.grid(axis="x", visible=False)
         ax.set_title(axis_lab[tag], fontsize=11.5, color=INK)
-        ax.margins(y=0.22)
+        ax.margins(y=0.26)
     axes[0].set_ylabel("깨끗한 신호 통과 시 출력 SNR [dB] ↑")
-    axes[0].legend(title="손실", loc="upper left", fontsize=10, title_fontsize=10)
+    axes[0].legend(title="손실", loc="upper left", fontsize=10, title_fontsize=10,
+                   framealpha=0.9)
     fig.suptitle("L6 는 무엇을 고쳤나 — 깨끗한 신호를 덜 건드린다 (EXP-C)\n"
-                 "D1 에서 SWT 와의 17 dB 격차가 1.8 dB 로 줄었다", fontsize=12.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.88))
+                 "D1 에서 SWT 와의 격차가 17.9 dB 에서 1.8 dB 로 줄었다\n"
+                 "막대 안 Δ = SWT 선까지 남은 거리 [dB]", fontsize=12.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.84))
     fig.savefig(OUT / "S8_clean.png", dpi=175); plt.close(fig)
     print("  S8_clean.png")
 

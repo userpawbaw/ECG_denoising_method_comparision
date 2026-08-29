@@ -1,8 +1,8 @@
 {
   "env": {
     "python": "3.11.15",
-    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
-    "git": "e844cf0",
+    "platform": "Linux-6.18.44-fc-v23-x86_64-with-glibc2.39",
+    "git": "511e78b",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -11,13 +11,11 @@
     "torch": "2.13.0+cu130"
   },
   "config": {
-    "only": [
-      "S7"
-    ],
+    "only": null,
     "snr": -5.0
   },
   "sources": {
-    "scripts/make_slides.py": "0fac5cf93f823a37",
+    "scripts/make_slides.py": "3a67590d740a289d",
     "scripts/run_exp.py": "502d7715e68f8cba",
     "ecgdn/data/dataset.py": "d5d0883966a22890",
     "ecgdn/methods/frontend.py": "b764ed73a82083ba",
