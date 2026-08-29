@@ -2,3 +2,4 @@
 {"ts": "2026-08-29T14:06:43+00:00", "state": "running", "lock": true, "lock_pid": 2525, "runner_alive": true, "trainers": [3121, 4112, 4116], "log_age_s": 2.2}
 {"ts": "2026-08-29T14:08:52+00:00", "state": "running", "lock": true, "lock_pid": 2525, "runner_alive": true, "trainers": [4271, 4303, 4307], "log_age_s": 5.8}
 {"ts": "2026-08-29T15:04:26+00:00", "state": "running", "lock": true, "lock_pid": 5478, "runner_alive": true, "trainers": [5483, 6111, 6115], "log_age_s": 0.5}
+{"ts": "2026-08-29T16:04:18+00:00", "state": "running", "lock": true, "lock_pid": 5478, "runner_alive": true, "trainers": [7227, 8567, 8571], "log_age_s": 27.4}
