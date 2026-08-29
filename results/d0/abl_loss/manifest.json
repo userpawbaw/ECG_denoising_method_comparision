@@ -1,8 +1,8 @@
 {
   "env": {
     "python": "3.11.15",
-    "platform": "Linux-6.18.44-fc-v21-x86_64-with-glibc2.39",
-    "git": "6774ade",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "git": "2eb3fda",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -45,6 +45,12 @@
       "M06-L3": {
         "ckpt": "results/{tag}/m06_l3/best.pt"
       },
+      "M06-L5": {
+        "ckpt": "results/{tag}/m06_l5/best.pt"
+      },
+      "M06-L6": {
+        "ckpt": "results/{tag}/m06_l6/best.pt"
+      },
       "M08-L1": {
         "ckpt": "results/{tag}/m08_l1/best.pt"
       },
@@ -53,6 +59,12 @@
       },
       "M08-L4": {
         "ckpt": "results/{tag}/m08_l4/best.pt"
+      },
+      "M08-L5": {
+        "ckpt": "results/{tag}/m08_l5/best.pt"
+      },
+      "M08-L6": {
+        "ckpt": "results/{tag}/m08_l6/best.pt"
       }
     },
     "eval": {
@@ -92,8 +104,12 @@
     "M06-L1",
     "M06-L2",
     "M06-L3",
+    "M06-L5",
+    "M06-L6",
     "M08-L1",
     "M08-L3",
-    "M08-L4"
+    "M08-L4",
+    "M08-L5",
+    "M08-L6"
   ]
 }
