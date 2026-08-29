@@ -2,7 +2,7 @@
   "env": {
     "python": "3.11.15",
     "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
-    "git": "2eb3fda",
+    "git": "5c6e8ba",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
