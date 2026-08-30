@@ -1,0 +1,76 @@
+{
+  "window": 1024,
+  "offline_db": 24.145647219677745,
+  "grid": [
+    {
+      "hop": 512,
+      "d": 12,
+      "delay_ms": 48.0,
+      "streaming_db": 24.273124384700825,
+      "vs_offline_db": 0.12747716502308037,
+      "seam_ratio": 3.5509540466469205,
+      "seam_percentile": 65.50278863173362,
+      "inferences_per_sec": 0.48828125
+    },
+    {
+      "hop": 512,
+      "d": 256,
+      "delay_ms": 1024.0,
+      "streaming_db": 24.093011005408602,
+      "vs_offline_db": -0.052636214269142556,
+      "seam_ratio": 2.6440443083869702,
+      "seam_percentile": 48.81775373209098,
+      "inferences_per_sec": 0.48828125
+    },
+    {
+      "hop": 256,
+      "d": 12,
+      "delay_ms": 48.0,
+      "streaming_db": 24.236098498444786,
+      "vs_offline_db": 0.09045127876704129,
+      "seam_ratio": 3.1786653255135016,
+      "seam_percentile": 56.45977356978259,
+      "inferences_per_sec": 0.9765625
+    },
+    {
+      "hop": 128,
+      "d": 12,
+      "delay_ms": 48.0,
+      "streaming_db": 24.50846457366788,
+      "vs_offline_db": 0.3628173539901347,
+      "seam_ratio": 3.791679009536194,
+      "seam_percentile": 59.84891293457569,
+      "inferences_per_sec": 1.953125
+    },
+    {
+      "hop": 64,
+      "d": 12,
+      "delay_ms": 48.0,
+      "streaming_db": 24.46452548076225,
+      "vs_offline_db": 0.3188782610845067,
+      "seam_ratio": 2.769725442199483,
+      "seam_percentile": 56.38576039573229,
+      "inferences_per_sec": 3.90625
+    },
+    {
+      "hop": 32,
+      "d": 12,
+      "delay_ms": 48.0,
+      "streaming_db": 24.385885517682606,
+      "vs_offline_db": 0.2402382980048614,
+      "seam_ratio": 4.19738383259262,
+      "seam_percentile": 51.89173154483715,
+      "inferences_per_sec": 7.8125
+    },
+    {
+      "hop": 12,
+      "d": 12,
+      "delay_ms": 48.0,
+      "streaming_db": 24.322204958773114,
+      "vs_offline_db": 0.17655773909536876,
+      "seam_ratio": 2.848335340312658,
+      "seam_percentile": 50.51216358700578,
+      "inferences_per_sec": 20.833333333333332
+    }
+  ]
+}
