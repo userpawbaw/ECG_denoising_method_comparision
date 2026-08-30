@@ -1,0 +1,59 @@
+{
+  "env": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "git": "ded1c4a",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": "0.2.13",
+    "torch": "2.13.0+cu130"
+  },
+  "config": {
+    "methods": [
+      "M_FE",
+      "M01",
+      "M02",
+      "M03",
+      "M04",
+      "M05",
+      "B01"
+    ],
+    "dl_methods": {
+      "M06": {
+        "ckpt": "results/{tag}/m06_l1/best.pt"
+      },
+      "M06L6": {
+        "ckpt": "results/{tag}/m06_l6/best.pt"
+      },
+      "M08": {
+        "ckpt": "results/{tag}/m08_l1/best.pt"
+      },
+      "M09": {
+        "ckpt": "results/{tag}/m09_l1/best.pt"
+      }
+    },
+    "frontend": true
+  },
+  "sources": {
+    "scripts/build_demo_bank.py": "1ff330566db0237d",
+    "ecgdn/data/dataset.py": "d5d0883966a22890"
+  },
+  "scenes": [
+    "d0-mixed0",
+    "d0-impulse10",
+    "d0-pli10",
+    "d0-bw10",
+    "d0-mixed20",
+    "d0-em10",
+    "d1-mixed0",
+    "d1-impulse10",
+    "d1-pli10",
+    "d1-bw10",
+    "d1-mixed20",
+    "d1-em10"
+  ],
+  "n": 2500,
+  "fs": 250.0
+}

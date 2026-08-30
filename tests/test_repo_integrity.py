@@ -186,9 +186,12 @@ def test_every_package_source_file_is_tracked_by_git():
     tracked = set(subprocess.run(["git", "ls-files"], cwd=ROOT, check=True,
                                  capture_output=True, text=True).stdout.split())
     on_disk = set()
-    for sub in ("ecgdn", "scripts", "tests", "configs"):
+    # `demo/` 의 화면도 소스다. 생성물(`demo_bank.js`)은 아래에서 따로 본다.
+    for sub in ("ecgdn", "scripts", "tests", "configs", "demo"):
+        if not (ROOT / sub).exists():
+            continue
         for f in (ROOT / sub).rglob("*"):
-            if f.is_file() and f.suffix in (".py", ".yaml", ".sh") \
+            if f.is_file() and f.suffix in (".py", ".yaml", ".sh", ".html") \
                     and "__pycache__" not in f.parts:
                 on_disk.add(str(f.relative_to(ROOT)))
     missing = sorted(on_disk - tracked)

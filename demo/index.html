@@ -1,0 +1,261 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ECG denoising — 방법 비교 시연</title>
+<!--
+  모드 B(기존 데이터) 시연 화면. 30_realtime_demo.md 4절.
+
+  **계산이 없다.** 파형은 scripts/build_demo_bank.py 가 미리 만든 것을
+  그대로 그린다. 시연 중에 실패할 계산이 없다는 것이 이 설계의 요점이다.
+
+  demo_bank.js 를 <script src> 로 읽으므로 **서버 없이 file:// 로 열린다.**
+-->
+<script src="demo_bank.js"></script>
+<style>
+  :root{
+    --bg:#fff; --fg:#1b1b1b; --muted:#6b6b6b; --line:#e2e2e2;
+    --accent:#184f95; --warn:#9a3412; --ref:#c9c9c9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",
+       "Noto Sans KR",sans-serif;color:var(--fg);background:var(--bg)}
+  header{padding:18px 22px 12px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:17px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12.5px}
+  .bar{display:flex;flex-wrap:wrap;gap:18px;padding:14px 22px;
+       border-bottom:1px solid var(--line);align-items:flex-start}
+  .grp{display:flex;flex-direction:column;gap:6px}
+  .grp>span{font-size:11px;color:var(--muted);letter-spacing:.04em}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  button.chip{font:inherit;font-size:12.5px;padding:5px 11px;border-radius:999px;
+       border:1px solid var(--line);background:#fafafa;color:var(--fg);cursor:pointer}
+  button.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);
+       color:#fff}
+  main{padding:16px 22px 40px}
+  .claim{margin:0 0 14px;padding:12px 14px;border-left:3px solid var(--accent);
+       background:#f6f8fb}
+  .claim b{font-weight:600}
+  .claim .ev{display:block;margin-top:5px;color:var(--muted);font-size:12px}
+  .prov{margin:0 0 16px;color:var(--muted);font-size:11.5px}
+  .panel{border-top:1px solid var(--line);padding:8px 0 4px}
+  .phead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .pname{font-weight:600;min-width:74px}
+  .pnum{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+  .pnum b{color:var(--fg);font-weight:600}
+  .pnum .none{color:var(--warn)}
+  button.q{margin-left:auto;font:inherit;font-size:11px;width:20px;height:20px;
+       border-radius:50%;border:1px solid var(--line);background:#fff;
+       color:var(--muted);cursor:pointer;line-height:1}
+  canvas{width:100%;height:96px;display:block}
+  dialog{max-width:520px;border:1px solid var(--line);border-radius:8px;padding:20px}
+  dialog h3{margin:0 0 8px;font-size:15px}
+  dialog p{margin:0 0 10px}
+  dialog .k{color:var(--muted);font-size:12px}
+  dialog form{text-align:right;margin-top:6px}
+  .empty{color:var(--warn);padding:30px 0}
+  .zoom{display:flex;align-items:center;gap:10px;margin:0 0 6px}
+  .zoom input[type=range]{flex:1;max-width:420px}
+  .zoom span{color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums}
+</style>
+
+<header>
+  <h1>ECG denoising — 방법 비교</h1>
+  <div class="sub" id="sub"></div>
+</header>
+
+<div class="bar">
+  <div class="grp"><span>데이터</span><div class="chips" id="axes"></div></div>
+  <div class="grp"><span>장면 (잡음 · 입력 SNR)</span><div class="chips" id="scenes"></div></div>
+  <div class="grp"><span>방법</span><div class="chips" id="methods"></div></div>
+  <div class="grp"><span>구간 길이</span><div class="chips" id="zoom"></div></div>
+</div>
+
+<main id="main"></main>
+<dialog id="dlg"><h3 id="dlgt"></h3><div id="dlgb"></div>
+  <form method="dialog"><button class="chip">닫기</button></form></dialog>
+
+<script>
+"use strict";
+const B = window.DEMO_BANK;
+const $ = (id) => document.getElementById(id);
+
+/* 파형 하나: base64 → Int16Array → × scale. 장면 전체가 scale 하나를 쓴다. */
+function decode(b64, scale) {
+  const bin = atob(b64), n = bin.length / 2, out = new Float32Array(n);
+  const dv = new DataView(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) dv.setUint8(i, bin.charCodeAt(i));
+  for (let i = 0; i < n; i++) out[i] = dv.getInt16(i * 2, true) * scale;
+  return out;
+}
+
+const COLOR = {input:"#b0453a", clean:"#c9c9c9", B01:"#2f7d4f"};
+const state = {
+  axis: B.scenes[0].axis,
+  scene: B.scenes[0].id.split("-").slice(1).join("-"),
+  shown: new Set(["M_FE", "M01", "M04", "M06"]),
+  /* 10 s 를 화면 폭에 다 그리면 QRS 가 몇 픽셀이라 형태 차이가 안 보인다.
+     확대는 **모든 칸에 동시에** 걸린다 — 칸마다 다른 구간을 보면 비교가 아니다. */
+  win: 10, start: 0,
+};
+const clampStart = () => {
+  const max = Math.max(0, B.n - Math.round(state.win * B.fs));
+  state.start = Math.min(Math.max(0, state.start), max);
+  return max;
+};
+
+function scenesFor(axis){ return B.scenes.filter(s => s.axis === axis); }
+function current(){
+  return B.scenes.find(s => s.axis === state.axis &&
+                            s.id.endsWith("-" + state.scene)) || scenesFor(state.axis)[0];
+}
+
+function chip(label, on, fn, title){
+  const b = document.createElement("button");
+  b.className = "chip"; b.textContent = label; b.setAttribute("aria-pressed", on);
+  if (title) b.title = title;
+  b.onclick = () => { fn(); render(); };
+  return b;
+}
+
+function buildBar(){
+  const ax = $("axes"); ax.innerHTML = "";
+  for (const [a, name] of [["d0","합성 (McSharry)"], ["d1","MIT-BIH + NSTDB"]]) {
+    if (!scenesFor(a).length) continue;
+    ax.append(chip(name, state.axis === a, () => state.axis = a));
+  }
+  const sc = $("scenes"); sc.innerHTML = "";
+  for (const s of scenesFor(state.axis)) {
+    const key = s.id.split("-").slice(1).join("-");
+    sc.append(chip(`${s.cond} ${s.snr} dB`, key === state.scene,
+                   () => state.scene = key, s.title));
+  }
+  const zm = $("zoom"); zm.innerHTML = "";
+  for (const s of [10, 4, 2]) {
+    zm.append(chip(s + " s", state.win === s, () => {
+      const mid = state.start + state.win * B.fs / 2;      // 보던 자리를 유지한다
+      state.win = s; state.start = Math.round(mid - s * B.fs / 2); clampStart();
+    }));
+  }
+  const me = $("methods"); me.innerHTML = "";
+  for (const m of B.methods) {
+    me.append(chip(m, state.shown.has(m), () => {
+      state.shown.has(m) ? state.shown.delete(m) : state.shown.add(m);
+    }, (B.method_info[m] || {}).label || m));
+  }
+}
+
+/* 모든 패널이 **같은 y 범위**를 쓴다. 행마다 축이 다르면 차이가 없는 방법도
+   좋아 보인다 (30_realtime_demo 4.1). 범위는 은행이 정해 준다. */
+function draw(cv, sig, ref, color, ylim){
+  const a = state.start, b = Math.min(sig.length, a + Math.round(state.win * B.fs));
+  sig = sig.subarray(a, b); if (ref) ref = ref.subarray(a, b);
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = "#f0f0f0"; g.lineWidth = 1;
+  for (let s = 1; s < state.win; s++) {
+    const x = Math.round(s * B.fs * w / (b - a)) + .5;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
+  }
+  const line = (v, col, lw) => {
+    g.beginPath(); g.strokeStyle = col; g.lineWidth = lw;
+    for (let i = 0; i < v.length; i++) {
+      const x = i * w / (v.length - 1);
+      const y = h / 2 - Math.max(-1, Math.min(1, v[i] / ylim)) * (h / 2 - 2);
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.stroke();
+  };
+  if (ref) line(ref, COLOR.clean, 2.2);
+  line(sig, color, 1.1);
+}
+
+function panel(s, key, label, color, showRef){
+  const el = document.createElement("div"); el.className = "panel";
+  const head = document.createElement("div"); head.className = "phead";
+  const nm = document.createElement("span"); nm.className = "pname"; nm.textContent = label;
+  const num = document.createElement("span"); num.className = "pnum";
+  const m = s.metrics[key];
+  if (m) {
+    const r = s.ref_mean[key];
+    num.innerHTML = `이 구간 <b>${m.snr_imp.toFixed(2)} dB</b>` +
+      (r === undefined
+        ? ` · <span class="none">축 평균 없음</span>`
+        : ` · 축 평균 ${r.toFixed(2)} dB`) +
+      ` · cc ${m.cc.toFixed(3)}`;
+  } else if (key === "input") {
+    num.textContent = `잡음 섞인 신호 — 입력 SNR ${s.snr} dB`;
+  } else {
+    num.textContent = "참값 (clean reference)";
+  }
+  head.append(nm, num);
+  if (B.method_info[key]) {
+    const q = document.createElement("button");
+    q.className = "q"; q.textContent = "?"; q.title = "설명";
+    q.onclick = () => {
+      const info = B.method_info[key];
+      $("dlgt").textContent = `${key} — ${info.label}`;
+      $("dlgb").innerHTML = `<p>${info.note}</p>` +
+        `<p class="k">계열 ${info.family} · 이 구간 RTF ${m ? m.rtf : "—"}</p>`;
+      $("dlg").showModal();
+    };
+    head.append(q);
+  }
+  el.append(head);
+  const cv = document.createElement("canvas"); el.append(cv);
+  const sig = decode(s.traces[key], s.scale);
+  const ref = showRef ? decode(s.traces.clean, s.scale) : null;
+  const go = () => draw(cv, sig, ref, color || COLOR[key] || "#184f95", s.ylim);
+  drawers.push(go);
+  requestAnimationFrame(go);
+  return el;
+}
+
+const drawers = [];
+function redraw(){ for (const f of drawers) f(); }
+
+function render(){
+  drawers.length = 0;
+  buildBar();
+  const s = current(), main = $("main");
+  $("sub").textContent =
+    `${B.n / B.fs} s 구간 · ${B.fs} Hz · 회색은 참값(clean), 색은 각 방법의 출력` +
+    ` · 모든 칸이 같은 y 축과 같은 시간 구간을 쓴다`;
+  main.innerHTML = "";
+  const c = document.createElement("div"); c.className = "claim";
+  c.innerHTML = `<b>${s.title}</b><br>${s.claim}<span class="ev">${s.evidence}</span>`;
+  main.append(c);
+  const p = document.createElement("p"); p.className = "prov";
+  p.textContent =
+    `기록 ${s.record}/${s.seg} — 후보 ${s.n_candidates} 개 중 축 평균과 가장 가까운 구간` +
+    ` (평균편차 ${s.selection.mean_abs_dev} dB, 후보 범위 ` +
+    `${s.selection.dev_range[0]}~${s.selection.dev_range[1]}).` +
+    ` 딥러닝−고전 대비는 ${s.selection.contrast_db} dB 로 후보 중 ` +
+    `${s.selection.contrast_rank} 위 — 잘 나온 구간을 고른 것이 아니다.`;
+  main.append(p);
+
+  const max = clampStart();
+  if (max > 0) {
+    const z = document.createElement("div"); z.className = "zoom";
+    const r = document.createElement("input");
+    r.type = "range"; r.min = 0; r.max = max; r.step = 1; r.value = state.start;
+    const lab = document.createElement("span");
+    const upd = () => lab.textContent =
+      `${(state.start / B.fs).toFixed(1)} ~ ${(state.start / B.fs + state.win).toFixed(1)} s`;
+    r.oninput = () => { state.start = +r.value; upd(); redraw(); };
+    upd(); z.append(r, lab); main.append(z);
+  }
+  main.append(panel(s, "input", "입력", COLOR.input, true));
+  const shown = B.methods.filter(m => state.shown.has(m) && s.traces[m]);
+  if (!shown.length) {
+    const e = document.createElement("div");
+    e.className = "empty"; e.textContent = "방법을 하나 이상 고르세요.";
+    main.append(e);
+  }
+  for (const m of shown) main.append(panel(s, m, m, null, true));
+}
+
+render();
+addEventListener("resize", () => render());
+</script>
