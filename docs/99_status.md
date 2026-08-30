@@ -334,14 +334,23 @@ python3 scripts/build_demo_bank.py     # demo/demo_bank.js 재생성 (약 6 분)
 xdg-open demo/index.html               # 서버 불필요
 ```
 
-**새로 생긴 열린 질문**: `M06L6`(성공한 손실 변경)의 축 평균이 **혼합 잡음에만
-있다** — `abl_loss` 가 `conditions: [mixed]` 로 돌았기 때문이다. 시연 구간
-하나에서는 임펄스 +5.2 dB / PLI −7.0 dB 로 부호가 갈렸다. 재는 데 학습은
-필요 없고 `exp_b` 평가 한 번이면 된다. **사용자 판단 대기** →
-`docs/30_realtime_demo.md` 8절.
+**진행 중 — EXP-G**: `M06L6`(성공한 손실 변경)의 축 평균이 혼합 잡음에만
+있었다(`abl_loss` 가 `conditions: [mixed]`). 시연 구간 하나에서 임펄스
++5.2 dB / PLI −7.0 dB 로 **부호가 갈렸다.** `configs/exp_g.yaml` 로 잡음 7 종 ×
+SNR 3 단계를 다시 잰다 — 학습 없이 평가만, 축당 약 50 분.
+같은 산출물이 **시연 격자의 축 평균**도 채운다.
+분석 `scripts/analyze_loss_by_noise.py` → `docs/11_loss_by_noise.md`.
+→ `docs/30_realtime_demo.md` 8절
 
-**남은 것은 D3(아두이노) 실측뿐이다** — 6절의 EXP-F. 사용자가 데이터를
-준비하는 대로 착수한다. `fs = 1 kHz` 를 재는 판도 그때 함께 본다(D-14).
+```bash
+bash scripts/run_exp_g.sh          # 재개 (락을 잡아 watchdog 이 본다)
+python3 scripts/analyze_loss_by_noise.py
+python3 scripts/build_demo_bank.py # 축 평균이 채워진 은행 재생성
+```
+
+> **`run_exp.py` 에는 실험 내부 재개가 없다.** 컨테이너가 재시작되면 그 실험은
+> 처음부터 다시 돈다(실제로 EXP-G 가 300/924 에서 죽어 26 분을 잃었다).
+> `run_all_experiments.sh` 의 재개는 **실험 단위**라 여기까지 못 막는다.
 
 ### 학습·실험 파이프라인 감시
 

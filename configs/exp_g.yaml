@@ -1,0 +1,45 @@
+# EXP-G — 잡음 종류 × 입력 SNR 격자 (RQ2 확장 + 손실 변형).
+#
+# 두 질문에 한 번에 답한다.
+#
+# **(1) `L6` 의 이득이 잡음 종류별로도 유지되는가.** 5.8.9 는 `L6` 이 `M06` 에서
+#      양축 유의라고 말하는데, 그 근거인 `abl_loss` 는 `conditions: [mixed]`
+#      하나만 돌았다. 시연용으로 뽑은 구간 하나에서는 임펄스 +5.2 dB /
+#      PLI −7.0 dB 로 **부호가 갈렸다** — 구간 하나라 결론이 못 된다.
+#
+# **(2) 시연 화면의 축 평균.** `exp_b` 는 10 dB 하나뿐이라 0·20 dB 잡음별
+#      장면에 나란히 놓을 평균이 없었다(D-17 의 `no_ref`).
+#
+# `exp_b` 를 덮지 않는다 — 보고서 5.2 가 그것을 쓴다. 별도 산출물이다.
+exp_id: exp_g
+frontend: true
+mode: snr
+
+data:
+  source: auto
+  split: test
+  seg_s: 60.0
+  n_seg_per_record: 2
+  snr_grid: [0, 10, 20]
+  conditions: [awgn, pli, bw_synth, ma_synth, em_synth, impulse, mixed]
+  noise_split: test
+  dur_s: 300.0
+  n_test: 22
+  seed: eval_b          # exp_b 와 **같은 평가 세트**여야 10 dB 열이 대조된다
+
+# 시연 은행에 실리는 방법 전부 + 손실 변형. `M04np`·`M05f`·`B02` 는 뺐다 —
+# 이 격자의 질문(손실 변형 · 시연 평균)에 쓰이지 않는다.
+methods: [M_FE, M01, M02, M03, M04, M05, B01]
+
+dl_methods:
+  M06:    {ckpt: "results/{tag}/m06_l1/best.pt"}
+  M06L6:  {ckpt: "results/{tag}/m06_l6/best.pt"}
+  M08:    {ckpt: "results/{tag}/m08_l1/best.pt"}
+  M08L6:  {ckpt: "results/{tag}/m08_l6/best.pt"}
+  M09:    {ckpt: "results/{tag}/m09_l1/best.pt"}
+
+# 형태·스펙트럼 지표는 끈다. 이 격자의 질문은 **`snr_imp_scaled` 하나**이고,
+# delineation 이 항목당 비용의 대부분이다. 형태 판단은 exp_a/exp_b 가 한다.
+eval:
+  do_morph: false
+  do_spectral: false

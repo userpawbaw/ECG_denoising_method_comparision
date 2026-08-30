@@ -30,6 +30,7 @@
        border:1px solid var(--line);background:#fafafa;color:var(--fg);cursor:pointer}
   button.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);
        color:#fff}
+  button.chip[disabled]{opacity:.35;cursor:not-allowed}
   main{padding:16px 22px 40px}
   .claim{margin:0 0 14px;padding:12px 14px;border-left:3px solid var(--accent);
        background:#f6f8fb}
@@ -45,7 +46,13 @@
   button.q{margin-left:auto;font:inherit;font-size:11px;width:20px;height:20px;
        border-radius:50%;border:1px solid var(--line);background:#fff;
        color:var(--muted);cursor:pointer;line-height:1}
-  canvas{width:100%;height:96px;display:block}
+  .wrap{position:relative}
+  /* 격자는 **캔버스 밖**에 있다. 스윕 모드의 지우개가 캔버스를 지우므로
+     안에 그리면 함께 지워진다. */
+  .wrap::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(to right,transparent 0,transparent
+      calc(var(--sec) - 1px),#f0f0f0 calc(var(--sec) - 1px),#f0f0f0 var(--sec))}
+  canvas{width:100%;height:96px;display:block;position:relative}
   dialog{max-width:520px;border:1px solid var(--line);border-radius:8px;padding:20px}
   dialog h3{margin:0 0 8px;font-size:15px}
   dialog p{margin:0 0 10px}
@@ -64,9 +71,12 @@
 
 <div class="bar">
   <div class="grp"><span>데이터</span><div class="chips" id="axes"></div></div>
-  <div class="grp"><span>장면 (잡음 · 입력 SNR)</span><div class="chips" id="scenes"></div></div>
+  <div class="grp"><span>잡음 종류</span><div class="chips" id="conds"></div></div>
+  <div class="grp"><span>입력 SNR</span><div class="chips" id="snrs"></div></div>
   <div class="grp"><span>방법</span><div class="chips" id="methods"></div></div>
   <div class="grp"><span>구간 길이</span><div class="chips" id="zoom"></div></div>
+  <div class="grp"><span>표시</span><div class="chips" id="opts"></div></div>
+  <div class="grp"><span>재생</span><div class="chips" id="play"></div></div>
 </div>
 
 <main id="main"></main>
@@ -87,14 +97,27 @@ function decode(b64, scale) {
   return out;
 }
 
-const COLOR = {input:"#b0453a", clean:"#c9c9c9", B01:"#2f7d4f"};
+/* 참값은 **반투명**으로 깐다. 불투명 회색이면 출력이 참값을 가릴 때 어느 쪽이
+   위인지 안 보인다 — 겹친 자리에서 색이 섞여야 "붙어 있다" 가 읽힌다. */
+const COLOR = {input:"#b0453a", clean:"rgba(70,70,70,0.5)", B01:"#2f7d4f"};
 const state = {
   axis: B.scenes[0].axis,
-  scene: B.scenes[0].id.split("-").slice(1).join("-"),
+  /* 잡음 종류와 SNR 은 **따로** 고른다. 묶어 두면 "PLI 를 20 dB 에서 보면
+     어떤가" 를 볼 수가 없다 — 10 dB PLI 하나만으로는 방법 간 격차가 안 보인다. */
+  cond: B.scenes[0].cond, snr: B.scenes[0].snr,
   shown: new Set(["M_FE", "M01", "M04", "M06"]),
   /* 10 s 를 화면 폭에 다 그리면 QRS 가 몇 픽셀이라 형태 차이가 안 보인다.
      확대는 **모든 칸에 동시에** 걸린다 — 칸마다 다른 구간을 보면 비교가 아니다. */
   win: 10, start: 0,
+  ref: true,          // 참값(clean) 겹쳐 그리기
+  /* 재생 모드. "sweep" 은 병원 모니터 방식 — 커서가 좌→우로 지나가며 그리고,
+     커서 앞쪽을 지워 다음 바퀴 자리를 비운다. "scroll" 은 파형이 오른쪽에서
+     들어와 왼쪽으로 흐른다. "off" 는 구간 전체를 한 번에 그린 정적 화면이다.
+
+     **정적 모드가 기본이다.** 애니메이션은 임팩트를 주지만 화면에 한 번에
+     보이는 구간이 짧아져 **방법 간 차이를 눈으로 재기 어려워진다** — 시연의
+     두 목적(임팩트 / 비교) 중 비교 쪽을 해친다. 그래서 둘을 분리했다. */
+  play: "off", speed: 1,
 };
 const clampStart = () => {
   const max = Math.max(0, B.n - Math.round(state.win * B.fs));
@@ -103,15 +126,21 @@ const clampStart = () => {
 };
 
 function scenesFor(axis){ return B.scenes.filter(s => s.axis === axis); }
+function has(cond, snr){
+  return B.scenes.some(s => s.axis === state.axis && s.cond === cond && s.snr === snr);
+}
 function current(){
-  return B.scenes.find(s => s.axis === state.axis &&
-                            s.id.endsWith("-" + state.scene)) || scenesFor(state.axis)[0];
+  return B.scenes.find(s => s.axis === state.axis && s.cond === state.cond &&
+                            s.snr === state.snr) || scenesFor(state.axis)[0];
 }
 
-function chip(label, on, fn, title){
+function chip(label, on, fn, title, off){
   const b = document.createElement("button");
   b.className = "chip"; b.textContent = label; b.setAttribute("aria-pressed", on);
   if (title) b.title = title;
+  // 은행에 없는 조합은 **눌러도 아무 일이 없는** 대신 눌리지 않게 보인다.
+  // (부분 빌드로 확인할 때 생긴다 — 전체 빌드에서는 격자가 다 차 있다.)
+  if (off) { b.disabled = true; return b; }
   b.onclick = () => { fn(); render(); };
   return b;
 }
@@ -122,11 +151,20 @@ function buildBar(){
     if (!scenesFor(a).length) continue;
     ax.append(chip(name, state.axis === a, () => state.axis = a));
   }
-  const sc = $("scenes"); sc.innerHTML = "";
-  for (const s of scenesFor(state.axis)) {
-    const key = s.id.split("-").slice(1).join("-");
-    sc.append(chip(`${s.cond} ${s.snr} dB`, key === state.scene,
-                   () => state.scene = key, s.title));
+  const cd = $("conds"); cd.innerHTML = "";
+  for (const c of B.conds) {
+    const star = B.scenes.some(s => s.cond === c && s.snr === state.snr && s.highlight);
+    cd.append(chip((star ? "★ " : "") + (B.cond_label[c] || c), c === state.cond,
+                   () => state.cond = c,
+                   star ? "추천 조합 — 보고서의 결론 하나를 그대로 보인다" : c,
+                   !has(c, state.snr)));
+  }
+  const sn = $("snrs"); sn.innerHTML = "";
+  for (const v of B.snrs) {
+    const star = B.scenes.some(s => s.cond === state.cond && s.snr === v && s.highlight);
+    sn.append(chip((star ? "★ " : "") + v + " dB", v === state.snr,
+                   () => state.snr = v, star ? "추천 조합" : "",
+                   !has(state.cond, v)));
   }
   const zm = $("zoom"); zm.innerHTML = "";
   for (const s of [10, 4, 2]) {
@@ -135,6 +173,18 @@ function buildBar(){
       state.win = s; state.start = Math.round(mid - s * B.fs / 2); clampStart();
     }));
   }
+  const op = $("opts"); op.innerHTML = "";
+  op.append(chip("참값 겹치기", state.ref, () => state.ref = !state.ref,
+                 "각 출력 위에 참값(clean)을 반투명 회색으로 겹쳐 그린다"));
+  const pl = $("play"); pl.innerHTML = "";
+  for (const [k, name, tip] of [
+      ["off", "정지", "구간 전체를 한 번에 그린다 — 방법 간 비교는 이 모드에서"],
+      ["sweep", "스윕", "병원 모니터처럼 커서가 좌→우로 지나가며 그린다"],
+      ["scroll", "스크롤", "파형이 오른쪽에서 들어와 왼쪽으로 흐른다"]])
+    pl.append(chip(name, state.play === k, () => { state.play = k; resetAnim(); }, tip));
+  if (state.play !== "off")
+    for (const v of [0.5, 1, 2])
+      pl.append(chip(v + "×", state.speed === v, () => state.speed = v));
   const me = $("methods"); me.innerHTML = "";
   for (const m of B.methods) {
     me.append(chip(m, state.shown.has(m), () => {
@@ -145,30 +195,113 @@ function buildBar(){
 
 /* 모든 패널이 **같은 y 범위**를 쓴다. 행마다 축이 다르면 차이가 없는 방법도
    좋아 보인다 (30_realtime_demo 4.1). 범위는 은행이 정해 준다. */
+function fit(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  /* 캔버스 크기를 대입하면 내용이 지워진다. 스윕은 캔버스 내용이 곧 상태이므로
+     **크기가 실제로 바뀔 때만** 대입한다. */
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    cv.__ctx = cv.getContext("2d");
+    cv.__ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cv.__fresh = true;
+  }
+  return [cv.__ctx || (cv.__ctx = cv.getContext("2d")), w, h];
+}
+
+const yAt = (v, h, ylim) =>
+  h / 2 - Math.max(-1, Math.min(1, v / ylim)) * (h / 2 - 2);
+
 function draw(cv, sig, ref, color, ylim){
   const a = state.start, b = Math.min(sig.length, a + Math.round(state.win * B.fs));
   sig = sig.subarray(a, b); if (ref) ref = ref.subarray(a, b);
-  const dpr = window.devicePixelRatio || 1;
-  const w = cv.clientWidth, h = cv.clientHeight;
-  cv.width = w * dpr; cv.height = h * dpr;
-  const g = cv.getContext("2d"); g.scale(dpr, dpr);
-  g.clearRect(0, 0, w, h);
-  g.strokeStyle = "#f0f0f0"; g.lineWidth = 1;
-  for (let s = 1; s < state.win; s++) {
-    const x = Math.round(s * B.fs * w / (b - a)) + .5;
-    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
-  }
+  const [g, w, h] = fit(cv);
+  g.clearRect(0, 0, w, h); cv.__fresh = false;
   const line = (v, col, lw) => {
     g.beginPath(); g.strokeStyle = col; g.lineWidth = lw;
     for (let i = 0; i < v.length; i++) {
       const x = i * w / (v.length - 1);
-      const y = h / 2 - Math.max(-1, Math.min(1, v[i] / ylim)) * (h / 2 - 2);
-      i ? g.lineTo(x, y) : g.moveTo(x, y);
+      i ? g.lineTo(x, yAt(v[i], h, ylim)) : g.moveTo(x, yAt(v[i], h, ylim));
     }
     g.stroke();
   };
   if (ref) line(ref, COLOR.clean, 2.2);
   line(sig, color, 1.1);
+}
+
+/* ------------------------------------------------------------------ 스윕
+   병원 모니터 방식. 커서가 좌→우로 지나가며 **그 프레임에 해당하는 구간만**
+   잇고, 커서 앞쪽 `ERASE` 만큼을 지워 다음 바퀴가 들어올 자리를 비운다.
+
+   두 가지가 중요하다.
+   1. **시각은 벽시계로 잰다.** 프레임 카운터로 진행하면 렌더가 밀릴 때
+      패널마다 다른 속도로 흘러 **비교가 깨진다.** `performance.now()` 를
+      전역으로 한 번 읽어 모든 패널이 같은 위상을 쓴다.
+   2. **캔버스 내용이 상태다.** 지운 과거는 다시 그릴 수 없으므로, 크기나
+      설정이 바뀌면 한 바퀴를 처음부터 다시 돈다(`resetAnim`). */
+const ERASE = 0.5;      // 커서 앞을 화면 폭의 50 % 지운다 — 꼬리가 1 바퀴의 절반
+let animT0 = 0, animIdx = 0, animRAF = 0;
+
+function resetAnim(){
+  animT0 = performance.now(); animIdx = 0;
+  for (const p of panels) p.cv.__fresh = true;
+}
+
+/* 한 바퀴가 끝나면 **다음 구간**이 이어진다. 같은 2 s 를 반복하면 감시장치가
+   아니라 GIF 다. 표본 인덱스 하나로 위치와 데이터를 함께 정한다 —
+   화면 위치는 `idx % n`, 데이터는 `idx % 전체` 라 기록이 통째로 순환한다.
+
+   **바퀴가 넘어갈 때 캔버스를 지우지 않는다.** 실제 감시장치도 그렇다 —
+   지난 바퀴의 파형은 지우개가 지나갈 때까지 남아 있고, 그 남은 꼬리가
+   "흐르고 있다" 는 인상을 만든다. */
+function sweep(p, i1, i0){
+  const [g, w, h] = fit(p.cv);
+  const n = Math.round(state.win * B.fs), total = p.sig.length;
+  if (p.cv.__fresh) { g.clearRect(0, 0, w, h); p.cv.__fresh = false; }
+  const seg = (v, col, lw) => {
+    if (!v) return;
+    g.beginPath(); g.strokeStyle = col; g.lineWidth = lw;
+    let pen = false;
+    for (let i = Math.max(i0 - 1, 0); i <= i1; i++) {
+      const k = ((i % n) + n) % n;
+      const x = k * w / (n - 1), y = yAt(v[((i % total) + total) % total], h, p.ylim);
+      if (!pen || k === 0) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+    }
+    g.stroke();
+  };
+  seg(p.showRef && state.ref ? p.ref : null, COLOR.clean, 2.2);
+  seg(p.sig, p.color, 1.1);
+  // 커서 앞을 지운다. 오른쪽 끝을 넘으면 왼쪽으로 감아서 지운다.
+  const x1 = (((i1 % n) + n) % n) * w / (n - 1), e = ERASE * w;
+  g.clearRect(x1 + 1.5, 0, e, h);
+  if (x1 + e > w) g.clearRect(0, 0, x1 + e - w, h);
+}
+
+function tick(){
+  animRAF = 0;
+  if (state.play === "off") return;
+  const el = (performance.now() - animT0) / 1000 * state.speed;
+  if (state.play === "scroll") {
+    // 창을 시간에 따라 밀기만 하면 된다 — 정적 그리기를 그대로 쓴다.
+    const max = Math.max(0, B.n - Math.round(state.win * B.fs));
+    state.start = Math.round((el * B.fs) % (max + 1));
+    for (const p of panels) draw(p.cv, p.sig, p.showRef && state.ref ? p.ref : null,
+                                 p.color, p.ylim);
+  } else {
+    const i1 = Math.floor(el * B.fs);
+    // 한 프레임에 한 바퀴 넘게 밀리면(탭 전환 등) 따라 그리지 않고 건너뛴다
+    const n = Math.round(state.win * B.fs);
+    for (const p of panels) sweep(p, i1, Math.max(animIdx, i1 - n));
+    animIdx = i1;
+  }
+  animRAF = requestAnimationFrame(tick);
+}
+
+function startAnim(){
+  if (animRAF) cancelAnimationFrame(animRAF);
+  animRAF = 0;
+  if (state.play === "off") { redraw(); return; }
+  resetAnim(); animRAF = requestAnimationFrame(tick);
 }
 
 function panel(s, key, label, color, showRef){
@@ -203,36 +336,43 @@ function panel(s, key, label, color, showRef){
     head.append(q);
   }
   el.append(head);
-  const cv = document.createElement("canvas"); el.append(cv);
-  const sig = decode(s.traces[key], s.scale);
-  const ref = showRef ? decode(s.traces.clean, s.scale) : null;
-  const go = () => draw(cv, sig, ref, color || COLOR[key] || "#184f95", s.ylim);
-  drawers.push(go);
-  requestAnimationFrame(go);
+  const wrap = document.createElement("div"); wrap.className = "wrap";
+  const cv = document.createElement("canvas"); wrap.append(cv); el.append(wrap);
+  panels.push({cv, sig: decode(s.traces[key], s.scale),
+               ref: decode(s.traces.clean, s.scale), showRef,
+               color: color || COLOR[key] || "#184f95", ylim: s.ylim});
   return el;
 }
 
-const drawers = [];
-function redraw(){ for (const f of drawers) f(); }
+const panels = [];
+function redraw(){
+  for (const p of panels)
+    draw(p.cv, p.sig, p.showRef && state.ref ? p.ref : null, p.color, p.ylim);
+}
 
 function render(){
-  drawers.length = 0;
+  if (animRAF) { cancelAnimationFrame(animRAF); animRAF = 0; }
+  panels.length = 0;
   buildBar();
   const s = current(), main = $("main");
   $("sub").textContent =
-    `${B.n / B.fs} s 구간 · ${B.fs} Hz · 회색은 참값(clean), 색은 각 방법의 출력` +
-    ` · 모든 칸이 같은 y 축과 같은 시간 구간을 쓴다`;
+    `${B.n / B.fs} s 구간 · ${B.fs} Hz · ` +
+    (state.ref ? "회색은 참값(clean), 색은 각 방법의 출력 · " : "") +
+    `모든 칸이 같은 y 축과 같은 시간 구간을 쓴다`;
   main.innerHTML = "";
   const c = document.createElement("div"); c.className = "claim";
-  c.innerHTML = `<b>${s.title}</b><br>${s.claim}<span class="ev">${s.evidence}</span>`;
+  c.innerHTML = `<b>${s.highlight ? "★ " : ""}${s.title}</b>` +
+                (s.claim ? `<br>${s.claim}` : "") +
+                `<span class="ev">${s.evidence}</span>`;
   main.append(c);
   const p = document.createElement("p"); p.className = "prov";
   p.textContent =
-    `기록 ${s.record}/${s.seg} — 후보 ${s.n_candidates} 개 중 축 평균과 가장 가까운 구간` +
-    ` (평균편차 ${s.selection.mean_abs_dev} dB, 후보 범위 ` +
-    `${s.selection.dev_range[0]}~${s.selection.dev_range[1]}).` +
-    ` 딥러닝−고전 대비는 ${s.selection.contrast_db} dB 로 후보 중 ` +
-    `${s.selection.contrast_rank} 위 — 잘 나온 구간을 고른 것이 아니다.`;
+    `기록 ${s.record}/${s.seg} — 이 잡음의 기록은 ${s.selection.picked_at_snr} dB 에서` +
+    ` 후보 ${s.selection.n_candidates} 개 중 축 평균과 가장 가까운 것으로` +
+    ` 한 번 골라 모든 SNR 이 함께 쓴다 (평균편차 ${s.selection.mean_abs_dev} dB,` +
+    ` 후보 범위 ${s.selection.dev_range[0]}~${s.selection.dev_range[1]}).` +
+    ` 딥러닝−고전 대비는 후보 중 ${s.selection.contrast_rank} 위 —` +
+    ` 잘 나온 구간을 고른 것이 아니다.`;
   main.append(p);
 
   const max = clampStart();
@@ -243,6 +383,7 @@ function render(){
     const lab = document.createElement("span");
     const upd = () => lab.textContent =
       `${(state.start / B.fs).toFixed(1)} ~ ${(state.start / B.fs + state.win).toFixed(1)} s`;
+    r.disabled = state.play !== "off";        // 재생 중에는 시작 위치를 애니메이션이 정한다
     r.oninput = () => { state.start = +r.value; upd(); redraw(); };
     upd(); z.append(r, lab); main.append(z);
   }
@@ -254,6 +395,10 @@ function render(){
     main.append(e);
   }
   for (const m of shown) main.append(panel(s, m, m, null, true));
+  // 격자 간격을 CSS 변수로 넘긴다 (캔버스 밖에 그리므로)
+  for (const wr of main.querySelectorAll(".wrap"))
+    wr.style.setProperty("--sec", `${100 / state.win}%`);
+  requestAnimationFrame(startAnim);
 }
 
 render();
