@@ -1,0 +1,454 @@
+<title>Denoising Bench</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* ── 색: ECG 차트지를 소재로 삼는다. 살몬 격자 · 스타일러스 먹색 · 계측 청록.
+      방법 색(입력 적갈 / 고전 황토 / 딥러닝 남색 / oracle 녹)은 보고서 그림과
+      같은 값을 그대로 쓴다 — 시연과 보고서에서 같은 방법이 같은 색이어야 한다. */
+:root{
+  --paper:#faf6f3; --card:#fffdfb; --sunk:#f4ece7;
+  --grid-fine:#f2dbd4; --grid-bold:#e3b6ab;
+  --ink:#1a1613; --ink-2:#6b615a; --ink-3:#9c9088;
+  --line:#e8ddd6;
+  --accent:#0d6157; --accent-soft:#dceeea;
+  --noisy:#b0453a; --classic:#c07a1f; --deep:#184f95; --oracle:#2f7d4f;
+  --clean:rgba(70,70,70,.42);
+  --win:#0d6157; --lose:#a8452f; --tie:#8b837c;
+  --shadow:0 1px 2px rgba(60,40,30,.05),0 8px 24px rgba(60,40,30,.06);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#15120f; --card:#1d1917; --sunk:#221c19;
+  --grid-fine:#2b201d; --grid-bold:#3d2c27;
+  --ink:#f3ece6; --ink-2:#b3a79e; --ink-3:#7d726b;
+  --line:#2e2724;
+  --accent:#4fd3bf; --accent-soft:#123a35;
+  --noisy:#e0705f; --classic:#e0a445; --deep:#7bb0f0; --oracle:#5fbe86;
+  --clean:rgba(220,214,208,.40);
+  --win:#4fd3bf; --lose:#e0705f; --tie:#8b837c;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  --paper:#15120f; --card:#1d1917; --sunk:#221c19;
+  --grid-fine:#2b201d; --grid-bold:#3d2c27;
+  --ink:#f3ece6; --ink-2:#b3a79e; --ink-3:#7d726b;
+  --line:#2e2724;
+  --accent:#4fd3bf; --accent-soft:#123a35;
+  --noisy:#e0705f; --classic:#e0a445; --deep:#7bb0f0; --oracle:#5fbe86;
+  --clean:rgba(220,214,208,.40);
+  --win:#4fd3bf; --lose:#e0705f; --tie:#8b837c;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:15px/1.55 "IBM Plex Sans KR",system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+/* ── 머리 ─────────────────────────────────────────────── */
+header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  padding:20px 26px 14px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.015em}
+.sub{color:var(--ink-2);font-size:12.5px}
+.badge{margin-left:auto;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-2);border:1px solid var(--line);border-radius:999px;padding:4px 11px}
+
+/* ── 모드 레일: 두 세계는 섞지 않는다(31_demo_design_review 2.2) ── */
+.rail{display:flex;gap:0;padding:0 26px;border-bottom:1px solid var(--line);
+  background:var(--sunk)}
+.rail button{appearance:none;border:0;background:none;font:inherit;cursor:pointer;
+  color:var(--ink-2);padding:12px 18px;border-bottom:2px solid transparent;
+  font-weight:600;font-size:13.5px}
+.rail button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.rail .why{margin-left:auto;align-self:center;font-size:11.5px;color:var(--ink-3);
+  padding:8px 0}
+
+main{padding:18px 26px 34px;display:grid;gap:16px;
+  grid-template-columns:minmax(0,1fr) 340px}
+@media (max-width:1080px){main{grid-template-columns:1fr}}
+
+/* ── 격자 선택 ────────────────────────────────────────── */
+.picker{grid-column:1/-1;display:grid;gap:10px}
+.prow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.plabel{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink-3);min-width:74px}
+.chip{appearance:none;font:inherit;font-size:12.5px;cursor:pointer;
+  border:1px solid var(--line);background:var(--card);color:var(--ink-2);
+  border-radius:8px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{border-color:var(--accent)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);
+  color:var(--paper);font-weight:600}
+.chip .star{color:var(--classic);font-size:11px}
+.chip[aria-pressed="true"] .star{color:var(--paper)}
+.chip:focus-visible,.rail button:focus-visible{outline:2px solid var(--accent);
+  outline-offset:2px}
+
+/* ── 카드 ─────────────────────────────────────────────── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  box-shadow:var(--shadow)}
+.chead{display:flex;align-items:center;gap:12px;padding:13px 16px;
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
+.chead h2{margin:0;font-size:13.5px;font-weight:600}
+.chead .note{color:var(--ink-3);font-size:11.5px}
+.spacer{margin-left:auto}
+
+/* ── 판정 칩: 색만으로 읽히지 않게 글자를 함께 둔다 ──── */
+.verdict{font-size:11.5px;font-weight:600;border-radius:999px;padding:3px 10px;
+  border:1px solid currentColor}
+.verdict[data-v="dl"]{color:var(--deep)}
+.verdict[data-v="classic"]{color:var(--classic)}
+.verdict[data-v="tie"]{color:var(--tie)}
+
+/* ── 파형 행 ──────────────────────────────────────────── */
+.rows{padding:6px 16px 14px}
+.row{padding:7px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.rhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.rname{font-weight:600;font-size:13px;min-width:64px}
+.rnums{font-size:11.5px;color:var(--ink-2)}
+.rnums b{color:var(--ink);font-weight:600}
+.q{margin-left:auto;appearance:none;border:1px solid var(--line);background:none;
+  color:var(--ink-3);width:20px;height:20px;border-radius:50%;cursor:pointer;
+  font:inherit;font-size:11px;line-height:1}
+.q:hover{border-color:var(--accent);color:var(--accent)}
+/* 격자는 캔버스 밖에 둔다 — 스윕의 지우개가 캔버스를 지운다 */
+.plot{position:relative;height:58px;border-radius:6px;overflow:hidden;
+  background:var(--sunk)}
+.plot::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    repeating-linear-gradient(to right,transparent 0 15px,var(--grid-fine) 15px 16px),
+    repeating-linear-gradient(to bottom,transparent 0 15px,var(--grid-fine) 15px 16px),
+    repeating-linear-gradient(to right,transparent 0 79px,var(--grid-bold) 79px 80px)}
+canvas{position:relative;display:block;width:100%;height:58px}
+
+/* ── 분해능 띠 ────────────────────────────────────────── */
+.bar{position:relative;height:5px;border-radius:3px;background:var(--sunk);
+  margin-top:5px;overflow:hidden}
+.bar i{position:absolute;inset-block:0;left:0;border-radius:3px;display:block}
+.bar .floor{background:var(--ink-3);opacity:.35}
+
+/* ── 옆 패널 ──────────────────────────────────────────── */
+aside{display:grid;gap:16px;align-content:start}
+.lens{padding:14px 16px}
+.lensplot{height:190px;border-radius:8px;background:var(--sunk);position:relative;
+  overflow:hidden}
+.lensplot::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    repeating-linear-gradient(to right,transparent 0 15px,var(--grid-fine) 15px 16px),
+    repeating-linear-gradient(to bottom,transparent 0 15px,var(--grid-fine) 15px 16px)}
+.lensplot canvas{height:190px}
+.claim{padding:14px 16px;font-size:13px;line-height:1.6}
+.claim b{color:var(--accent)}
+.claim .ev{display:block;margin-top:7px;color:var(--ink-3);font-size:11.5px}
+.prov{grid-column:1/-1;color:var(--ink-3);font-size:11.5px;line-height:1.6;
+  border-top:1px solid var(--line);padding-top:12px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);
+  padding:0 16px 14px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:16px;height:3px;border-radius:2px;display:inline-block}
+
+dialog{max-width:460px;border:1px solid var(--line);border-radius:12px;
+  background:var(--card);color:var(--ink);padding:20px;box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(20,14,10,.4)}
+dialog h3{margin:0 0 8px;font-size:15px}
+dialog p{margin:0 0 10px;font-size:13.5px;line-height:1.6}
+dialog .k{color:var(--ink-3);font-size:11.5px}
+dialog form{text-align:right}
+
+.live{padding:40px 26px;color:var(--ink-2);max-width:62ch}
+.live h2{margin:0 0 10px;font-size:16px;color:var(--ink)}
+.live ul{margin:10px 0 0;padding-left:18px}
+.live li{margin:5px 0;font-size:13.5px}
+.hide{display:none!important}
+@media (prefers-reduced-motion:reduce){canvas{animation:none}}
+</style>
+
+<header>
+  <h1>Denoising Bench</h1>
+  <span class="sub">ECG 잡음 제거 — 방법 비교 시연</span>
+  <span class="badge" id="stamp">연구 시연 · 진단 용도 아님</span>
+</header>
+
+<nav class="rail" role="tablist" aria-label="시연 영역">
+  <button role="tab" aria-selected="true" data-mode="bench">벤치마크</button>
+  <button role="tab" aria-selected="false" data-mode="live">실측 (AFE)</button>
+  <span class="why">두 영역은 신호 경로가 달라 한 화면에 섞지 않는다</span>
+</nav>
+
+<main id="bench">
+  <section class="picker">
+    <div class="prow"><span class="plabel">잡음</span><span class="chips" id="conds"></span></div>
+    <div class="prow"><span class="plabel">입력 SNR</span><span class="chips" id="snrs"></span>
+      <span class="plabel" style="margin-left:18px">재생</span><span class="chips" id="play"></span></div>
+  </section>
+
+  <section class="card">
+    <div class="chead">
+      <h2 id="sceneTitle">—</h2>
+      <span class="note" id="sceneNote"></span>
+      <span class="spacer"></span>
+      <span class="verdict" id="verdict"></span>
+    </div>
+    <div class="rows" id="rows"></div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--clean)"></i>참값</span>
+      <span><i class="sw" style="background:var(--noisy)"></i>입력</span>
+      <span><i class="sw" style="background:var(--classic)"></i>고전</span>
+      <span><i class="sw" style="background:var(--deep)"></i>딥러닝</span>
+      <span><i class="sw" style="background:var(--oracle)"></i>B01 (SWT 계열 oracle · 전역 상한 아님)</span>
+      <span>회색 띠 = 분해능(이 안이면 구분 불가)</span>
+    </div>
+  </section>
+
+  <aside>
+    <section class="card lens">
+      <div class="chead" style="padding:0 0 11px;margin-bottom:12px">
+        <h2>한 박동</h2><span class="note">격자를 바꿔도 같은 박동</span>
+      </div>
+      <div class="lensplot"><canvas id="lens"></canvas></div>
+    </section>
+    <section class="card claim" id="claim"></section>
+  </aside>
+
+  <p class="prov" id="prov"></p>
+</main>
+
+<section class="live hide" id="live">
+  <h2>실측 화면은 왜 따로 두는가</h2>
+  <p>실시간 경로는 <b>영위상 front-end 를 쓸 수 없다</b>. 0.5 Hz 고역통과의
+  링잉이 64 초라 100 ms 지연과 양립하지 않는다. 인과 필터로 바꾸면 신호가
+  달라지고, 실측으로 재니 딥러닝만 약 4 dB 를 잃었다(고전은 그대로다).</p>
+  <ul>
+    <li>여기서는 <b>파형만</b> 보인다 — 실측 신호에는 참값이 없어 성능 수치를
+      붙일 수 없다.</li>
+    <li>재생은 병원 감시장치식 <b>스윕</b>, 지우개는 좁게(약 40 ms).</li>
+    <li>보이려는 것은 “AFE 가 사람의 심전도를 실제로 잡는다” 하나다.</li>
+  </ul>
+</section>
+
+<dialog id="dlg"><h3 id="dt"></h3><div id="db"></div>
+  <form method="dialog"><button class="chip">닫기</button></form></dialog>
+
+<script>
+"use strict";
+const MEANS = {"awgn|0":{"M_FE":4.49,"M01":7.17,"M04":6.05,"M06":12.56,"M06L6":12.28,"M08":12.09,"B01":13.13},"awgn|10":{"M_FE":4.5,"M01":8.23,"M04":6.87,"M06":10.16,"M06L6":10.51,"M08":10.44,"B01":12.8},"awgn|20":{"M_FE":10.92,"M01":12.95,"M04":13.11,"M06":10.84,"M06L6":12.01,"M08":12.12,"B01":16.68},"bw_synth|0":{"M_FE":22.22,"M01":20.94,"M04":22.12,"M06":19.8,"M06L6":20.19,"M08":20.3,"B01":22.22},"bw_synth|10":{"M_FE":24.7,"M01":19.19,"M04":23.92,"M06":15.24,"M06L6":19.79,"M08":16.52,"B01":24.7},"bw_synth|20":{"M_FE":31.47,"M01":17.83,"M04":27.42,"M06":12.67,"M06L6":22.42,"M08":14.19,"B01":31.47},"em_synth|0":{"M_FE":8.6,"M01":8.53,"M04":8.6,"M06":15.44,"M06L6":13.4,"M08":13.86,"B01":8.75},"em_synth|10":{"M_FE":10.12,"M01":9.67,"M04":10.09,"M06":11.35,"M06L6":10.93,"M08":11.42,"B01":10.21},"em_synth|20":{"M_FE":16.61,"M01":13.89,"M04":16.39,"M06":11.24,"M06L6":13.62,"M08":12.29,"B01":16.64},"impulse|0":{"M_FE":4.06,"M01":5.02,"M04":4.06,"M06":19.21,"M06L6":18.79,"M08":17.86,"B01":12.6},"impulse|10":{"M_FE":3.56,"M01":5.15,"M04":3.56,"M06":13.65,"M06L6":14.46,"M08":13.69,"B01":11.81},"impulse|20":{"M_FE":9.72,"M01":10.46,"M04":9.68,"M06":11.41,"M06L6":13.32,"M08":12.41,"B01":15.21},"ma_synth|0":{"M_FE":4.23,"M01":9.07,"M04":4.33,"M06":17.15,"M06L6":17.17,"M08":17.28,"B01":20.1},"ma_synth|10":{"M_FE":4.08,"M01":10.43,"M04":4.29,"M06":13.11,"M06L6":14.32,"M08":14.0,"B01":17.06},"ma_synth|20":{"M_FE":10.49,"M01":14.44,"M04":10.72,"M06":11.74,"M06L6":14.36,"M08":13.24,"B01":18.99},"mixed|0":{"M_FE":8.78,"M01":9.99,"M04":9.36,"M06":15.89,"M06L6":15.29,"M08":15.34,"B01":13.33},"mixed|10":{"M_FE":9.91,"M01":10.45,"M04":10.41,"M06":12.11,"M06L6":12.84,"M08":12.46,"B01":14.01},"mixed|20":{"M_FE":16.36,"M01":13.9,"M04":16.21,"M06":11.45,"M06L6":14.79,"M08":12.73,"B01":19.08},"pli|0":{"M_FE":21.03,"M01":29.08,"M04":31.1,"M06":23.28,"M06L6":25.18,"M08":24.84,"B01":32.39},"pli|10":{"M_FE":23.43,"M01":21.56,"M04":28.76,"M06":16.12,"M06L6":20.12,"M08":17.68,"B01":29.95},"pli|20":{"M_FE":29.69,"M01":18.2,"M04":28.82,"M06":12.81,"M06L6":21.89,"M08":14.36,"B01":32.36}};
+const FLOOR = 0.6;                 /* 이 시안에서 쓰는 분해능 띠 [dB] */
+const COND = {mixed:"혼합", impulse:"임펄스", pli:"전원선 60 Hz",
+  bw_synth:"기저선 변동", ma_synth:"근전도", em_synth:"전극 움직임", awgn:"백색잡음"};
+const ORDER = ["mixed","impulse","pli","bw_synth","ma_synth","em_synth","awgn"];
+const SNRS = [0,10,20];
+const STAR = new Set(["mixed|0","impulse|10","pli|10","bw_synth|10","mixed|20","em_synth|10"]);
+const KIND = {M_FE:"classic",M01:"classic",M04:"classic",
+              M06:"deep",M06L6:"deep",M08:"deep",B01:"oracle"};
+const LABEL = {M_FE:"M_FE",M01:"M01",M04:"M04",M06:"M06",M06L6:"M06·L6",M08:"M08",B01:"B01"};
+const NOTE = {
+  M_FE:["공통 front-end", "모든 방법이 먼저 통과하는 대역통과 + 자동 notch 다. 이득 중 얼마가 여기서 온 것인지 이 줄에서 읽는다."],
+  M01:["대역통과 + notch", "가장 단순한 기준선인데 입력이 이미 깨끗하면 딥러닝을 이긴다."],
+  M04:["SWT + QRS 보호", "고전 방법 중 가장 강하다. 파라미터는 데이터축마다 따로 튜닝했다."],
+  M06:["ResUNet1D (L1)", "이 프로젝트의 주 딥러닝 모델. 표의 딥러닝 값은 표시가 없으면 이것이다."],
+  M06L6:["ResUNet1D (L6)", "같은 모델을 손실만 바꿔 학습했다. 깨끗한 입력을 덜 건드리게 하는 항을 넣었고, 20 dB 에서 잡음 7 종 전부 이득이었다."],
+  M08:["Wavelet subband U-Net", "M06 과 유의한 차이가 없었다 — 구조를 바꿔 얻은 것이 없다는 결론의 근거 하나다."],
+  B01:["SWT 계열 oracle", "방법이 아니라 <b>그 계열의 한계선</b>이다 — 참값을 보고 wavelet 계수를 최적으로 골랐을 때의 값. <b>전역 상한이 아니므로</b> 다른 계열(딥러닝)이 이것을 넘는 것은 정상이다. 실제로 임펄스 잡음에서 넘는다."]
+};
+const $ = (s)=>document.querySelector(s);
+const st = {cond:"pli", snr:10, play:"off", mode:"bench"};
+
+/* ── 합성 ECG. 시안의 파형은 예시이고, **숫자는 실측 축 평균**이다. ── */
+function beat(p){
+  const g=(c,w,a)=>a*Math.exp(-(((p-c)/w)**2));
+  return g(.20,.045,.13)-g(.40,.018,.16)+g(.435,.011,1)-g(.47,.019,.24)+g(.70,.075,.30);
+}
+function clean(n,fs){const o=new Float64Array(n);
+  for(let i=0;i<n;i++){o[i]=beat((i/fs*1.15)%1);}return o;}
+function rnd(seed){let s=seed>>>0;return()=>((s=(s*1664525+1013904223)>>>0)/4294967296-.5);}
+function noise(n,fs,cond,seed){
+  const r=rnd(seed),o=new Float64Array(n);
+  for(let i=0;i<n;i++){const t=i/fs;
+    if(cond==="pli") o[i]=Math.sin(2*Math.PI*60*t)*.9+Math.sin(2*Math.PI*120*t)*.25;
+    else if(cond==="bw_synth") o[i]=Math.sin(2*Math.PI*.25*t)*2.4+Math.sin(2*Math.PI*.12*t+1)*1.6;
+    else if(cond==="impulse") o[i]=0;
+    else if(cond==="ma_synth") o[i]=r()*1.6;
+    else if(cond==="em_synth") o[i]=Math.sin(2*Math.PI*3.1*t)*.8*(1+Math.sin(2*Math.PI*.4*t))+r()*.5;
+    else if(cond==="awgn") o[i]=r()*2;
+    else o[i]=r()*1.1+Math.sin(2*Math.PI*.3*t)*.9+Math.sin(2*Math.PI*60*t)*.35;
+  }
+  if(cond==="impulse"||cond==="mixed"){
+    for(let k=0;k<n;k+=Math.round(fs*.37)) {const j=k+Math.round(r()*40+40);
+      if(j<n) o[j]+= (r()>0?1:-1)*4.5;}
+  }
+  return o;
+}
+/* 방법 출력은 실측 dB 를 잔차 크기로 되돌려 만든 **예시**다 */
+function output(x,z,db){
+  const k=Math.pow(10,-db/20),o=new Float64Array(x.length);
+  for(let i=0;i<x.length;i++)o[i]=x[i]+z[i]*k;
+  return o;
+}
+function key(){return `${st.cond}|${st.snr}`;}
+function methods(){const m=MEANS[key()]||{};
+  return ["M_FE","M01","M04","M06","M06L6","M08","B01"].filter(k=>k in m);}
+
+/* ── 그리기 ─────────────────────────────────────────── */
+const FS=250, N=1000;
+let anim=0, t0=0;
+function fit(c){const d=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;
+  if(c.width!==Math.round(w*d)||c.height!==Math.round(h*d)){
+    c.width=Math.round(w*d);c.height=Math.round(h*d);
+    c.__g=c.getContext("2d");c.__g.setTransform(d,0,0,d,0,0);}
+  return [c.__g||(c.__g=c.getContext("2d")),w,h];}
+function trace(g,v,w,h,col,lw,a,b,amp){
+  g.beginPath();g.strokeStyle=col;g.lineWidth=lw;g.lineJoin="round";
+  for(let i=a;i<b;i++){const x=(i-a)*w/(b-a-1),
+    y=h/2-Math.max(-1,Math.min(1,v[i]/amp))*(h/2-3);
+    i===a?g.moveTo(x,y):g.lineTo(x,y);}
+  g.stroke();}
+
+let panels=[];
+function drawAll(now){
+  const span = st.play==="off" ? N : Math.round(FS*2.5);
+  const shift = st.play==="scroll" ? Math.round((now-t0)/1000*FS)%(N-span) : 0;
+  for(const p of panels){
+    const [g,w,h]=fit(p.cv); g.clearRect(0,0,w,h);
+    const a = st.play==="off"?0:shift, b=a+span;
+    if(p.ref) trace(g,p.ref,w,h,getComputedStyle(document.body).getPropertyValue("--clean"),2.4,a,b,p.amp);
+    trace(g,p.sig,w,h,p.col,1.3,a,b,p.amp);
+    if(st.play==="sweep"){                    /* 커서 앞 좁은 띠만 지운다 */
+      const ph=((now-t0)/2500)%1, x=ph*w, e=w*0.10;
+      g.clearRect(x,0,e,h); if(x+e>w) g.clearRect(0,0,x+e-w,h);
+      g.fillStyle=getComputedStyle(document.body).getPropertyValue("--accent");
+      g.fillRect(x-1.5,0,1.5,h);
+    }
+  }
+  if(st.play!=="off") anim=requestAnimationFrame(drawAll);
+}
+function restart(){if(anim)cancelAnimationFrame(anim);anim=0;t0=performance.now();
+  if(st.play==="off"){requestAnimationFrame(drawAll);} else anim=requestAnimationFrame(drawAll);}
+
+/* ── 화면 ───────────────────────────────────────────── */
+function chip(label,on,fn,star,title){
+  const b=document.createElement("button");
+  b.className="chip";b.setAttribute("aria-pressed",on);if(title)b.title=title;
+  if(star){const s=document.createElement("span");s.className="star";s.textContent="★";b.append(s);}
+  b.append(document.createTextNode(label));
+  b.onclick=()=>{fn();render();};return b;}
+
+function render(){
+  const cs=$("#conds"); cs.replaceChildren(...ORDER.map(c=>
+    chip(COND[c], c===st.cond, ()=>st.cond=c, STAR.has(`${c}|${st.snr}`),
+      "추천 조합 — 보고서의 결론 하나를 그대로 보인다")));
+  const ss=$("#snrs"); ss.replaceChildren(...SNRS.map(v=>
+    chip(v+" dB", v===st.snr, ()=>st.snr=v, STAR.has(`${st.cond}|${v}`))));
+  const ps=$("#play"); ps.replaceChildren(...[["off","정지"],["sweep","스윕"],["scroll","스크롤"]]
+    .map(([k,l])=>chip(l,st.play===k,()=>st.play=k,false,
+      k==="off"?"비교는 정지 화면에서 한다":"움직이는 화면은 도입용이다")));
+
+  const m=MEANS[key()]||{}, ms=methods();
+  const bestC=Math.max(...ms.filter(k=>KIND[k]==="classic").map(k=>m[k]));
+  const bestD=Math.max(...ms.filter(k=>KIND[k]==="deep").map(k=>m[k]));
+  const gap=bestD-bestC;
+  const v=$("#verdict");
+  v.dataset.v = Math.abs(gap)<FLOOR ? "tie" : (gap>0?"dl":"classic");
+  v.textContent = Math.abs(gap)<FLOOR ? "차이 없음 (분해능 안)"
+    : (gap>0 ? `딥러닝 우세 +${gap.toFixed(1)} dB` : `고전 우세 +${(-gap).toFixed(1)} dB`);
+  $("#sceneTitle").textContent = `${COND[st.cond]} · 입력 ${st.snr} dB`;
+  $("#sceneNote").textContent = STAR.has(key()) ? "추천 조합" : "";
+
+  const x=clean(N,FS), z=noise(N,FS,st.cond,7);
+  const amp=Math.max(...Array.from(x,Math.abs))*1.35;
+  panels=[];
+  const box=$("#rows"); box.replaceChildren();
+  const inRow = mkRow("입력", `잡음 섞인 신호 · SNR ${st.snr} dB`, null);
+  panels.push({cv:inRow.cv, sig:output(x,z,st.snr), ref:x, col:cssv("--noisy"), amp:amp*1.6});
+  box.append(inRow.el);
+  for(const k of ms){
+    const mean=m[k], top=Math.max(bestC,bestD);
+    const r=mkRow(LABEL[k], null, k, mean, top);
+    panels.push({cv:r.cv, sig:output(x,z,mean), ref:x, col:cssv(KIND[k]==="deep"?"--deep":KIND[k]==="oracle"?"--oracle":"--classic"), amp});
+    box.append(r.el);
+  }
+  drawLens(x,z,m,ms,amp);
+
+  const c=$("#claim");
+  c.innerHTML = `<b>${verdictLine(gap,bestC,bestD,ms,m)}</b>
+    <span class="ev">축 평균은 D1(MIT-BIH + NSTDB) 기록 22 개 × 구간 2 개의
+    <span class="mono">snr_imp_scaled</span> 평균이다. 파형은 설명용 합성 예시다.</span>`;
+  $("#prov").textContent =
+    `조합 21 개(잡음 7 × SNR 3)는 평가 격자와 같은 축이라 어느 칸에서도 축 평균을 나란히 놓을 수 있다. ` +
+    `구간은 잡음마다 10 dB 에서 후보 22 개 중 축 평균과 가장 가까운 것으로 한 번 골라 모든 SNR 이 함께 쓴다 — 잘 나온 구간을 고른 것이 아니다. ` +
+    `분해능 띠(${FLOOR} dB) 안의 차이는 “구분 불가”로 적는다.`;
+  restart();
+}
+function cssv(n){return getComputedStyle(document.body).getPropertyValue(n).trim();}
+
+function mkRow(name, note, mid, mean, top){
+  const el=document.createElement("div"); el.className="row";
+  const h=document.createElement("div"); h.className="rhead";
+  const n=document.createElement("span"); n.className="rname"; n.textContent=name;
+  const num=document.createElement("span"); num.className="rnums mono";
+  if(mid){num.innerHTML=`축 평균 <b>${mean.toFixed(2)} dB</b>`;}
+  else{num.textContent=note;}
+  h.append(n,num);
+  if(mid){
+    const q=document.createElement("button"); q.className="q"; q.textContent="?";
+    q.setAttribute("aria-label",`${name} 설명`);
+    q.onclick=()=>{const [t,b]=NOTE[mid]; $("#dt").textContent=`${LABEL[mid]} — ${t}`;
+      $("#db").innerHTML=`<p>${b}</p><p class="k">축 평균 ${mean.toFixed(2)} dB · 분해능 ±${FLOOR} dB</p>`;
+      $("#dlg").showModal();};
+    h.append(q);
+  }
+  el.append(h);
+  const p=document.createElement("div"); p.className="plot";
+  const cv=document.createElement("canvas"); p.append(cv); el.append(p);
+  if(mid){
+    const bar=document.createElement("div"); bar.className="bar";
+    const fill=document.createElement("i");
+    fill.style.width=`${Math.max(2,Math.min(100,mean/top*100))}%`;
+    fill.style.background=`var(${KIND[mid]==="deep"?"--deep":KIND[mid]==="oracle"?"--oracle":"--classic"})`;
+    const fl=document.createElement("i"); fl.className="floor";
+    fl.style.left=`${Math.max(0,(mean-FLOOR)/top*100)}%`;
+    fl.style.width=`${2*FLOOR/top*100}%`; fl.style.borderRadius="0";
+    bar.append(fill,fl); el.append(bar);
+  }
+  return {el,cv};
+}
+/* R-peak 하나를 가운데 두고 P·QRS·T 가 다 들어오는 폭으로 자른다.
+   격자를 바꿔도 **같은 박동**이라 SNR 칩을 눌렀을 때 무엇이 달라졌는지가
+   분명해진다 — 이것이 이 패널의 존재 이유다. */
+function drawLens(x,z,m,ms,amp){
+  const cv=$("#lens"); const [g,w,h]=fit(cv); g.clearRect(0,0,w,h);
+  let r=0; for(let i=1;i<x.length;i++) if(x[i]>x[r]) r=i;
+  for(let i=r+1;i<x.length;i++) if(x[i]>x[r]*0.98 && i>FS){r=i;break;}
+  const half=Math.round(FS*0.42), a=Math.max(0,r-half), b=Math.min(x.length,r+half);
+  trace(g,x,w,h,cssv("--clean"),3.2,a,b,amp);
+  for(const k of ms){
+    if(k==="B01"||k==="M_FE"||k==="M08") continue;   /* 네 줄까지만 — 더 겹치면 못 읽는다 */
+    trace(g,output(x,z,m[k]),w,h,
+      cssv(KIND[k]==="deep"?"--deep":"--classic"), KIND[k]==="deep"?1.7:1.3, a,b,amp);
+  }
+  /* 어느 줄이 무엇인지 캔버스 안에 직접 적는다 — 범례를 찾아 눈이 왕복하지 않게 */
+  g.font='11px "IBM Plex Mono",monospace';
+  const shown=ms.filter(k=>!["B01","M_FE","M08"].includes(k));
+  shown.forEach((k,i)=>{
+    g.fillStyle=cssv(KIND[k]==="deep"?"--deep":"--classic");
+    g.fillText(`${LABEL[k]} ${m[k].toFixed(1)}`, 8, 14+i*14);
+  });
+  g.fillStyle=cssv("--ink-3");
+  g.fillText("회색 = 참값", 8, 14+shown.length*14);
+}
+function verdictLine(gap,bc,bd,ms,m){
+  if(Math.abs(gap)<FLOOR) return "이 조건에서는 방법을 가를 수 없다 — 차이가 분해능 안이다.";
+  if(gap<0) return `이 조건은 고전 방법이 이긴다 (${(-gap).toFixed(1)} dB). 딥러닝이 항상 낫지는 않다.`;
+  return `딥러닝이 ${gap.toFixed(1)} dB 앞선다.`;
+}
+
+document.querySelectorAll(".rail button").forEach(b=>b.onclick=()=>{
+  st.mode=b.dataset.mode;
+  document.querySelectorAll(".rail button").forEach(x=>
+    x.setAttribute("aria-selected", String(x===b)));
+  $("#bench").classList.toggle("hide", st.mode!=="bench");
+  $("#live").classList.toggle("hide", st.mode!=="live");
+  $("#stamp").textContent = st.mode==="live"
+    ? "실측 · 참값 없음 · 수치 표시 안 함" : "연구 시연 · 진단 용도 아님";
+  if(st.mode==="bench") render();
+});
+addEventListener("resize",()=>render());
+render();
+</script>
