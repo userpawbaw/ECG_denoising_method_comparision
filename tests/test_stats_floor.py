@@ -79,3 +79,34 @@ def test_axis_name_loads_the_right_floor():
 
 def test_load_floor_missing_axis_is_empty_not_error():
     assert load_floor("d9_nonexistent") == {}
+
+
+# ---------------------------------------------------------------- 이상값 (F-22)
+def test_gain_bias_is_compared_as_distance_from_one():
+    """이상값이 1 인 지표를 부호차로 비교하면 판정이 뒤집힌다 (F-22).
+
+    실제로 D0 에서 M06 0.9803 / M10 1.0266 이 1 의 반대편에 거의 대칭인데
+    부호차로는 p=7e-06, r=+1.000(22 기록 전부)이 나왔다. 거리로는 p=0.965 다.
+    """
+    from ecgdn.eval.stats import IDEAL
+    assert IDEAL.get("gain_bias") == 1.0
+
+    rows = []
+    for i in range(12):
+        # 두 방법이 1 의 반대편에 같은 거리로 있다 — 판정은 n.s. 여야 한다
+        rows += [dict(record=f"R{i}", method="A", metric="gain_bias", value=0.98),
+                 dict(record=f"R{i}", method="B", metric="gain_bias", value=1.02)]
+    df = pd.DataFrame(rows)
+
+    signed = compare_methods(df, "gain_bias", "A", use_ideal=False).iloc[0]
+    dist = compare_methods(df, "gain_bias", "A").iloc[0]
+    assert signed["delta_mean"] == pytest.approx(0.04), "전제: 부호차는 +0.04"
+    assert dist["delta_mean"] == pytest.approx(0.0, abs=1e-9), \
+        f"거리로는 차이가 없어야 한다: {dist['delta_mean']}"
+
+
+def test_monotone_ideal_one_metrics_are_left_alone():
+    """`cc`·`beat_cc` 는 이상값이 1 이지만 1 을 넘지 못해 단조다 — 건드리면 안 된다."""
+    from ecgdn.eval.stats import IDEAL
+    for m in ("cc", "beat_cc", "beat_cc_median"):
+        assert m not in IDEAL, f"{m} 을 거리 변환하면 오히려 읽기 어려워진다"

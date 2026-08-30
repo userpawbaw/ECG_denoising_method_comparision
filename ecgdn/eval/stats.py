@@ -72,6 +72,37 @@ def summarize(values: np.ndarray) -> dict[str, float]:
                 median=float(np.median(v)), q1=float(q1), q3=float(q3))
 
 
+# 이상값이 0 이 아닌 지표. **값이 이상값을 넘나들 수 있으면** 부호 있는 차이로
+# 비교하면 안 된다 — 1 의 양쪽에 있는 두 값의 차이는 "누가 1 에 가까운가" 와
+# 무관하기 때문이다.
+#
+# 실제로 걸렸다: `gain_bias` 는 이상값이 1 이고 값의 44 % 가 1 을 넘는다.
+# D0 에서 M06 = 0.9803, M10 = 1.0266 인데 부호차로 보면 +0.046(p=7e-06,
+# r=1.000)이라 "M10 이 크게 열세" 로 읽힌다. 그러나 이상값과의 **거리**는
+# 0.0197 vs 0.0266 으로 p=0.965, n.s. 다. **판정이 뒤집힌다** (F-22).
+#
+# `cc`·`beat_cc` 는 이상값이 1 이지만 상관이라 1 을 넘지 못한다. 값이 클수록
+# 좋은 단조 관계라 부호차로 비교해도 안전하다 — 그래서 여기 넣지 않는다.
+IDEAL = {"gain_bias": 1.0}
+
+
+def to_deviation(df, metric: str, ideal: float | None = None):
+    """`metric` 을 **이상값과의 거리**로 바꾼 사본을 돌려준다.
+
+    이상값을 넘나드는 지표를 부호 있는 값 그대로 비교하면 판정이 뒤집힌다.
+    `compare_methods(..., use_ideal=True)` 가 이것을 자동으로 쓴다.
+    """
+    import pandas as pd
+
+    if ideal is None:
+        ideal = IDEAL.get(metric)
+    if ideal is None:
+        return df
+    out = df[df["metric"] == metric].copy()
+    out["value"] = (out["value"] - ideal).abs()
+    return out
+
+
 def load_floor(axis: str, root=None) -> dict[str, float]:
     """`results/{axis}/metric_floor/floor.csv` 의 `floor_p95` 를 읽는다.
 
@@ -88,7 +119,7 @@ def load_floor(axis: str, root=None) -> dict[str, float]:
 
 
 def compare_methods(df, metric: str, baseline: str, *, unit: str = "record",
-                    method_col: str = "method", floor=None):
+                    method_col: str = "method", floor=None, use_ideal: bool = True):
     """baseline 대비 각 방법의 paired 검정표.
 
     df : long-format (unit, method, metric, value)
@@ -111,6 +142,9 @@ def compare_methods(df, metric: str, baseline: str, *, unit: str = "record",
         floor = load_floor(floor)
 
     sub = df[df["metric"] == metric]
+    if use_ideal and metric in IDEAL:
+        # 이상값을 넘나드는 지표는 **거리**로 본다 (F-22).
+        sub = to_deviation(df, metric)
     wide = sub.pivot_table(index=unit, columns=method_col, values="value", aggfunc="mean")
     if baseline not in wide.columns:
         raise KeyError(f"baseline '{baseline}' not in {list(wide.columns)}")
