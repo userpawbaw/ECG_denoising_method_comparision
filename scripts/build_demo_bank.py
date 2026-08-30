@@ -481,7 +481,9 @@ def main() -> int:
     ensure_dir(p.parent)
     body = json.dumps(bank, ensure_ascii=False, separators=(",", ":"))
     p.write_text("window.DEMO_BANK = " + body + ";\n")
-    save_manifest(p.parent / "demo_bank", cfg=DISPLAY_CFG,
+    # provenance 는 저장소 규약대로 `results/` 아래에 둔다 — 산출물이 demo/ 로
+    # 옮겨 갔다고 해서 출처 기록까지 따라가면 check_freshness 가 못 찾는다.
+    save_manifest(ROOT / "results" / "demo_bank", cfg=DISPLAY_CFG,
                   extra={"scenes": [s["id"] for s in scenes], "n": n, "fs": fs},
                   sources=["scripts/build_demo_bank.py", "ecgdn/data/dataset.py"])
     miss = [s["id"] for s in scenes if not s["ref_exp"]]

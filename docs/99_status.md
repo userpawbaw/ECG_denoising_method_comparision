@@ -334,16 +334,15 @@ python3 scripts/build_demo_bank.py     # demo/demo_bank.js 재생성 (약 6 분)
 xdg-open demo/index.html               # 서버 불필요
 ```
 
-**진행 중 — EXP-G**: `M06L6`(성공한 손실 변경)의 축 평균이 혼합 잡음에만
-있었다(`abl_loss` 가 `conditions: [mixed]`). 시연 구간 하나에서 임펄스
-+5.2 dB / PLI −7.0 dB 로 **부호가 갈렸다.** `configs/exp_g.yaml` 로 잡음 7 종 ×
-SNR 3 단계를 다시 잰다 — 학습 없이 평가만, 축당 약 50 분.
-같은 산출물이 **시연 격자의 축 평균**도 채운다.
-분석 `scripts/analyze_loss_by_noise.py` → `docs/11_loss_by_noise.md`.
-→ `docs/30_realtime_demo.md` 8절
+**~~진행 중~~ ✅ EXP-G 완료** — `L6` 의 잡음별 효과를 쟀다(잡음 7 종 ×
+SNR 3 단계 × 기록 22 × 구간 2, 양축). **결론의 축은 잡음 종류가 아니라 입력
+SNR 이었다** — 84 칸 중 유의 이득 54 · 손해 5, 손해는 전부 0 dB.
+20 dB 에서는 손해 0 칸에 평균 +4.27 dB. 구조가 뚜렷한 잡음(PLI +6.32,
+기저선 변동 +4.59)에서 크게 벌고 광대역 백색잡음(+0.26)에서 가장 적게 번다.
+→ **보고서 5.8.10** · `docs/11_loss_by_noise.md` · **F-24**
 
 ```bash
-bash scripts/run_exp_g.sh          # 재개 (락을 잡아 watchdog 이 본다)
+bash scripts/run_exp_g.sh          # 재실행 (락을 잡아 watchdog 이 본다)
 python3 scripts/analyze_loss_by_noise.py
 python3 scripts/build_demo_bank.py # 축 평균이 채워진 은행 재생성
 ```

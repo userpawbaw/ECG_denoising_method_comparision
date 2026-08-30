@@ -57,6 +57,7 @@
   dialog h3{margin:0 0 8px;font-size:15px}
   dialog p{margin:0 0 10px}
   dialog .k{color:var(--muted);font-size:12px}
+  .pnum .k{color:var(--muted)}
   dialog form{text-align:right;margin-top:6px}
   .empty{color:var(--warn);padding:30px 0}
   .zoom{display:flex;align-items:center;gap:10px;margin:0 0 6px}
@@ -320,7 +321,11 @@ function panel(s, key, label, color, showRef){
         : ` · 축 평균 ${r.toFixed(2)} dB`) +
       ` · cc ${m.cc.toFixed(3)}`;
   } else if (key === "input") {
-    num.textContent = `잡음 섞인 신호 — 입력 SNR ${s.snr} dB`;
+    // 입력은 **front-end 전** 신호이고 참값은 통과 후다(D-3). 그래서 두 선의
+    // 기저선이 어긋나 보이는데, 그것이 곧 front-end 가 걷어내는 성분이다.
+    // 설명 없이 두면 화면 오류로 읽힌다.
+    num.innerHTML = `잡음 섞인 신호 — 입력 SNR ${s.snr} dB` +
+      ` · <span class="k">front-end 통과 전이라 참값과 기저선이 어긋난다</span>`;
   } else {
     num.textContent = "참값 (clean reference)";
   }

@@ -789,6 +789,13 @@ INDEX = [
      "넣은 것인데, **바로 그 지표(EXP-C)가 올라갔다.** D1 에서 M06 22.2 → "
      "37.4 dB, M08 23.5 → 38.4 dB 로 SWT(40.1)와의 17 dB 격차가 1.8 dB 가 "
      "된다. 이득이 우연이 아니라 **의도한 기제를 통해** 왔다는 근거다."),
+    ("S10_loss_by_noise.png",
+     "**S7·S8 의 범위.** L6 의 이득이 어디까지 가는가 — 잡음 7 종 × 입력 SNR "
+     "3 단계(EXP-G). **결론의 축은 잡음 종류가 아니라 입력 SNR 이다**: "
+     "20 dB 에서는 손해가 한 칸도 없고, 손해 다섯 칸은 전부 0 dB 다. "
+     "구조가 뚜렷한 잡음(전원선 +6.3, 기저선 변동 +4.6 평균)에서 크게 벌고 "
+     "광대역 백색잡음(+0.3)에서 가장 적게 번다 — 잡음이 신호와 분리 가능해야 "
+     "'건드리지 않는다' 가 선택지가 되기 때문이다."),
 ]
 
 
@@ -822,6 +829,105 @@ def write_index():
     print("  docs/93_slides.md")
 
 
+# -------------------------------------------------- S10 L6 의 잡음 × SNR 격자
+# **형태**: 값의 일이 *극성*이다 — "L6 이 도왔나 해쳤나" 이고, 0 이 의미 있는
+# 중립점이다. 그래서 diverging 히트맵이다. 잡음 7 종을 categorical 색 7 개로
+# 그리면 식별이 색에 얹히는데, 여기서 묻는 것은 잡음의 정체가 아니라 **부호와
+# 크기**라 색을 그쪽에 써야 한다.
+#
+# **색**: dataviz 규약대로 blue <-> red 두 극 + 회색 중립점(#f0efec). 두 극
+# (#184f95 / #d03b3b)은 validate_palette.js --mode light 전 항목 PASS 다
+# (CVD ΔE 17.2 protan, normal 31.8). 파랑을 이득 쪽에 둔 것은 S7·S8 의 손실
+# 램프가 파랑이라 "손실 개입 = 파랑" 이 이어지기 때문이다.
+#
+# **이중 부호화**: 색만으로 읽지 않게 각 칸에 숫자를 적고, 유의한 칸만
+# 굵게 + 테두리를 준다. 색맹·흑백 인쇄에서도 판정이 남는다.
+DIVERGE = ["#d03b3b", "#e88080", "#f6c9c9", "#f0efec",
+           "#c6dcf5", "#7fb2ec", "#3987e5", "#184f95"]
+
+
+def s10_loss_by_noise(TXT):
+    """L6 − L1 을 잡음 × 입력 SNR 격자로. 결론의 축이 SNR 이라는 것이 요지다."""
+    import numpy as np
+    import pandas as pd
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    from ecgdn.eval.stats import holm, paired_wilcoxon
+
+    CONDS = ["pli", "bw_synth", "ma_synth", "mixed", "em_synth", "impulse", "awgn"]
+    LAB = {"mixed": "혼합", "impulse": "임펄스", "pli": "전원선 60 Hz",
+           "bw_synth": "기저선 변동", "ma_synth": "근전도", "em_synth": "전극 움직임",
+           "awgn": "백색잡음"}
+    # 경계는 0 을 **정확히** 가운데 두고 대칭으로 — 극성이 이 그림의 전부다.
+    bounds = [-99, -2, -1, -0.001, 0.001, 1, 3, 6, 99]
+    cmap = ListedColormap(DIVERGE)
+    norm = BoundaryNorm(bounds, cmap.N)
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.6))
+    got = False
+    for ax, tag in zip(axes, ("d0", "d1")):
+        f = Path("results") / tag / "exp_g" / "metrics.parquet"
+        if not f.exists():
+            ax.axis("off"); continue
+        df = pd.read_parquet(f)
+        df = df[df.metric == "snr_imp_scaled"]
+        snrs = sorted(df.snr_in_target.unique())
+        D = np.full((len(CONDS), len(snrs)), np.nan)
+        S = np.zeros_like(D, dtype=bool)
+        for j, snr in enumerate(snrs):
+            ps = []
+            for i, cond in enumerate(CONDS):
+                s = df[(df.cond == cond) & (df.snr_in_target == snr)]
+                w = s.pivot_table(index=["record", "seg"], columns="method",
+                                  values="value")
+                if "M06L6" not in w or "M06" not in w:
+                    ps.append(1.0); continue
+                pr = w[["M06L6", "M06"]].dropna()
+                _, pv = paired_wilcoxon(pr["M06L6"].to_numpy(), pr["M06"].to_numpy())
+                D[i, j] = float((pr["M06L6"] - pr["M06"]).mean()); ps.append(pv)
+            # 보정은 **한 축·한 SNR 안의 잡음 7 종**에 건다 (11_loss_by_noise 와 동일)
+            S[:, j] = holm(np.asarray(ps)) < 0.05
+        got = True
+        ax.imshow(D, cmap=cmap, norm=norm, aspect="auto", zorder=0)
+        ax.grid(False)      # rcParams 의 격자가 칸 위에 흰 줄로 얹힌다
+        for i in range(len(CONDS)):
+            for j in range(len(snrs)):
+                if np.isnan(D[i, j]):
+                    continue
+                # 짙은 칸 위에서는 흰 글씨라야 읽힌다
+                dark = D[i, j] >= 3 or D[i, j] <= -2
+                # 유의는 **별표**로 표시한다 — 굵기와 색 말고 흑백에서도 남는
+                # 세 번째 신호가 필요하다. 테두리를 써 봤는데 칸이 납작해서
+                # 가로줄로 읽혔다.
+                txt = f"{D[i, j]:+.1f}" + ("*" if S[i, j] else "")
+                ax.text(j, i, txt, ha="center", va="center",
+                        fontsize=10.5, color=("#ffffff" if dark else INK),
+                        fontweight="bold" if S[i, j] else "normal")
+        ax.set_xticks(range(len(snrs)))
+        ax.set_xticklabels([f"{s:g} dB" for s in snrs], fontsize=10.5)
+        ax.set_yticks(range(len(CONDS)))
+        ax.set_yticklabels([LAB[c] for c in CONDS], fontsize=10.5)
+        ax.set_xlabel(TXT["in_snr"])
+        ax.set_title({"d0": "D0 합성", "d1": "D1 MIT-BIH"}[tag],
+                     fontsize=11.5, color=INK)
+        ax.tick_params(length=0)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+    if not got:
+        plt.close(fig); print("  S10 건너뜀 (exp_g 없음)"); return
+    # 주석은 축이 아니라 figure 에 둔다 — 축에 두면 x 라벨과 겹친다.
+    fig.text(0.5, 0.035, "* 와 굵은 숫자 = Holm 보정 후 유의  ·  "
+             "파랑 = L6 이 이김, 빨강 = L6 이 짐  ·  값은 M06L6 - M06 [dB]",
+             ha="center", fontsize=9.5, color=INK2)
+    fig.suptitle("L6 의 이득은 잡음 종류가 아니라 입력 SNR 이 가른다  "
+                 "(M06, TEST, 기록 단위 n=44)\n"
+                 "20 dB 에서는 손해가 한 칸도 없다. 손해 다섯 칸은 전부 0 dB 이고, "
+                 "구조가 뚜렷한 잡음일수록 크게 번다", fontsize=12.5)
+    fig.tight_layout(rect=(0, 0.07, 1, 0.86))
+    fig.savefig(OUT / "S10_loss_by_noise.png", dpi=175); plt.close(fig)
+    print("  S10_loss_by_noise.png")
+
+
 def main() -> int:
     import argparse
     global NAME, TXT
@@ -832,7 +938,7 @@ def main() -> int:
                     help="파형 그림의 입력 SNR (기본 -5 dB — 차이가 보이는 구간)")
     a = ap.parse_args()
     want = set(a.only) if a.only else {"S1", "S2", "S3", "S4", "S5", "S6",
-                                       "S7", "S8"}
+                                       "S7", "S8", "S10"}
 
     NAME, TXT = slide_style()
     ensure_dir(OUT)
@@ -872,6 +978,8 @@ def main() -> int:
     if "S8" in want:
         s8_clean_preservation(TXT)
         s9_structure_vs_loss(TXT)
+    if "S10" in want:
+        s10_loss_by_noise(TXT)
 
     save_manifest(OUT, cfg=vars(a), sources=[
         "scripts/make_slides.py", "scripts/run_exp.py", "ecgdn/data/dataset.py",

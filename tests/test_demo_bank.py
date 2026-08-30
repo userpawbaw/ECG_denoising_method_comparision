@@ -39,9 +39,17 @@ def _bank() -> dict:
     """
     if not BANK.exists():
         pytest.skip("demo_bank.js 없음 — scripts/build_demo_bank.py 를 먼저 돌린다")
-    builder = ROOT / "scripts" / "build_demo_bank.py"
-    if BANK.stat().st_mtime < builder.stat().st_mtime:
-        pytest.skip("은행이 빌더보다 낡았다 — scripts/build_demo_bank.py 를 다시 돌린다")
+    # **mtime 이 아니라 내용 해시로 본다.** 처음에는 mtime 을 썼는데, 빌더의
+    # 주석 한 줄만 고쳐도 은행이 "낡음" 이 되어 검사가 통째로 건너뛰어졌다.
+    # 이 저장소가 F-9·O-11 에서 배운 것이 정확히 그것이다 — 낡음은 시각이
+    # 아니라 내용으로 판정한다(`ecgdn.utils.stale_sources`).
+    man = ROOT / "results" / "demo_bank" / "manifest.json"
+    if man.exists():
+        sys.path.insert(0, str(ROOT))
+        from ecgdn.utils import stale_sources
+        old = stale_sources(man)
+        if old:
+            pytest.skip(f"은행을 만든 코드가 그 뒤로 바뀌었다: {old} — 다시 돌린다")
     t = BANK.read_text()
     return json.loads(t[t.index("=") + 1: t.rindex(";")])
 
