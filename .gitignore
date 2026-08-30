@@ -52,6 +52,11 @@ results/.exp.lock
 # O-13 과 구분할 것: 거기서 잘못은 **산출물**을 지운 것이고, 여기서 빼는 것은
 # 전사다.
 results/logs/
+# watchdog 의 판정 이력. 매시간 갱신되는 **기록(transcript)** 이지 산출물이
+# 아니다. 추적하면 커밋 잡음만 쌓인다 — results/logs/ 와 같은 이유다.
+# 사건 요약이 필요하면 `python3 scripts/watchdog.py --report` 를 쓴다.
+results/.watchdog/
+results/.train.lock.stale-*
 
 # 위에서 `*.pt` / `*.parquet` 를 전역으로 무시했다. 결과 산출물 중 둘만
 # 되살린다 — 순서가 중요하다(뒤에 오는 규칙이 이긴다).
