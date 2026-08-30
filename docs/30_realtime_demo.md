@@ -167,12 +167,16 @@ PyTorch 가 기본으로 깔리지 않아 데스크탑 대비 10~30 배 느릴 �
 
 | 단계 | 무엇 | 산출물 | 선행 |
 |---|---|---|---|
-| **R-1** | 시연용 조합 선정 + 사전 계산 | `results/demo/bank.npz` | 없음 |
-| **R-2** | 모드 B 화면 (정적, 브라우저) | `demo/index.html` | R-1 |
-| **R-3** | 스트리밍 이음매·진폭 측정 | `scripts/measure_stream_seam.py` | 없음 |
-| **R-4** | 스트리밍 처리기 (`StreamProcessor`) | `ecgdn/realtime/stream.py` | R-3 |
-| **R-5** | Uno 펌웨어 + 시리얼 브리지 | `firmware/`, `scripts/serial_bridge.py` | 하드웨어 |
+| **R-1** | 시연용 조합 선정 + 사전 계산 | (계획) `scripts/build_demo_bank.py` | 없음 |
+| **R-2** | 모드 B 화면 (정적, 브라우저) | (계획) `demo/index.html` | R-1 |
+| **R-3** | 스트리밍 이음매·진폭 측정 | (계획) `scripts/measure_stream_seam.py` | 없음 |
+| **R-4** | 스트리밍 처리기 (`StreamProcessor`) | (계획) `ecgdn/realtime/stream.py` | R-3 |
+| **R-5** | Uno 펌웨어 + 시리얼 브리지 | (계획) `scripts/serial_bridge.py` | 하드웨어 |
 | **R-6** | 모드 A 를 R-2 화면에 연결 | WebSocket | R-4 · R-5 |
+
+> 표의 `(계획)` 은 **아직 없는 파일**이라는 뜻이다. 만들고 나면 표식을
+> 뗀다 — `tests/test_repo_integrity.py` 가 양방향으로 확인한다(없는데
+> 표식이 없거나, 있는데 표식이 남아 있으면 실패).
 
 **R-1 · R-2 · R-3 은 하드웨어 없이 지금 할 수 있다.** 아두이노 대기 중에
 진행할 수 있는 것이 이 셋이다.

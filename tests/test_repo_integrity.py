@@ -50,16 +50,35 @@ def test_doc_cross_references_resolve(doc: Path):
 
 @pytest.mark.parametrize("doc", DOCS, ids=lambda p: p.name)
 def test_doc_code_references_resolve(doc: Path):
-    """문서가 가리키는 스크립트/모듈이 실제로 있어야 한다."""
+    """문서가 가리키는 스크립트/모듈이 실제로 있어야 한다.
+
+    **설계 문서는 아직 없는 파일을 가리킬 수 있다** — 그것이 설계의 내용이기
+    때문이다. 그러나 "있다" 와 "만들 것이다" 를 구분하지 않으면 이 검사가
+    무의미해지므로, 계획된 경로는 앞에 `(계획)` 을 붙여 **명시**하게 한다:
+
+        | R-4 | 스트리밍 처리기 | (계획) `ecgdn/realtime/stream.py` |
+
+    그러면 나중에 그 파일이 생겼을 때 표식을 떼는 것이 자연스럽고, 표식이
+    남아 있으면 "아직 안 만들었다" 가 문서에서 바로 읽힌다.
+    """
     text = doc.read_text()
+    planned = set(re.findall(
+        r"\(계획\)\s*`((?:scripts|ecgdn|configs|tests|demo|firmware)/[\w./{}, -]+?)`",
+        text))
     refs = set(re.findall(r"`((?:scripts|ecgdn|configs|tests)/[\w./{}, ]+?)`", text))
     missing = []
-    for r in refs:
+    for r in refs - planned:
         if "{" in r or " " in r:        # `configs/m06_l{1,2,3}.yaml` 같은 축약형
             continue
         if not (ROOT / r).exists():
             missing.append(r)
-    assert not missing, f"{doc.name} 이 없는 파일을 가리킨다: {sorted(missing)}"
+    assert not missing, (
+        f"{doc.name} 이 없는 파일을 가리킨다: {sorted(missing)}\n"
+        f"아직 만들지 않은 것이면 앞에 '(계획)' 을 붙일 것")
+
+    # 반대 방향 — 이미 만든 것에 '(계획)' 이 남아 있으면 문서가 거짓말을 한다
+    stale = sorted(r for r in planned if (ROOT / r).exists())
+    assert not stale, f"{doc.name}: 이미 있는데 '(계획)' 표식이 남았다: {stale}"
 
 
 # ----------------------------------------------------------------- config
