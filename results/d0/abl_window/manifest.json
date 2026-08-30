@@ -11,7 +11,7 @@
     "torch": "2.13.0+cu130"
   },
   "config": {
-    "exp_id": "abl_loss",
+    "exp_id": "abl_window",
     "frontend": true,
     "mode": "snr",
     "data": {
@@ -30,41 +30,23 @@
       "noise_split": "test",
       "dur_s": 300.0,
       "n_test": 22,
-      "seed": "eval_abl"
+      "seed": "eval_abl_win"
     },
     "methods": [
       "M_FE"
     ],
     "dl_methods": {
-      "M06-L1": {
+      "M06-w1024": {
         "ckpt": "results/{tag}/m06_l1/best.pt"
       },
-      "M06-L2": {
-        "ckpt": "results/{tag}/m06_l2/best.pt"
+      "M06-w4096": {
+        "ckpt": "results/{tag}/m06_w4096/best.pt"
       },
-      "M06-L3": {
-        "ckpt": "results/{tag}/m06_l3/best.pt"
+      "M09-w1024": {
+        "ckpt": "results/{tag}/m09_l1/best.pt"
       },
-      "M06-L5": {
-        "ckpt": "results/{tag}/m06_l5/best.pt"
-      },
-      "M06-L6": {
-        "ckpt": "results/{tag}/m06_l6/best.pt"
-      },
-      "M08-L1": {
-        "ckpt": "results/{tag}/m08_l1/best.pt"
-      },
-      "M08-L3": {
-        "ckpt": "results/{tag}/m08_l3/best.pt"
-      },
-      "M08-L4": {
-        "ckpt": "results/{tag}/m08_l4/best.pt"
-      },
-      "M08-L5": {
-        "ckpt": "results/{tag}/m08_l5/best.pt"
-      },
-      "M08-L6": {
-        "ckpt": "results/{tag}/m08_l6/best.pt"
+      "M09-w4096": {
+        "ckpt": "results/{tag}/m09_w4096/best.pt"
       }
     },
     "eval": {
@@ -101,15 +83,9 @@
   "n_items": 132,
   "methods": [
     "M_FE",
-    "M06-L1",
-    "M06-L2",
-    "M06-L3",
-    "M06-L5",
-    "M06-L6",
-    "M08-L1",
-    "M08-L3",
-    "M08-L4",
-    "M08-L5",
-    "M08-L6"
+    "M06-w1024",
+    "M06-w4096",
+    "M09-w1024",
+    "M09-w4096"
   ]
 }
