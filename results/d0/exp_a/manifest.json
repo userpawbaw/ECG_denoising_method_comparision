@@ -2,7 +2,7 @@
   "env": {
     "python": "3.11.15",
     "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
-    "git": "2eb3fda",
+    "git": "e8b4db5",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -61,6 +61,9 @@
       },
       "M10": {
         "ckpt": "results/{tag}/m10_l1/best.pt"
+      },
+      "M09": {
+        "ckpt": "results/{tag}/m09_l1/best.pt"
       }
     },
     "eval": {
@@ -110,6 +113,7 @@
     "M06",
     "M07",
     "M08",
-    "M10"
+    "M10",
+    "M09"
   ]
 }
