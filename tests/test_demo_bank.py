@@ -303,3 +303,30 @@ def test_browser_keeps_every_panel_in_phase():
         b.close()
     assert not errs, f"콘솔 오류: {errs}"
     assert len(stat) >= 3 and all(v > 0 for v in stat), f"안 그려진 칸이 있다: {stat}"
+
+
+def test_no_ref_methods_are_flagged_as_uncontrolled_not_just_unlabelled():
+    """`no_ref` 는 두 가지를 뜻한다 — **둘째를 놓쳐 F-24 가 났다.**
+
+    (a) 화면에 나란히 놓을 평균이 없다
+    (b) **구간 선정이 그 방법을 통제하지 못했다** — 거리 계산에서 빠졌으므로
+        값이 분포의 어디든 될 수 있다. 실제로 `M06L6` 이 44 개 중 최솟값인
+        구간에 걸렸고, 그것을 보고 "L6 은 PLI 에서 진다" 고 잘못 읽었다.
+
+    화면과 빌더가 (b)를 말하는지 고정한다.
+    """
+    ui = (ROOT / "demo" / "index.html").read_text()
+    assert "선정이 통제하지 못한" in ui, "화면이 (b)를 말하지 않는다"
+    src = (ROOT / "scripts" / "build_demo_bank.py").read_text()
+    assert "구간 선정이 통제하지 못한 방법" in src, "빌더가 경고하지 않는다"
+
+
+def test_selection_covers_every_method_when_the_grid_experiment_exists():
+    """`exp_g` 를 참조하는 장면에서는 **모든 방법이** 선정 기준에 들어가야 한다.
+
+    `exp_g` 는 은행에 실리는 방법을 전부 돌리므로, 그 칸에 `no_ref` 가 남아
+    있으면 실험 설정과 은행 구성이 어긋난 것이다.
+    """
+    bad = [(s["id"], s["no_ref"]) for s in _bank()["scenes"]
+           if s["ref_exp"] == "exp_g" and s["no_ref"]]
+    assert not bad, f"exp_g 를 참조하는데 통제 못 한 방법이 있다: {bad}"

@@ -400,9 +400,12 @@ def build_scene(scene, tag, src, banks, methods, record, sel) -> dict:
         selection={**sel, "picked_at_snr": SNR_PICK},
         ylim=round(float(np.max(np.abs(traces["clean"]))) * 1.3, 6),
         scale=scale, metrics=mets, ref_mean=ref,
-        # 축 평균이 **없는** 방법을 명시한다. 브라우저는 이 목록의 방법 옆에
-        # 평균 칸을 비우고 "이 구간 값" 이라고만 적어야 한다 — 빈칸을 그럴듯한
-        # 숫자로 메우지 않기 위해서다.
+        # 축 평균이 **없는** 방법. 두 가지를 뜻하고, 처음에는 앞의 하나만
+        # 읽었다가 F-24 를 냈다:
+        #   (a) 화면에 나란히 놓을 평균이 없다 → 평균 칸을 비운다
+        #   (b) **구간 선정이 이 방법을 통제하지 못했다** → 거리 계산에서
+        #       빠졌으므로 이 방법의 값은 분포의 어디든 될 수 있다.
+        #       실제로 `M06L6` 이 44 개 중 최솟값인 구간에 걸렸다.
         no_ref=[m for m in methods if m not in ref],
         traces={k2: _q(v, scale) for k2, v in traces.items()},
     )
@@ -485,7 +488,12 @@ def main() -> int:
     if miss:
         print(f"\n[warn] 축 평균이 없는 장면 {len(miss)} 개: {miss[:6]}"
               f"{' …' if len(miss) > 6 else ''}\n"
-              f"        exp_g 가 끝나면 다시 만들면 채워진다.")
+              f"        exp_g 를 돌리고 다시 만들면 채워진다.")
+    loose = sorted({m for s in scenes for m in s["no_ref"]})
+    if loose:
+        print(f"\n[warn] **구간 선정이 통제하지 못한 방법**: {loose}\n"
+              f"        축 평균이 없어 거리 계산에서 빠졌다. 이 방법들의 값은\n"
+              f"        분포의 어디든 될 수 있다 — 화면이 그렇게 말하는지 확인할 것 (F-24).")
     print(f"\n{p}  {p.stat().st_size / 1e6:.2f} MB  "
           f"장면 {len(scenes)} × 파형 {len(scenes[0]['traces'])}")
     return 0

@@ -314,7 +314,9 @@ function panel(s, key, label, color, showRef){
     const r = s.ref_mean[key];
     num.innerHTML = `이 구간 <b>${m.snr_imp.toFixed(2)} dB</b>` +
       (r === undefined
-        ? ` · <span class="none">축 평균 없음</span>`
+        ? ` · <span class="none" title="이 방법은 축 평균이 없어 구간 선정의`
+          + ` 거리 계산에서 빠졌다. 이 값은 분포의 어디든 될 수 있다 (F-24).">`
+          + `축 평균 없음 — 선정이 통제하지 못한 값</span>`
         : ` · 축 평균 ${r.toFixed(2)} dB`) +
       ` · cc ${m.cc.toFixed(3)}`;
   } else if (key === "input") {
