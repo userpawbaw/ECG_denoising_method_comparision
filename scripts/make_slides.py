@@ -51,6 +51,12 @@ C = {
 # 은 등장하지 않으므로 색이 겹치지 않는다.
 LOSS = {"L1": "#86b6ef", "L3": "#3987e5", "L6": "#184f95"}
 
+# S9 는 **개입의 종류**(구조/손실) 둘만 가른다. 방법 색(C)을 쓰면 "M08 색"
+# 같은 기존 의미와 충돌하므로, 여기서는 개입 종류에 색을 준다 — 구조는
+# 중립 회색(결론이 "아무 일도 없다" 라 무채색이 맞다), 손실은 LOSS 램프의
+# 진한 끝(L6)을 그대로 써서 S7·S8 과 이어지게 한다.
+KIND = {"구조": "#8a8a8a", "손실": "#184f95"}
+
 CLEAN = "#b8b6ae"       # 참조: 뒤에 두껍게 깔아 '목표' 로 읽히게
 NOISY = "#52514e"       # 입력
 INK, INK2 = "#0b0b0b", "#52514e"
@@ -661,6 +667,87 @@ def s8_clean_preservation(TXT):
     print("  S8_clean.png")
 
 
+# ---------------------------------------------------------------- S9 구조 vs 손실
+def s9_structure_vs_loss(TXT):
+    """이 프로젝트의 실용적 결론 한 장 — **구조를 바꿔도 안 되고 손실은 됐다.**
+
+    네 번의 구조 변경과 손실 변경을 **같은 자(M06/M08 기준 Δ)** 로 나란히
+    놓는다. 한 번의 null 로는 "그 구조가 나빴다" 와 구분되지 않으므로,
+    **네 번이 모두 실린 것이 이 그림의 논거**다.
+
+    가로 점 그림을 쓴다 — 항목이 이름이 길고 개수가 적으며, 읽어야 하는 것이
+    "0 에서 얼마나 떨어졌나" 라서다. 막대는 0 이 기준선인데 여기서는 음수도
+    의미가 있어 점이 낫다.
+    """
+    import pandas as pd
+    from ecgdn.eval.stats import compare_methods
+
+    # (라벨, 종류, 파일, 기준, 대상)
+    ROWS = [
+        ("M07  SWT 를 전처리로",      "구조", "exp_a",      "M06",       "M07"),
+        ("M08  wavelet 표현공간",     "구조", "exp_a",      "M06",       "M08"),
+        ("M10  해상도 유지",          "구조", "exp_a",      "M06",       "M10"),
+        ("M09  전역 attention",       "구조", "exp_a",      "M06",       "M09"),
+        ("window 4배 (16.4 s)",       "구조", "abl_window", "M06-w1024", "M06-w4096"),
+        ("L3   +차분항",              "손실", "abl_loss",   "M06-L1",    "M06-L3"),
+        ("L6   +clean 보존",          "손실", "abl_loss",   "M06-L1",    "M06-L6"),
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.4), sharey=True)
+    for ax, tag in zip(axes, ("d0", "d1")):
+        ys, xs, ps, cs = [], [], [], []
+        for i, (lab, kind, exp, base, cand) in enumerate(ROWS):
+            f = Path("results") / tag / exp / "metrics.parquet"
+            if not f.exists():
+                ys.append(i); xs.append(np.nan); ps.append(1.0); cs.append(KIND[kind]); continue
+            d = pd.read_parquet(f)
+            try:
+                r = compare_methods(d, "snr_imp_scaled", base, unit="record")
+                r = r[r.method == cand]
+            except KeyError:
+                r = None
+            ys.append(i)
+            if r is None or r.empty:
+                xs.append(np.nan); ps.append(1.0)
+            else:
+                xs.append(float(r.iloc[0]["delta_mean"])); ps.append(float(r.iloc[0]["p_holm"]))
+            cs.append(KIND[kind])
+        ax.axvline(0, color=INK2, lw=1.2, zorder=2)
+        for y, x, pv, c in zip(ys, xs, ps, cs):
+            if not np.isfinite(x):
+                continue
+            sig = pv < 0.05
+            ax.scatter([x], [y], s=150 if sig else 95, color=c, zorder=4,
+                       edgecolor=SURFACE if sig else c, linewidth=1.8,
+                       marker="o" if sig else "o", alpha=1.0 if sig else 0.45)
+            ax.annotate(f"{x:+.2f}" + ("*" if sig else ""), (x, y),
+                        xytext=(0, 11), textcoords="offset points",
+                        ha="center", fontsize=9.5,
+                        color=INK if sig else INK2,
+                        fontweight="bold" if sig else "normal")
+        ax.set_yticks(range(len(ROWS)))
+        ax.set_ylim(-0.7, len(ROWS) - 0.3)
+        ax.invert_yaxis()
+        ax.grid(axis="y", visible=False)
+        ax.set_title({"d0": "D0 합성", "d1": "D1 MIT-BIH"}[tag], fontsize=11.5, color=INK)
+        ax.set_xlabel("기준 대비 Δ  snr_imp_scaled [dB]")
+        ax.margins(x=0.20)
+    axes[0].set_yticklabels([r[0] for r in ROWS], fontsize=10.5)
+    # 범례 — 색이 뜻하는 것은 방법이 아니라 **개입의 종류**다
+    from matplotlib.lines import Line2D
+    axes[0].legend(handles=[
+        Line2D([], [], marker="o", ls="", ms=9, color=KIND["구조"], label="구조 변경"),
+        Line2D([], [], marker="o", ls="", ms=9, color=KIND["손실"], label="손실 변경"),
+        Line2D([], [], marker="o", ls="", ms=9, color=INK2, label="* = p < 0.05 (Holm)"),
+    ], loc="upper right", fontsize=9.5, framealpha=0.92,
+        borderpad=0.6, labelspacing=0.4)
+    fig.suptitle("구조를 네 번 바꿔도 안 됐고, 손실은 됐다  (M06 기준, TEST n=22)\n"
+                 "유의한 구조 변경은 M07 하나인데 그것은 나쁜 쪽이다",
+                 fontsize=12.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.86))
+    fig.savefig(OUT / "S9_structure_vs_loss.png", dpi=175); plt.close(fig)
+    print("  S9_structure_vs_loss.png")
+
+
 # ---------------------------------------------------------------- main
 INDEX = [
     ("S1_input.png",
@@ -694,6 +781,9 @@ INDEX = [
      "20 dB 에서 D0 는 부호가 뒤집히고(-1.6 → +3.0) D1 은 격차의 74 %가 "
      "사라진다(-4.8 → -1.3). 구조를 세 번 바꿔도(M07·M08·M10) 안 되던 것이 "
      "손실 한 항으로 움직였다는 것이 이 슬라이드의 요지다."),
+    ("S9_structure_vs_loss.png",
+     "**결론 한 장.** 구조 4연속 기각 vs 손실 성공. 한 번의 null 로는 "
+     "'그 구조가 나빴다' 와 구분되지 않으므로 넷을 함께 싣는다."),
     ("S8_clean.png",
      "**S7 의 '왜'.** L6 는 \"입력이 이미 깨끗하면 건드리지 마라\" 를 손실에 "
      "넣은 것인데, **바로 그 지표(EXP-C)가 올라갔다.** D1 에서 M06 22.2 → "
@@ -781,6 +871,7 @@ def main() -> int:
         s7_loss_gap(TXT)
     if "S8" in want:
         s8_clean_preservation(TXT)
+        s9_structure_vs_loss(TXT)
 
     save_manifest(OUT, cfg=vars(a), sources=[
         "scripts/make_slides.py", "scripts/run_exp.py", "ecgdn/data/dataset.py",
