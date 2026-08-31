@@ -31,6 +31,27 @@
   button.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);
        color:#fff}
   button.chip[disabled]{opacity:.35;cursor:not-allowed}
+  /* SNR 다이얼 — 5 dB 눈금에 스냅한다. 점이 찬 눈금은 축 평균이 있는 조건이다. */
+  .dial{display:inline-grid;gap:2px;width:270px}
+  input[type=range]{appearance:none;width:100%;height:20px;background:none;margin:0;
+    cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;
+    background:var(--line)}
+  input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--line)}
+  input[type=range]::-webkit-slider-thumb{appearance:none;width:15px;height:15px;
+    margin-top:-5.5px;border-radius:50%;background:var(--accent);border:2px solid #fff}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;
+    background:var(--accent);border:2px solid #fff}
+  input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .ticks{display:flex;justify-content:space-between;padding:0 5px}
+  .ticks i{display:grid;justify-items:center;gap:3px;font-size:9.5px;line-height:1;
+    color:var(--muted);font-style:normal;font-variant-numeric:tabular-nums}
+  .ticks i::before{content:"";width:5px;height:5px;border-radius:50%;
+    border:1px solid var(--muted);background:var(--muted)}
+  .ticks i[data-measured="0"]::before{background:none}
+  .ticks i[data-on="1"]{color:var(--accent);font-weight:700}
+  .ticks i[data-on="1"]::before{border-color:var(--accent);background:var(--accent);
+    width:7px;height:7px}
   main{padding:16px 22px 40px}
   .claim{margin:0 0 14px;padding:12px 14px;border-left:3px solid var(--accent);
        background:#f6f8fb}
@@ -73,7 +94,10 @@
 <div class="bar">
   <div class="grp"><span>데이터</span><div class="chips" id="axes"></div></div>
   <div class="grp"><span>잡음 종류</span><div class="chips" id="conds"></div></div>
-  <div class="grp"><span>입력 SNR</span><div class="chips" id="snrs"></div></div>
+  <div class="grp"><span>입력 SNR</span>
+    <div class="dial"><input type="range" id="snr" min="0" step="1" aria-label="입력 SNR">
+      <span class="ticks" id="ticks"></span></div>
+  </div>
   <div class="grp"><span>방법</span><div class="chips" id="methods"></div></div>
   <div class="grp"><span>구간 길이</span><div class="chips" id="zoom"></div></div>
   <div class="grp"><span>표시</span><div class="chips" id="opts"></div></div>
@@ -160,13 +184,23 @@ function buildBar(){
                    star ? "추천 조합 — 보고서의 결론 하나를 그대로 보인다" : c,
                    !has(c, state.snr)));
   }
-  const sn = $("snrs"); sn.innerHTML = "";
-  for (const v of B.snrs) {
-    const star = B.scenes.some(s => s.cond === state.cond && s.snr === v && s.highlight);
-    sn.append(chip((star ? "★ " : "") + v + " dB", v === state.snr,
-                   () => state.snr = v, star ? "추천 조합" : "",
-                   !has(state.cond, v)));
-  }
+  /* SNR 은 **슬라이더로 고르되 잰 눈금에 스냅**한다. 연속으로 두면 측정이 없는
+     조건에 설 수 있고, 그러면 "축 평균" 칸이 비어 구간 하나만 남는다 —
+     D-17 · F-24 가 막으려던 자리다. 눈금 아래 점이 측정 유무를 직접 보인다. */
+  const sl = $("snr");
+  sl.max = String(B.snrs.length - 1);
+  sl.value = String(Math.max(0, B.snrs.indexOf(state.snr)));
+  sl.oninput = () => { state.snr = B.snrs[+sl.value]; render(); };
+  $("ticks").replaceChildren(...B.snrs.map(v => {
+    const i = document.createElement("i");
+    i.dataset.measured = has(state.cond, v) ? "1" : "0";
+    i.dataset.on = v === state.snr ? "1" : "0";
+    i.textContent = v;
+    i.title = has(state.cond, v)
+      ? `${v} dB — 이 잡음에서 측정 있음`
+      : `${v} dB — 이 잡음에서는 아직 안 쟀다`;
+    return i;
+  }));
   const zm = $("zoom"); zm.innerHTML = "";
   for (const s of [10, 4, 2]) {
     zm.append(chip(s + " s", state.win === s, () => {
