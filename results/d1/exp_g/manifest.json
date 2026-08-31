@@ -2,7 +2,7 @@
   "env": {
     "python": "3.11.15",
     "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
-    "git": "39267cf",
+    "git": "137b028",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -20,9 +20,13 @@
       "seg_s": 60.0,
       "n_seg_per_record": 2,
       "snr_grid": [
+        -5,
         0,
+        5,
         10,
-        20
+        15,
+        20,
+        25
       ],
       "conditions": [
         "awgn",
@@ -87,7 +91,7 @@
     }
   },
   "sources": {
-    "scripts/run_exp.py": "502d7715e68f8cba",
+    "scripts/run_exp.py": "8f8d2d42e02a32b7",
     "ecgdn/data/dataset.py": "d5d0883966a22890",
     "ecgdn/methods/frontend.py": "b764ed73a82083ba",
     "ecgdn/eval/engine.py": "191230413ed4946d",
@@ -95,7 +99,7 @@
     "ecgdn/eval/morphology.py": "81f09c5b706f4b72",
     "ecgdn/eval/rpeak.py": "7fc1e662149e64c4"
   },
-  "n_items": 924,
+  "n_items": 2156,
   "methods": [
     "M_FE",
     "M01",
