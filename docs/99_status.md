@@ -362,11 +362,30 @@ python3 scripts/build_demo_bank.py # 축 평균이 채워진 은행 재생성
 
 ### 학습·실험 파이프라인 감시
 
-**Routine 은 현재 대기(disabled) 상태다** — 학습·실험 큐가 비어 있어 깨울
-일이 없다. 다시 켜려면 `update_trigger(trigger_id="trig_01FmVcrnqGyQSQoMdG6v5Hbx",
-enabled=true)` 하나면 된다(이름에 "— 대기 중" 이 붙어 있다).
+#### 규칙: **무인 작업이 없으면 대기로 둔다** (사용자 지시, 08-31)
 
-컨테이너 재시작이 잦아(O-2 · O-15 · O-17) 60 분 주기 Routine 을 걸어 뒀었다.
+Routine 은 **깨울 일이 있을 때만 켠다.**
+
+| 상황 | Routine |
+|---|---|
+| 학습·실험 등 **몇 시간짜리 무인 실행을 띄운 직후** | **켠다** |
+| 그 실행이 끝났고 다음 계획이 없다 | **대기로 되돌린다** |
+
+```
+켜기   update_trigger(trigger_id="trig_01FmVcrnqGyQSQoMdG6v5Hbx", enabled=true,
+                      name="ECG 학습 watchdog (60분)")
+끄기   update_trigger(trigger_id="trig_01FmVcrnqGyQSQoMdG6v5Hbx", enabled=false,
+                      name="ECG 학습 watchdog (60분) — 대기 중")
+확인   list_triggers(enabled=true)   # 비어 있으면 대기 중이다
+```
+
+이름 뒤의 **"— 대기 중"** 이 목록에서 상태를 바로 보이게 하는 표식이다.
+**지금은 대기 상태다** — EXP-G 가 끝났고 예정된 무인 작업이 없다.
+
+> 켜 두면 매시간 세션이 깨어나 "이상 없음" 만 확인한다. 판정 자체는 1.83 ms
+> 지만 **비싼 것은 에이전트를 깨우는 쪽**이다(D-16). 그래서 기본이 대기다.
+
+컨테이너 재시작이 잦아(O-2 · O-15 · O-17) 60 분 주기 Routine 을 만들었다.
 `scripts/watchdog.py` 가 학습·실험 두 단계를 3 중 판정하고, 죽었으면 증거를
 남기고 재개한다. 근거와 설계는 **D-16**.
 
