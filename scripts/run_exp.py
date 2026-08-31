@@ -18,6 +18,7 @@ import _bootstrap  # noqa: F401
 
 import argparse
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -109,6 +110,70 @@ def build_methods(cfg: dict, tag: str = "") -> dict:
     return ms
 
 
+# ---------------------------------------------------------------- 실험 내부 재개
+#
+# 학습에는 `--resume` 이 있는데 실험에는 **항목 단위 재개가 없었다.** 컨테이너가
+# 실험 도중에 재시작되면(실제로 자주 그런다 — O-2 · O-15 · O-17) 그 실험은
+# 처음부터 다시 돈다. EXP-G(2156 항목, 축당 약 80 분)를 돌리다 두 번 연속
+# 220/2156 과 70/2156 에서 죽었고, **재개가 없으니 진행이 0 이었다.**
+#
+# `run_all_experiments.sh` 의 재개는 **실험 단위**라 여기까지 못 막는다.
+#
+# 방식: 항목 `CHUNK` 개마다 부분 결과를 `_partial/` 에 떨군다. 다시 시작하면
+# 거기 있는 것을 읽고 **그 다음 항목부터** 잇는다. 끝나면 합쳐서
+# `metrics.parquet` 을 쓰고 `_partial/` 을 지운다.
+#
+# **설정이 바뀌면 부분 결과를 버린다.** 평가 세트가 달라졌는데 이어 붙이면
+# 서로 다른 조건의 행이 한 표에 섞인다 — 그것이 F-9 계열의 사고다. 그래서
+# 부분 결과에 설정 지문을 함께 적고 다르면 처음부터 돈다.
+CHUNK = 25
+
+
+def _fingerprint(cfg: dict, n_items: int, methods: list[str]) -> str:
+    """이 부분 결과가 **같은 실험의 것인가**. 설정·항목 수·방법 목록으로 만든다."""
+    import hashlib
+    blob = json.dumps({"data": cfg.get("data"), "mode": cfg.get("mode"),
+                       "frontend": cfg.get("frontend"), "eval": cfg.get("eval"),
+                       "n": n_items, "m": sorted(methods)},
+                      sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def load_partial(out: Path, fp: str) -> tuple[list[dict], int]:
+    """저장된 부분 결과와 **다음에 처리할 항목 인덱스**."""
+    d = out / "_partial"
+    meta = d / "fingerprint.txt"
+    if not d.exists() or not meta.exists():
+        return [], 0
+    if meta.read_text().strip() != fp:
+        print(f"[resume] 설정이 달라 부분 결과를 버린다 -> {d}")
+        shutil.rmtree(d, ignore_errors=True)
+        return [], 0
+    rows, done = [], 0
+    for f in sorted(d.glob("rows-*.parquet")):
+        rows.extend(pd.read_parquet(f).to_dict("records"))
+        done = max(done, int(f.stem.split("-")[1]))
+    if rows:
+        print(f"[resume] 부분 결과 {len(rows)} 행 · 항목 {done} 개까지 완료 -> 이어서 돈다")
+    return rows, done
+
+
+def save_partial(out: Path, fp: str, new_rows: list[dict], upto: int) -> None:
+    """**이번 조각에서 새로 생긴 행만** 쓴다.
+
+    처음에는 `rows` 전체를 매번 썼는데, `load_partial` 이 조각 파일을 전부
+    이어 붙이므로 **같은 행이 조각 수만큼 중복**된다(50 항목에서 25200 행 —
+    맞는 값은 16800). 표는 여전히 그럴듯해 보이고 평균도 안 변한다(같은 행이
+    똑같이 늘어나니까). 그래서 눈으로는 못 잡는다 — 행 수를 세야 잡힌다.
+    """
+    if not new_rows:
+        return
+    d = ensure_dir(out / "_partial")
+    (d / "fingerprint.txt").write_text(fp)
+    pd.DataFrame(new_rows).to_parquet(d / f"rows-{upto:05d}.parquet", index=False)
+
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("-c", "--config", required=True)
@@ -163,9 +228,13 @@ def main() -> int:
 
     print(f"[{exp_id}] mode={mode} source={src.kind} tag={tag} items={len(items)} "
           f"frontend={cfg.get('frontend', True)} methods={list(methods)}")
-    rows = []
+    fp = _fingerprint(cfg, len(items), list(methods))
+    rows, done = load_partial(out, fp)
+    saved = len(rows)                       # 이미 파일에 들어간 행 수
     t0 = time.perf_counter()
     for i, it in enumerate(items, 1):
+        if i <= done:                       # 이미 끝난 항목 — 건너뛴다
+            continue
         x, y, fs = it["x"].astype(np.float64), it["y"].astype(np.float64), it["fs"]
         # reference 쪽 계산(특히 느린 delineation)은 구간당 1회만 한다
         cache = make_ref_cache(x, fs, it["r_peaks"], do_morph=do_morph)
@@ -188,13 +257,18 @@ def main() -> int:
                         family=fam)
             for k, v in m.items():
                 rows.append({**base, "metric": k, "value": float(v)})
+        if i % CHUNK == 0 or i == len(items):
+            save_partial(out, fp, rows[saved:], i)   # 재시작해도 여기까지는 안 잃는다
+            saved = len(rows)
         if i % 10 == 0 or i == len(items):
             el = time.perf_counter() - t0
-            print(f"  {i}/{len(items)}  {el:.0f}s  (eta {el / i * (len(items) - i):.0f}s)",
-                  flush=True)
+            n_new = max(1, i - done)
+            print(f"  {i}/{len(items)}  {el:.0f}s  "
+                  f"(eta {el / n_new * (len(items) - i):.0f}s)", flush=True)
 
     df = pd.DataFrame(rows)
     df.to_parquet(out / "metrics.parquet", index=False)
+    shutil.rmtree(out / "_partial", ignore_errors=True)   # 완주했으면 부분 결과는 필요 없다
     cfg = dict(cfg, _swt_applied=load_swt_tuning(tag))
     save_manifest(out, cfg=cfg, extra={"n_items": len(items), "methods": list(methods)},
                   sources=["scripts/run_exp.py", "ecgdn/data/dataset.py",
