@@ -78,8 +78,39 @@ main{padding:18px 26px 34px;display:grid;gap:16px;
   color:var(--paper);font-weight:600}
 .chip .star{color:var(--classic);font-size:11px}
 .chip[aria-pressed="true"] .star{color:var(--paper)}
-.chip:focus-visible,.rail button:focus-visible{outline:2px solid var(--accent);
-  outline-offset:2px}
+.chip:focus-visible,.rail button:focus-visible,input[type=range]:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
+
+/* ── SNR 다이얼: 5 dB 눈금에 스냅한다 ────────────────────────
+   연속 다이얼처럼 조작되지만 값은 **잰 격자** 위에만 선다. 눈금 아래 점이
+   찬 것은 측정이 있는 조건, 빈 것은 아직 안 잰 조건이다 — 컨트롤 자체가
+   근거의 유무를 보이게 한다. */
+.dial{position:relative;display:inline-grid;gap:2px;width:290px}
+input[type=range]{appearance:none;width:100%;height:22px;background:none;margin:0;
+  cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:3px;
+  background:linear-gradient(to right,var(--sunk),var(--accent-soft))}
+input[type=range]::-moz-range-track{height:5px;border-radius:3px;
+  background:linear-gradient(to right,var(--sunk),var(--accent-soft))}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:17px;height:17px;
+  margin-top:-6px;border-radius:50%;background:var(--accent);
+  border:2px solid var(--card);box-shadow:0 1px 3px rgba(0,0,0,.25)}
+input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;
+  background:var(--accent);border:2px solid var(--card)}
+.ticks{display:flex;justify-content:space-between;padding:0 6px}
+.ticks i{display:grid;justify-items:center;gap:3px;font-size:9.5px;line-height:1;
+  color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
+.ticks i::before{content:"";width:5px;height:5px;border-radius:50%;
+  border:1px solid var(--ink-3);background:var(--ink-3)}
+.ticks i[data-measured="0"]::before{background:none}
+.ticks i[data-on="1"]{color:var(--accent);font-weight:600}
+.ticks i[data-on="1"]::before{border-color:var(--accent);background:var(--accent);
+  width:7px;height:7px}
+.snrval{font-size:15px;font-weight:600;min-width:66px}
+.snrval small{font-size:11px;color:var(--ink-3);font-weight:400}
+.gap{grid-column:1/-1;margin:0;padding:10px 13px;border-radius:9px;font-size:12.5px;
+  background:var(--sunk);border-left:3px solid var(--ink-3);color:var(--ink-2)}
+.gap b{color:var(--ink)}
 
 /* ── 카드 ─────────────────────────────────────────────── */
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
@@ -176,10 +207,17 @@ dialog form{text-align:right}
 <main id="bench">
   <section class="picker">
     <div class="prow"><span class="plabel">잡음</span><span class="chips" id="conds"></span></div>
-    <div class="prow"><span class="plabel">입력 SNR</span><span class="chips" id="snrs"></span>
+    <div class="prow"><span class="plabel">입력 SNR</span>
+      <span class="dial">
+        <input type="range" id="snr" min="0" max="6" step="1" value="3"
+               aria-label="입력 SNR" list="snrticks">
+        <span class="ticks" id="ticks"></span>
+      </span>
+      <output class="snrval mono" id="snrval"></output>
       <span class="plabel" style="margin-left:18px">재생</span><span class="chips" id="play"></span></div>
   </section>
 
+  <p class="gap hide" id="gapnote"></p>
   <section class="card">
     <div class="chead">
       <h2 id="sceneTitle">—</h2>
@@ -234,7 +272,10 @@ const FLOOR = 0.6;                 /* 이 시안에서 쓰는 분해능 띠 [dB]
 const COND = {mixed:"혼합", impulse:"임펄스", pli:"전원선 60 Hz",
   bw_synth:"기저선 변동", ma_synth:"근전도", em_synth:"전극 움직임", awgn:"백색잡음"};
 const ORDER = ["mixed","impulse","pli","bw_synth","ma_synth","em_synth","awgn"];
-const SNRS = [0,10,20];
+/* 슬라이더 눈금. **연속이 아니라 5 dB 단위**다 — 우리가 잰 격자 위에서만
+   움직여야 각 눈금에 축 평균을 나란히 놓을 수 있다. `MEANS` 에 없는 눈금은
+   빈 눈금으로 그리고 화면이 "이 조건은 아직 안 쟀다" 고 직접 말한다. */
+const SNRS = [-5,0,5,10,15,20,25];
 const STAR = new Set(["mixed|0","impulse|10","pli|10","bw_synth|10","mixed|20","em_synth|10"]);
 const KIND = {M_FE:"classic",M01:"classic",M04:"classic",
               M06:"deep",M06L6:"deep",M08:"deep",B01:"oracle"};
@@ -334,13 +375,50 @@ function render(){
   const cs=$("#conds"); cs.replaceChildren(...ORDER.map(c=>
     chip(COND[c], c===st.cond, ()=>st.cond=c, STAR.has(`${c}|${st.snr}`),
       "추천 조합 — 보고서의 결론 하나를 그대로 보인다")));
-  const ss=$("#snrs"); ss.replaceChildren(...SNRS.map(v=>
-    chip(v+" dB", v===st.snr, ()=>st.snr=v, STAR.has(`${st.cond}|${v}`))));
+  const sl=$("#snr");
+  sl.max = String(SNRS.length-1);
+  sl.value = String(SNRS.indexOf(st.snr));
+  sl.oninput = ()=>{ st.snr = SNRS[+sl.value]; render(); };
+  $("#ticks").replaceChildren(...SNRS.map(v=>{
+    const i=document.createElement("i");
+    i.dataset.measured = (`${st.cond}|${v}` in MEANS) ? "1":"0";
+    i.dataset.on = v===st.snr ? "1":"0";
+    i.textContent = v;
+    i.title = (`${st.cond}|${v}` in MEANS)
+      ? `${v} dB — 측정 있음` : `${v} dB — 이 잡음에서는 아직 안 쟀다`;
+    return i;}));
+  $("#snrval").innerHTML = `${st.snr} dB` +
+    (STAR.has(key()) ? ` <small>추천</small>` : "");
   const ps=$("#play"); ps.replaceChildren(...[["off","정지"],["sweep","스윕"],["scroll","스크롤"]]
     .map(([k,l])=>chip(l,st.play===k,()=>st.play=k,false,
       k==="off"?"비교는 정지 화면에서 한다":"움직이는 화면은 도입용이다")));
 
   const m=MEANS[key()]||{}, ms=methods();
+  const measured = ms.length>0;
+  $("#gapnote").classList.toggle("hide", measured);
+  if(!measured){
+    $("#gapnote").innerHTML =
+      `<b>${COND[st.cond]} ${st.snr} dB 는 아직 재지 않았다.</b> 파형은 그릴 수 있지만 ` +
+      `옆에 놓을 <b>축 평균이 없다</b> — 구간 하나만 보이면 그것이 결론으로 읽히므로, ` +
+      `이 화면은 숫자를 비워 둔다. 측정이 있는 눈금은 슬라이더에 채워진 점으로 표시된다.`;
+    $("#sceneTitle").textContent = `${COND[st.cond]} · 입력 ${st.snr} dB`;
+    $("#sceneNote").textContent = "측정 없음";
+    const v0=$("#verdict"); v0.dataset.v="tie"; v0.textContent="판정 불가 (미측정)";
+    /* 입력과 참값은 **측정 없이도 사실**이다 — 잡음을 그 SNR 로 섞은 결과일
+       뿐이다. 그래서 그 둘은 그리고, **방법 줄만** 비운다. 화면을 통째로
+       비우면 슬라이더가 고장 난 것처럼 보인다. */
+    const x0=clean(N,FS), z0=noise(N,FS,st.cond,7);
+    const amp0=Math.max(...Array.from(x0,Math.abs))*1.35;
+    const r0=mkRow("입력", `잡음 섞인 신호 · SNR ${st.snr} dB`, null);
+    panels=[{cv:r0.cv, sig:output(x0,z0,st.snr), ref:x0, col:cssv("--noisy"), amp:amp0*1.6}];
+    $("#rows").replaceChildren(r0.el);
+    $("#claim").innerHTML = `<b>이 조건의 축 평균이 없다.</b>
+      <span class="ev">입력 파형은 잡음을 그 SNR 로 섞은 것이라 측정 없이도
+      맞다. 방법 줄을 비우는 이유는 <b>옆에 놓을 평균이 없어서</b>이지 계산을
+      못 해서가 아니다.</span>`;
+    fit($("#lens"))[0].clearRect(0,0,2000,400);
+    restart(); return;
+  }
   const bestC=Math.max(...ms.filter(k=>KIND[k]==="classic").map(k=>m[k]));
   const bestD=Math.max(...ms.filter(k=>KIND[k]==="deep").map(k=>m[k]));
   const gap=bestD-bestC;

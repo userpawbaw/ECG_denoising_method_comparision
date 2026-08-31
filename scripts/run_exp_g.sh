@@ -20,7 +20,10 @@ if ! mkdir "$LOCK" 2>/dev/null; then echo "another run holds $LOCK; abort"; exit
 echo $$ > "$LOCK/pid"
 trap 'rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null' EXIT
 
-for SRC in "${@:-mitdb synthetic}"; do
+# `"${@:-a b}"` 는 인자가 없을 때 기본값을 **한 단어로** 붙인다 — 그러면
+# SRC="mitdb synthetic" 이 되어 소스 이름이 깨진다. 배열로 받는다.
+SRCS=("$@"); [ ${#SRCS[@]} -eq 0 ] && SRCS=(mitdb synthetic)
+for SRC in "${SRCS[@]}"; do
   echo "=== EXP-G $SRC  $(date -u +%H:%M:%S) ==="
   python3 scripts/run_exp.py -c configs/exp_g.yaml --source "$SRC" || exit 3
 done
