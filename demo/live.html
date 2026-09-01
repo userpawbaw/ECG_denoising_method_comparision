@@ -1,0 +1,188 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ECG denoising — 실측 (모드 A)</title>
+<!--
+  모드 A(실측) 화면. 30_realtime_demo.md 6.3.
+
+  **모드 B(index.html)와 섞지 않는다.** 여기 신호에는 참값이 없어서 성능
+  수치를 띄울 수 없고(난관 6), 경로도 다르다 — 실시간은 인과 front-end 라
+  학습된 모델이 0.4~1.0 dB 를 잃는다(F-25). 같은 화면에 두면 같은 방법이
+  두 품질로 보이고 관람객은 어느 쪽이 실력인지 알 수 없다.
+
+  데이터는 scripts/serial_bridge.py 가 SSE(text/event-stream)로 민다.
+  **file:// 로는 안 열린다** — 브리지가 이 디렉터리를 함께 서빙한다.
+-->
+<style>
+  :root{ --bg:#fff; --fg:#1b1b1b; --muted:#6b6b6b; --line:#e2e2e2;
+         --accent:#184f95; --warn:#9a3412; --bad:#d03b3b; --raw:#8a8a8a; }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",
+       "Noto Sans KR",sans-serif;color:var(--fg);background:var(--bg)}
+  header{padding:18px 22px 12px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:17px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12.5px}
+  .note{margin:12px 22px 0;padding:10px 13px;border-left:3px solid var(--warn);
+        background:#fdf6f2;font-size:12.5px}
+  .note b{font-weight:600}
+  .bar{display:flex;flex-wrap:wrap;gap:22px;padding:13px 22px;
+       border-bottom:1px solid var(--line);align-items:center;
+       font-variant-numeric:tabular-nums;font-size:12.5px}
+  .bar .k{color:var(--muted);font-size:11px;letter-spacing:.04em;display:block}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+       background:var(--bad);margin-right:6px;vertical-align:1px}
+  .dot.on{background:#2e7d32}
+  main{padding:14px 22px 40px}
+  .row{margin:0 0 10px}
+  .lab{display:flex;justify-content:space-between;align-items:baseline;
+       font-size:12px;margin:0 0 3px}
+  .lab b{font-weight:600;font-size:12.5px}
+  .lab span{color:var(--muted)}
+  canvas{width:100%;height:96px;display:block;border:1px solid var(--line);
+    background-image:linear-gradient(#f2e6e6 1px,transparent 1px),
+                     linear-gradient(90deg,#f2e6e6 1px,transparent 1px);
+    background-size:20px 20px}
+  footer{padding:0 22px 30px;color:var(--muted);font-size:11.5px}
+  a{color:var(--accent)}
+</style>
+
+<header>
+  <h1>모드 A — 실측 (AD8232 + Uno)</h1>
+  <div class="sub">전극에서 들어오는 신호를 <b>지금</b> 처리한다. 녹음본이 아니다.</div>
+</header>
+
+<div class="note">
+  <b>이 화면에는 성능 수치가 없다.</b> 실측 신호에는 참값(clean)이 없으므로
+  SNR 을 계산할 수 없다 — 띄우면 그것은 지어낸 숫자다. 방법 간 정량 비교는
+  <a href="index.html">모드 B(벤치마크)</a>에서 하고, 여기서 보이는 것은
+  <b>파형과 처리 상태</b>뿐이다. 실시간 경로는 인과 front-end 라 모드 B 와
+  같은 방법이라도 출력이 조금 다르다.
+</div>
+
+<div class="bar">
+  <div><span class="k">연결</span><span id="conn"><i class="dot"></i>대기</span></div>
+  <div><span class="k">지연</span><span id="lat">—</span></div>
+  <div><span class="k">경과</span><span id="elapsed">—</span></div>
+  <div><span class="k">손실</span><span id="lost">0</span></div>
+  <div><span class="k">lead-off</span><span id="leadoff">0</span></div>
+  <div><span class="k">프레임 깨짐</span><span id="bad">0</span></div>
+  <div><span class="k">재동기</span><span id="resync">0</span></div>
+  <div><span class="k">처리 여유 (RTF)</span><span id="rtf">—</span></div>
+</div>
+
+<main id="panels"></main>
+
+<footer>
+  회색 구간은 <b>측정값이 아니다</b> — 전극이 떨어졌거나(lead-off) 선에서
+  샘플을 잃어 직전 값으로 채운 자리다. 시간축을 지키려고 채운 것이지
+  신호가 아니다. · 화면은 <b>도착한 만큼</b> 진행한다. 시간축의 주인은 보드이고
+  PC 벽시계가 아니다 — 두 클럭은 서서히 어긋난다.
+</footer>
+
+<script>
+// ---------------------------------------------------------------- 상태
+const WIN_S = 10;                  // 화면에 보이는 길이
+let fs = 250, cap = WIN_S * fs;
+const traces = new Map();          // name -> {buf, canvas, ctx}
+let rawBuf = null, okBuf = null, n0 = 0;
+
+function ring(n){ return {v:new Float32Array(n), k:0, n:0}; }
+function push(r, arr){
+  for (const x of arr){ r.v[r.k] = x; r.k = (r.k+1) % r.v.length; if (r.n < r.v.length) r.n++; }
+}
+function at(r, i){ return r.v[(r.k - r.n + i + r.v.length*2) % r.v.length]; }
+
+function panel(name, label){
+  const d = document.createElement('div'); d.className = 'row';
+  d.innerHTML = `<div class="lab"><b>${label}</b><span>${name}</span></div>`;
+  const c = document.createElement('canvas');
+  d.appendChild(c); document.getElementById('panels').appendChild(d);
+  return c;
+}
+
+const LABEL = {
+  raw:'입력 — 전극에서 온 그대로 (front-end 이전)',
+  M_FE:'공통 front-end (0.5–100 Hz + auto notch)',
+  M01:'대역통과 + notch',
+  M02:'Savitzky–Golay', M03:'DWT', M04:'SWT + QRS 보호', M05:'Sameni EKS',
+  M06:'ResUNet1D (딥러닝)', M06L6:'ResUNet1D · clean 보존 손실',
+  M08:'wavelet-subband U-Net', M09:'CNN + Transformer',
+};
+
+// ---------------------------------------------------------------- 그리기
+function draw(c, r, ok, color){
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w*dpr || c.height !== h*dpr){ c.width = w*dpr; c.height = h*dpr; }
+  const g = c.getContext('2d');
+  g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,w,h);
+  if (!r || r.n < 2) return;
+  // 세로 스케일은 **보이는 구간의 로버스트 폭**으로 잡는다. 최대값으로 잡으면
+  // 잡음 한 방에 파형 전체가 납작해진다.
+  let s = 0, m = 0;
+  for (let i=0;i<r.n;i++) m += at(r,i);
+  m /= r.n;
+  for (let i=0;i<r.n;i++) s += Math.abs(at(r,i)-m);
+  s = 3.2 * (s / r.n) || 1;
+  const y = v => h/2 - (v-m)/s * (h/2-6);
+  const x = i => i / (cap-1) * w;
+  // 채운 구간(측정값 아님)을 먼저 회색으로 깐다
+  if (ok){
+    g.fillStyle = '#eeeeee';
+    let i = 0;
+    while (i < ok.n){
+      if (at(ok,i) < 0.5){
+        let j = i; while (j < ok.n && at(ok,j) < 0.5) j++;
+        g.fillRect(x(i), 0, Math.max(1, x(j)-x(i)), h);
+        i = j;
+      } else i++;
+    }
+  }
+  g.beginPath(); g.strokeStyle = color; g.lineWidth = 1.1;
+  for (let i=0;i<r.n;i++){ const px = x(i), py = y(at(r,i));
+    if (i===0) g.moveTo(px,py); else g.lineTo(px,py); }
+  g.stroke();
+}
+
+let dirty = false;
+function frame(){
+  if (dirty){
+    dirty = false;
+    if (rawBuf) draw(traces.get('raw').c, rawBuf, okBuf, 'var(--raw)' === '' ? '#8a8a8a' : '#8a8a8a');
+    for (const [n,t] of traces) if (n !== 'raw') draw(t.c, t.buf, null, '#184f95');
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------------------------------------------------------------- 수신
+const el = id => document.getElementById(id);
+const es = new EventSource('/stream');
+es.onopen = () => { el('conn').innerHTML = '<i class="dot on"></i>연결됨'; };
+es.onerror = () => { el('conn').innerHTML = '<i class="dot"></i>끊김 — 다시 붙는 중'; };
+es.onmessage = ev => {
+  const m = JSON.parse(ev.data);
+  if (m.fs !== fs){ fs = m.fs; cap = WIN_S * fs; traces.clear();
+                    document.getElementById('panels').innerHTML = ''; }
+  if (!traces.has('raw')){
+    traces.set('raw', {c: panel('raw', LABEL.raw)});
+    rawBuf = ring(cap); okBuf = ring(cap);
+  }
+  push(rawBuf, m.raw); push(okBuf, m.ok);
+  for (const name of Object.keys(m.out)){
+    if (!traces.has(name))
+      traces.set(name, {c: panel(name, LABEL[name] || name), buf: ring(cap)});
+    push(traces.get(name).buf, m.out[name]);
+  }
+  const s = m.stat;
+  el('lat').textContent  = s.lat_ms + ' ms';
+  el('elapsed').textContent = (m.i / m.fs).toFixed(1) + ' s';
+  el('lost').textContent = s.lost + ' 샘플';
+  el('leadoff').textContent = s.leadoff + ' 샘플';
+  el('bad').textContent  = s.bad + ' B';
+  el('resync').textContent = s.resync;
+  el('rtf').textContent  = s.rtf.toFixed(2) + (s.rtf > 0.9 ? '  ⚠ 못 따라간다' : '');
+  el('rtf').style.color  = s.rtf > 0.9 ? 'var(--bad)' : '';
+  dirty = true;
+};
+</script>

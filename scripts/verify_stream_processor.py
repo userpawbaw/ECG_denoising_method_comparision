@@ -106,13 +106,34 @@ def build(axis: str, mid: str):
     return reg_build(mid)
 
 
+def per_window_cost(method, buf: np.ndarray, warmup: int = 3, reps: int = 7) -> float:
+    """window 하나를 처리하는 **정상 상태** 비용 [s].
+
+    처음에는 첫 호출 한 번을 그대로 썼는데, **PyTorch 의 첫 호출은 정상 상태의
+    약 3.5 배**다(할당자·스레드풀·커널 선택이 그때 일어난다). 그 값으로
+    `cpu_frac` 을 만들면 `M06` 이 188 % 로 나와 **"실시간을 못 따라간다"** 는
+    결론이 된다. 실제로 20 s 를 흘려 재면 벽시계 RTF 가 0.2 대다 (F-26).
+
+    그래서 몇 번 돌려 예열한 뒤 **중앙값**을 쓴다. 평균이 아니라 중앙값인
+    이유는 다른 프로세스에 CPU 를 뺏긴 한 번이 평균을 끌어올리기 때문이다.
+    """
+    for _ in range(warmup):
+        method(buf, FS, {})
+    ts = []
+    for _ in range(reps):
+        t0 = time.perf_counter()
+        method(buf, FS, {})
+        ts.append(time.perf_counter() - t0)
+    return float(np.median(ts))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--axis", nargs="*", default=["d1"])
-    ap.add_argument("--methods", nargs="*", default=["M06", "M04", "M01"])
-    ap.add_argument("--seconds", type=float, default=20.0)
+    ap.add_argument("--axis", nargs="*", default=["d0", "d1"])
+    ap.add_argument("--methods", nargs="*", default=["M06", "M06L6", "M04"])
+    ap.add_argument("--seconds", type=float, default=40.0)
     ap.add_argument("--segments", type=int, default=3)
-    ap.add_argument("--grid", nargs="*", default=["12:12", "12:64", "25:12", "50:12"],
+    ap.add_argument("--grid", nargs="*", default=["12:12", "12:25", "12:64", "50:128"],
                     help="d:hop 쌍")
     ap.add_argument("--out", default="results/stream_verify.json")
     a = ap.parse_args()
@@ -130,9 +151,7 @@ def main() -> int:
             # 기준선은 **실제 오프라인 호출**이다. 재구현하지 않는다 (F-23).
             # 인과 FE 를 앞단에 두므로 방법 자신의 FE 는 끈다 (두 번 걸리면 안 된다)
             meth_nofe = build_nofe(axis, mid)
-            t0 = time.perf_counter()
-            _ = meth_nofe(segs[0][0][:1024], FS, {})  # 1 회 비용 (win 하나)
-            cost = time.perf_counter() - t0
+            cost = per_window_cost(meth_nofe, segs[0][0][:1024])
             for spec in a.grid:
                 d, hop = (int(v) for v in spec.split(":"))
                 plumb, pipe = [], []

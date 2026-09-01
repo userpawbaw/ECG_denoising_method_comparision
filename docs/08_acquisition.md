@@ -47,9 +47,24 @@
 ## 2. 하드웨어 / 소프트웨어
 
 ```
-hardware/arduino_ecg_logger/arduino_ecg_logger.ino   # 고정 주기 ADC 로거 (500 Hz)
+hardware/arduino_ecg_logger/arduino_ecg_logger.ino   # 고정 주기 ADC (기본 ASCII 500 Hz)
 scripts/log_arduino.py                               # PC 측 CSV 기록기
+scripts/serial_bridge.py                             # 실시간 시연용 브리지 (R-5)
 ```
+
+**스케치는 하나이고 모드를 명령 1 바이트로 고른다.** 따로 두면 시연 당일
+어느 것이 올라가 있는지 모르게 된다. 아무 명령도 안 보내면 **켜자마자
+ASCII 500 Hz** 라, 아두이노 IDE 의 시리얼 모니터/플로터와 이 문서의 수집
+절차는 **전과 똑같이** 동작한다.
+
+| 명령 | 뜻 | 쓰는 곳 |
+|---|---|---|
+| `a` / `b` | ASCII / 바이너리 5 바이트 프레임 | 수집·디버깅 / **실시간 시연** |
+| `2` `5` `1` | fs = 250 / 500 / 1000 Hz | 시연 250 · **수집 500** · EXP-F 1000 |
+| `?` | 헤더 한 줄 (fs·모드·드롭 수) | 확인 |
+
+바이너리 프레임과 그것이 필요한 이유(1 kHz 는 ASCII 로 115200 baud 를 넘는다,
+손실을 세려면 `seq` 가 있어야 한다)는 `docs/30_realtime_demo.md` 6.2 에 있다.
 
 배선 (AD8232 기준): `OUTPUT→A0`, `LO+→D10`, `LO-→D11`, `3.3V/GND`.
 
