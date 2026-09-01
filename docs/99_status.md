@@ -333,6 +333,18 @@ D1 에서도 격차의 74 % 를 메운다. **"딥러닝을 쓸 SNR 범위" 라�
 시연 화면 설계 검토(외부안 대조 + 추가 연출안)는 `docs/31_demo_design_review.md`,
 시안은 `demo/mockup_expo.html` 이다.
 
+**공개한 웹 페이지(artifact).** 저장소의 HTML 을 그대로 올린 것이고 **원본은
+저장소 쪽**이다. 링크는 세션이 끝나도 남지만 **어느 파일에서 나왔는지는
+여기에만 적혀 있다** — 다시 배포할 때 같은 URL 을 쓰려면 이 표가 필요하다.
+
+| 페이지 | URL | 원본 |
+|---|---|---|
+| Denoising Bench (박람회 시안) | `https://claude.ai/code/artifact/1c8edfd0-ed8b-4efb-b053-8a281028c9e8` | `demo/mockup_expo.html` |
+| ECG 잡음제거 비교연구 (중간 보고) | `https://claude.ai/code/artifact/e0e4ed67-5849-4b23-8a49-197e087893fe` | 08-22 시점 요약 (저장소 파일 아님) |
+
+> 두 번째 것은 저장소 파일에서 나온 것이 아니라 **그 시점의 요약을 따로 쓴
+> 페이지**다. 지금 내용과 어긋날 수 있으므로 **인용하지 않는다.**
+
 ```bash
 python3 scripts/build_demo_bank.py     # demo/demo_bank.js 재생성 (약 6 분)
 xdg-open demo/index.html               # 서버 불필요
@@ -356,9 +368,25 @@ python3 scripts/analyze_loss_by_noise.py
 python3 scripts/build_demo_bank.py # 축 평균이 채워진 은행 재생성
 ```
 
-> **`run_exp.py` 에는 실험 내부 재개가 없다.** 컨테이너가 재시작되면 그 실험은
-> 처음부터 다시 돈다(실제로 EXP-G 가 300/924 에서 죽어 26 분을 잃었다).
-> `run_all_experiments.sh` 의 재개는 **실험 단위**라 여기까지 못 막는다.
+#### 실험 내부 재개 — `results/<축>/<실험>/_partial/` (O-19)
+
+`run_all_experiments.sh` 의 재개는 **실험 단위**다. 실험 하나가 몇 시간이면
+컨테이너 재시작이 그 실험을 매번 0 으로 되돌린다 — EXP-G 가 그렇게 세 번
+죽었고 **누적 진척이 0** 이었다. `137b028` 에서 `run_exp.py` 안에 넣었다.
+
+| | 동작 |
+|---|---|
+| 저장 | 항목 `CHUNK = 25` 개마다 `_partial/rows-<끝항목>.parquet` 에 **그 조각에서 새로 생긴 행만** |
+| 재개 | `_partial/` 의 조각을 이어 붙이고 **그 다음 항목부터** 돈다 |
+| 무효화 | `_partial/fingerprint.txt`(data·mode·frontend·eval·항목 수·방법 목록의 sha256 앞 16 자)가 다르면 **버리고 처음부터** |
+| 완주 | 합쳐 `metrics.parquet` 을 쓰고 `_partial/` 을 지운다 |
+
+지문을 함께 적는 이유는 F-9 계열의 사고 때문이다 — 평가 세트가 달라졌는데
+이어 붙이면 **서로 다른 조건의 행이 한 표에 섞인다.**
+
+`_partial/` 은 `.gitignore` 에 있다(`results/**/_partial/`). 실험이 끝난
+디렉터리에 `_partial/` 이 남아 있으면 **그 실험은 완주하지 않은 것**이다 —
+가장 값싼 진단 신호다.
 
 ### 학습·실험 파이프라인 감시
 

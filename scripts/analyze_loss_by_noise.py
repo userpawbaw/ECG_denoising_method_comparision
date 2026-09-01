@@ -119,6 +119,24 @@ def render(tag: str, out: list[str]) -> bool:
     return any_row
 
 
+def _grid_line() -> str:
+    """격자 크기를 `configs/exp_g.yaml` 에서 읽어 쓴다.
+
+    처음에는 "7 종 × 3 단계" 를 문자열로 박아 뒀는데, 격자를 7 단계로 넓힌 뒤에도
+    그 문장만 3 단계로 남았다. **자동 생성 문서 안의 손으로 쓴 숫자**가 가장
+    먼저 낡는다.
+    """
+    import yaml
+    cfg = yaml.safe_load((ROOT / "configs" / "exp_g.yaml").read_text())
+    d = cfg.get("data", {}) or {}
+    conds = len(d.get("conditions", []) or [])
+    grid = d.get("snr_grid", []) or []
+    if not conds or not grid:
+        return "잡음 여러 종 × 여러 입력 SNR"      # 못 읽으면 숫자를 지어내지 않는다
+    return (f"잡음 {conds} 종 × 입력 SNR {len(grid)} 단계"
+            f"({min(grid):g}~{max(grid):g} dB)")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--axis", nargs="*", default=["d0", "d1"])
@@ -132,8 +150,8 @@ def main() -> int:
         "> 근거: `results/{d0,d1}/exp_g/metrics.parquet`, 설정 `configs/exp_g.yaml`.",
         "",
         "`abl_loss` 는 혼합 잡음 하나만 다룬다. 혼합은 여러 성분의 평균이라",
-        "**어디서 벌고 어디서 잃는지**를 평균 하나로는 알 수 없다. 여기서 잡음",
-        "7 종 × 입력 SNR 3 단계로 다시 잰다.",
+        "**어디서 벌고 어디서 잃는지**를 평균 하나로는 알 수 없다. 여기서",
+        f"{_grid_line()} 로 다시 잰다.",
         "",
         "짝지은 비교다 — 같은 기록·같은 구간·같은 잡음 실현에서 `L1` 과 `L6` 을",
         "맞댄다. Holm 보정은 **한 축·한 SNR 안의 잡음 7 종**에 걸었다.",
