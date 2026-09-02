@@ -289,7 +289,16 @@ def make_server(hub: Hub, port: int):
             finally:
                 hub.unregister(q)
 
-    srv = ThreadingHTTPServer(("127.0.0.1", port), H)
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", port), H)
+    except OSError as e:
+        # 시연 중에 브리지를 다시 띄울 때 실제로 걸린다 — 앞의 것이 아직
+        # 살아 있으면 포트를 놓지 않는다. 원인을 그대로 말해 준다.
+        raise SystemExit(
+            f"포트 {port} 를 열 수 없다 ({e}).\n"
+            f"  이전 브리지가 아직 도는지 본다:  ps -ef | grep serial_bridge\n"
+            f"  살아 있으면 **PID 로** 끝낸다 (패턴으로 죽이면 자기 셸을 잡는다 — O-18).\n"
+            f"  또는 다른 포트로:  --http-port {port + 1}") from None
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
 

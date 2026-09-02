@@ -66,6 +66,7 @@
   <div><span class="k">lead-off</span><span id="leadoff">0</span></div>
   <div><span class="k">프레임 깨짐</span><span id="bad">0</span></div>
   <div><span class="k">재동기</span><span id="resync">0</span></div>
+  <div><span class="k">처리 밀림</span><span id="qdrop">0</span></div>
   <div><span class="k">처리 여유 (RTF)</span><span id="rtf">—</span></div>
 </div>
 
@@ -75,7 +76,8 @@
   회색 구간은 <b>측정값이 아니다</b> — 전극이 떨어졌거나(lead-off) 선에서
   샘플을 잃어 직전 값으로 채운 자리다. 시간축을 지키려고 채운 것이지
   신호가 아니다. · 화면은 <b>도착한 만큼</b> 진행한다. 시간축의 주인은 보드이고
-  PC 벽시계가 아니다 — 두 클럭은 서서히 어긋난다.
+  PC 벽시계가 아니다 — 두 클럭은 서서히 어긋난다. · <b>처리 밀림</b>이 0 이
+  아니면 원인은 선이 아니라 <b>이 컴퓨터</b>다 — 방법을 줄이거나 hop 을 키운다.
 </footer>
 
 <script>
@@ -148,8 +150,11 @@ let dirty = false;
 function frame(){
   if (dirty){
     dirty = false;
-    if (rawBuf) draw(traces.get('raw').c, rawBuf, okBuf, 'var(--raw)' === '' ? '#8a8a8a' : '#8a8a8a');
-    for (const [n,t] of traces) if (n !== 'raw') draw(t.c, t.buf, null, '#184f95');
+    // 회색(채운 구간)은 **모든 칸에** 깐다. 입력이 없던 자리는 출력도 없던
+    // 자리이고, 필터는 그 값을 이웃으로 퍼뜨린다. 입력에만 표시하면 아래
+    // 칸들은 그 구간을 정상 출력인 것처럼 보이게 한다.
+    if (rawBuf) draw(traces.get('raw').c, rawBuf, okBuf, '#8a8a8a');
+    for (const [n,t] of traces) if (n !== 'raw') draw(t.c, t.buf, okBuf, '#184f95');
   }
   requestAnimationFrame(frame);
 }
@@ -181,6 +186,11 @@ es.onmessage = ev => {
   el('leadoff').textContent = s.leadoff + ' 샘플';
   el('bad').textContent  = s.bad + ' B';
   el('resync').textContent = s.resync;
+  // **손실과 밀림은 원인이 다르다.** 손실은 선에서 없어진 것이고, 밀림은
+  // 우리가 못 따라가 큐에서 버린 것이다. 한 칸에 합치면 전극을 볼지
+  // 노트북을 볼지 알 수 없다.
+  el('qdrop').textContent = s.qdrop + ' 블록';
+  el('qdrop').style.color = s.qdrop > 0 ? 'var(--bad)' : '';
   el('rtf').textContent  = s.rtf.toFixed(2) + (s.rtf > 0.9 ? '  ⚠ 못 따라간다' : '');
   el('rtf').style.color  = s.rtf > 0.9 ? 'var(--bad)' : '';
   dirty = true;
