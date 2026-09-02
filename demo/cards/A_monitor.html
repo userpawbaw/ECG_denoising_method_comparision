@@ -1,0 +1,212 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>C3 · A안 — 임상 모니터</title>
+<!--
+  ┌ 주제의식 ────────────────────────────────────────────────────────────┐
+  │ **5 m 밖에서 눈에 띄는 것.** 박람회장에서 우리 부스 앞을 지나가는     │
+  │ 사람이 걸음을 멈추게 하는 것이 이 안의 유일한 목표다. 그래서 병원     │
+  │ 감시장치의 시각 언어(암전 배경·형광 파형·격자·상태등)를 그대로 빌린다.│
+  │                                                                      │
+  │ 대가를 안다: 다크 서피스는 인쇄가 안 되고, 형광색은 보고서에 못 쓴다. │
+  │ 이 안은 **부스용**이고 심사 자료용이 아니다.                          │
+  └──────────────────────────────────────────────────────────────────────┘
+  팔레트는 다크 서피스(#0d1117)에서 다시 검증했다 — 라이트용 색을 그대로
+  쓰면 안 된다(dataviz: 다크 스텝은 자동 반전이 아니라 따로 고른다).
+-->
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#111820; --line:#1e2a36; --ink:#e6edf3; --mute:#7d8b99;
+    /* 다크 스텝. **자동 반전이 아니라 따로 고른 값**이고, 이 패널 면
+       (#111820)에서 validate_palette.js --mode dark --pairs all 전 항목 PASS 다.
+       처음에 라이트 색을 밝게만 올렸다가 명도대(L 0.48~0.67)에서 떨어졌다. */
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+    --clean:#5d6b78; --input:#39434d; --hot:#ff5c5c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 "Nanum Gothic",-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 24px 40px}
+  .top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:4px}
+  h1{margin:0;font-size:24px;letter-spacing:-.02em}
+  .kicker{font:11px/1 ui-monospace,monospace;letter-spacing:.22em;color:var(--s3);
+    border:1px solid var(--s3);padding:5px 9px;border-radius:3px}
+  .sub{color:var(--mute);font-size:13px;margin:2px 0 18px}
+  .rack{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  button{font:inherit;font-size:12.5px;padding:8px 13px;border-radius:4px;
+    border:1px solid var(--line);background:var(--panel);color:var(--mute);
+    cursor:pointer;transition:.16s}
+  button:hover{border-color:var(--s3);color:var(--ink)}
+  button[aria-pressed=true]{background:var(--s3);border-color:var(--s3);color:#04120c;
+    font-weight:700;box-shadow:0 0 18px -4px var(--s3)}
+  .grid{display:grid;grid-template-columns:1.05fr .95fr;gap:14px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:12px 14px 8px}
+  .ph{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+  .ph b{font-size:12.5px;letter-spacing:.02em}
+  .ph span{font:11px ui-monospace,monospace;color:var(--mute)}
+  canvas{width:100%;display:block}
+  #wave{height:250px}
+  #spec{height:250px}
+  .keys{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12px}
+  .keys i{display:inline-block;width:22px;height:3px;border-radius:2px;
+    margin-right:6px;vertical-align:3px;font-style:normal}
+  .read{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:11px 13px}
+  .stat u{display:block;font-size:11px;color:var(--mute);text-decoration:none;
+    letter-spacing:.04em;white-space:nowrap}
+  .stat b{display:block;font:22px/1.25 ui-monospace,monospace;margin-top:3px}
+  .punch{margin-top:16px;padding:12px 14px;border-left:3px solid var(--hot);
+    background:#1a1113;font-size:13.5px}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <span class="kicker">LIVE SPECTRUM</span>
+    <h1>이 방법은 <span id="hl" style="color:var(--s3)">어느 대역</span>을 지웠는가</h1>
+  </div>
+  <p class="sub">왼쪽은 시간, 오른쪽은 같은 신호의 주파수. <b>색이 같은 선은 같은 신호다.</b>
+     잡음을 바꾸면 양쪽이 함께 바뀐다.</p>
+
+  <div class="rack" id="rack"></div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="ph"><b>시간축</b><span id="w-meta">—</span></div>
+      <canvas id="wave"></canvas>
+    </div>
+    <div class="panel">
+      <div class="ph"><b>스펙트럼 (PSD)</b><span id="s-meta">—</span></div>
+      <canvas id="spec"></canvas>
+    </div>
+  </div>
+
+  <div class="keys" id="keys"></div>
+  <div class="read" id="read"></div>
+  <div class="punch" id="punch"></div>
+</div>
+
+<script src="../card_bank.js"></script>
+<script type="module">
+import {B, SCENE, trace, psd, SHOW, LABEL, HZ, fit, mapper, line, bandOf, animate,
+        logdist, bandDb} from "./card_core.js";
+
+const CO = {M01:"var(--s1)", M04:"var(--s2)", M08:"var(--s3)"};
+const RGB = {M01:"#3987e5", M04:"#d95926", M08:"#199e70"};
+let cond = "pli", mix = 1, prev = null;
+
+// ---- 잡음 선택
+const rack = document.getElementById("rack");
+B.conds.forEach(c => {
+  const b = document.createElement("button");
+  b.textContent = B.cond_label[c]; b.dataset.c = c;
+  b.setAttribute("aria-pressed", String(c === cond));
+  b.onclick = () => { if (c === cond) return; prev = cond; cond = c;
+    [...rack.children].forEach(n => n.setAttribute("aria-pressed", String(n.dataset.c === c)));
+    // 잡음을 바꾸면 파형이 **좌에서 우로 다시 그려진다** — 기기가 새로
+    // 잡는 느낌을 준다. 값은 이미 다 있으므로 그리기만의 문제다.
+    mix = 0; animate(520, t => { mix = t; draw(); });
+    update();
+  };
+  rack.appendChild(b);
+});
+
+// ---- 범례는 항상 있다 (2 계열 이상). 색만으로 신원을 알리지 않는다.
+document.getElementById("keys").innerHTML =
+  `<span><i style="background:var(--clean)"></i>${LABEL.clean}</span>` +
+  `<span><i style="background:var(--input)"></i>${LABEL.input}</span>` +
+  SHOW.map(m => `<span><i style="background:${RGB[m]}"></i>${LABEL[m]}</span>`).join("");
+
+function draw() {
+  const s = SCENE[cond];
+  // ---------- 시간축
+  {
+    const {g, w, h} = fit(document.getElementById("wave"));
+    const keys = ["clean", "input", ...SHOW];
+    const arrs = Object.fromEntries(keys.map(k => [k, trace(cond, k)]));
+    let m = 0; for (const k of keys) for (const v of arrs[k]) m = Math.max(m, Math.abs(v));
+    const M = mapper(w, h, arrs.clean.length, -m * 1.06, m * 1.06, {l:6,r:6,t:6,b:6});
+    g.strokeStyle = "rgba(255,255,255,.045)"; g.lineWidth = 1;   // 모눈
+    for (let x = 0; x < w; x += 22) { g.beginPath(); g.moveTo(x,0); g.lineTo(x,h); g.stroke(); }
+    for (let y = 0; y < h; y += 22) { g.beginPath(); g.moveTo(0,y); g.lineTo(w,y); g.stroke(); }
+    const cut = Math.max(2, Math.floor(arrs.clean.length * mix));
+    const clip = a => a.subarray(0, cut);
+    line(g, M.x, M.y, clip(arrs.input), "#39434d", 1);
+    line(g, M.x, M.y, clip(arrs.clean), "#5d6b78", 2.6);
+    g.shadowBlur = 12;                                   // 형광 — 이 안의 정체성
+    for (const k of SHOW) { g.shadowColor = RGB[k];
+      line(g, M.x, M.y, clip(arrs[k]), RGB[k], 1.7); }
+    g.shadowBlur = 0;
+    document.getElementById("w-meta").textContent =
+      `${B.axis} · 기록 ${s.record} · ${B.snr} dB · ${(B.n / B.fs).toFixed(0)} s`;
+  }
+  // ---------- 스펙트럼
+  {
+    const {g, w, h} = fit(document.getElementById("spec"));
+    const keys = ["clean", "input", ...SHOW];
+    const arrs = Object.fromEntries(keys.map(k => [k, psd(cond, k)]));
+    const P = {l:36, r:8, t:8, b:26};
+    const M = mapper(w, h, HZ.length, -62, 14, P);
+    const fx = f => P.l + (f / 100) * (w - P.l - P.r);
+    const [b0, b1] = bandOf(cond);                       // 잡음이 사는 대역
+    g.fillStyle = "rgba(255,92,92,.13)";
+    g.fillRect(fx(b0), P.t, Math.max(3, fx(Math.min(b1,100)) - fx(b0)), h - P.t - P.b);
+    g.strokeStyle = "rgba(255,255,255,.07)"; g.lineWidth = 1;
+    g.fillStyle = "#7d8b99"; g.font = "10px ui-monospace,monospace";
+    for (const f of [0, 20, 40, 60, 80, 100]) {
+      g.beginPath(); g.moveTo(fx(f), P.t); g.lineTo(fx(f), h - P.b); g.stroke();
+      g.fillText(String(f), fx(f) - 5, h - 9);
+    }
+    for (const d of [0, -20, -40, -60]) {
+      g.beginPath(); g.moveTo(P.l, M.y(d)); g.lineTo(w - P.r, M.y(d)); g.stroke();
+      g.fillText(d + "", 8, M.y(d) + 3);
+    }
+    const idx = i => fx(HZ[i]);
+    const upto = Math.max(2, Math.floor(HZ.length * mix));
+    const sub = a => a.subarray(0, upto);
+    line(g, i => idx(i), M.y, sub(arrs.input), "#39434d", 1.4);
+    line(g, i => idx(i), M.y, sub(arrs.clean), "#5d6b78", 2.4);
+    g.shadowBlur = 10;
+    for (const k of SHOW) { g.shadowColor = RGB[k];
+      line(g, i => idx(i), M.y, sub(arrs[k]), RGB[k], 1.7); }
+    g.shadowBlur = 0;
+    // **직접 라벨.** aqua↔orange 의 tritan 분리도가 경고 대역(ΔE 4.0)이라
+    // 색만으로 신원을 알리면 안 된다 — 선 끝에 이름을 붙인다.
+    g.font = "600 10.5px ui-monospace,monospace"; g.textAlign = "right";
+    for (const k of SHOW) {
+      const a = arrs[k], i = Math.min(a.length - 1, upto - 1);
+      g.fillStyle = RGB[k]; g.fillText(k, w - P.r - 2, M.y(a[i]) - 4);
+    }
+    g.textAlign = "left";
+    document.getElementById("s-meta").textContent = "dB · 참값 최대 = 0";
+  }
+}
+
+function update() {
+  const [b0, b1] = bandOf(cond);
+  document.getElementById("hl").textContent = B.cond_label[cond];
+  const pin = psd(cond, "input"), pc = psd(cond, "clean");
+  // **두 숫자를 나란히 둔다.** 앞은 "얼마나 지웠나"(많을수록 이긴 것처럼 보인다),
+  // 뒤는 "참값 스펙트럼에서 얼마나 멀어졌나". M01 이 앞에서 1 등, 뒤에서 꼴찌다 —
+  // 그 역전이 이 카드의 전부다.
+  const ld = Object.fromEntries(SHOW.map(m => [m, logdist(psd(cond, m), pc)]));
+  const worst = SHOW.reduce((a, m) => ld[m] > ld[a] ? m : a, SHOW[0]);
+  const cells = SHOW.map(m => {
+    const kill = bandDb(pin, b0, b1) - bandDb(psd(cond, m), b0, b1);
+    const bad = m === worst;
+    return `<div class="stat" ${bad ? 'style="border-color:var(--hot)"' : ""}>
+      <u>${m} · 잡음대역 억제 &nbsp;/&nbsp; 참값에서 벗어난 거리</u>
+      <b><span style="color:${RGB[m]}">−${Math.abs(kill).toFixed(1)} dB</span>
+      <span style="color:${bad ? "var(--hot)" : "var(--mute)"};font-size:17px">
+        / ${ld[m].toFixed(1)}${bad ? " ✕" : ""}</span></b></div>`;
+  }).join("");
+  document.getElementById("read").innerHTML = cells;
+  document.getElementById("punch").innerHTML = cond === "pli"
+    ? "<b>60 Hz 봉우리 하나가 사라진다.</b> 그런데 M01(파랑)은 그 위 대역도 함께 데려갔다 — 오른쪽에서 40 Hz 뒤로 주저앉는 선이 그것이다. SNR 은 그 손실을 «잡음을 잘 지웠다» 로 센다."
+    : `<b>${B.cond_label[cond]}</b> 은 붉은 띠 대역에 산다. 세 방법이 그 띠를 얼마나 눌렀는지(왼쪽 숫자)와 <b>ECG 대역(0.5~40 Hz)을 얼마나 건드렸는지</b>(오른쪽 숫자)를 함께 봐야 한다 — 앞만 보면 다 지운 방법이 이긴다.`;
+}
+
+addEventListener("resize", draw);
+update(); draw();
+</script>

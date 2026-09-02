@@ -1,0 +1,183 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>C3 · C안 — 카드뉴스</title>
+<!--
+  ┌ 주제의식 ────────────────────────────────────────────────────────────┐
+  │ **30 초 안에 결론.** 다른 팀이 지나가다 멈춰 서서, 설명하는 사람이   │
+  │ 없어도 세 번 클릭으로 결론에 닿는 것이 목표다. 그래서 화면을 한 번에 │
+  │ 다 보여주지 않고 **한 단계씩 연다.**                                 │
+  │                                                                      │
+  │   1 입력에 60 Hz 가 서 있다   →   2 M01 이 그것을 지운다             │
+  │   3 그런데 40 Hz 위도 함께 데려갔다                                  │
+  │                                                                      │
+  │ 큰 타이포와 숫자 하나가 화면을 지배하고, 그림은 그 주장의 증거로만   │
+  │ 쓰인다. 대가: 정보 밀도가 낮다 — 심사 자료로는 B 안이 낫다.          │
+  └──────────────────────────────────────────────────────────────────────┘
+-->
+<style>
+  :root{
+    --bg:#101014; --card:#17171d; --ink:#f5f4f2; --mute:#9a988f;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+    --hi:#ffd400; --clean:#5a5852; --input:#33322e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 "Nanum Gothic",-apple-system,"Segoe UI",sans-serif}
+  .stage{max-width:1060px;margin:0 auto;padding:26px 24px 48px}
+  .step{font:11px/1 ui-monospace,monospace;letter-spacing:.2em;color:var(--hi)}
+  h1{margin:10px 0 0;font-size:38px;line-height:1.16;letter-spacing:-.035em;
+    font-weight:800;max-width:19ch}
+  h1 mark{background:none;color:var(--hi)}
+  .lede{color:var(--mute);margin:12px 0 0;font-size:14.5px;max-width:56ch;min-height:3em}
+  .hero{display:flex;align-items:baseline;gap:14px;margin:20px 0 4px}
+  .hero b{font:800 62px/1 ui-monospace,monospace;letter-spacing:-.04em}
+  .hero span{font-size:14px;color:var(--mute);max-width:26ch}
+  .panes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+  @media(max-width:860px){.panes{grid-template-columns:1fr}h1{font-size:29px}}
+  .pane{background:var(--card);border-radius:12px;padding:12px 14px 10px}
+  .pane h2{margin:0 0 8px;font-size:12px;letter-spacing:.06em;color:var(--mute);
+    font-weight:600;text-transform:uppercase}
+  canvas{width:100%;height:210px;display:block}
+  .keys{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;
+    color:var(--mute)}
+  .keys i{display:inline-block;width:20px;height:3px;border-radius:2px;
+    margin-right:6px;vertical-align:3px;font-style:normal}
+  .bar{display:flex;gap:10px;align-items:center;margin-top:20px;flex-wrap:wrap}
+  .dots{display:flex;gap:6px;margin-right:6px}
+  .dots i{width:8px;height:8px;border-radius:50%;background:#33323a;display:block}
+  .dots i.on{background:var(--hi)}
+  button{font:inherit;font-size:13px;font-weight:700;padding:10px 18px;border:0;
+    border-radius:999px;background:var(--hi);color:#191600;cursor:pointer}
+  button.ghost{background:#22222a;color:var(--ink);font-weight:500}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:18px}
+  .chips button{font-size:12px;font-weight:500;padding:6px 12px;background:#1e1e25;
+    color:var(--mute)}
+  .chips button[aria-pressed=true]{background:var(--ink);color:#101014;font-weight:700}
+</style>
+
+<div class="stage">
+  <div class="step" id="step">STEP 1 / 3</div>
+  <h1 id="title">입력에 <mark>60 Hz</mark> 가 서 있다</h1>
+  <p class="lede" id="lede"></p>
+
+  <div class="hero"><b id="num">—</b><span id="numlab"></span></div>
+
+  <div class="panes">
+    <div class="pane"><h2>시간축</h2><canvas id="wave"></canvas></div>
+    <div class="pane"><h2>스펙트럼 · dB</h2><canvas id="spec"></canvas></div>
+  </div>
+  <div class="keys" id="keys"></div>
+
+  <div class="bar">
+    <div class="dots" id="dots"><i class="on"></i><i></i><i></i></div>
+    <button id="next">다음 →</button>
+    <button class="ghost" id="reset">처음부터</button>
+  </div>
+
+  <div class="chips" id="chips"></div>
+</div>
+
+<script src="../card_bank.js"></script>
+<script type="module">
+import {B, SCENE, trace, psd, SHOW, LABEL, HZ, fit, mapper, line, bandOf, animate,
+        logdist, bandDb} from "./card_core.js";
+
+const RGB = {M01:"#3987e5", M04:"#d95926", M08:"#199e70"};
+let cond = "pli", step = 0, reveal = 1;
+
+// 단계마다 **보이는 선이 다르다.** 한 번에 다 그리면 눈이 갈 곳을 못 찾는다.
+const STEPS = [
+  {show: [],            title: '입력에 <mark id="w"></mark> 가 섞여 있다',
+   lede: "회색이 참값, 옅은 회색이 잡음 섞인 입력이다. 오른쪽 스펙트럼에서 잡음이 사는 자리가 노란 띠다."},
+  {show: ["M01"],       title: 'M01 이 그 대역을 <mark>지웠다</mark>',
+   lede: "대역통과 + notch. 시간축이 깨끗해지고, 스펙트럼에서 잡음 봉우리가 주저앉는다."},
+  {show: ["M01","M04","M08"], title: '그런데 <mark>다른 것도</mark> 함께 데려갔다',
+   lede: "M04·M08 과 나란히 놓으면 보인다 — M01 만 40 Hz 뒤로 통째로 내려앉는다. SNR 은 그 손실을 «잡음을 잘 지웠다» 로 센다."},
+];
+
+const chips = document.getElementById("chips");
+B.conds.forEach(c => {
+  const b = document.createElement("button");
+  b.textContent = B.cond_label[c]; b.dataset.c = c;
+  b.setAttribute("aria-pressed", String(c === cond));
+  b.onclick = () => { cond = c;
+    [...chips.children].forEach(n => n.setAttribute("aria-pressed", String(n.dataset.c === c)));
+    go(0); };
+  chips.appendChild(b);
+});
+document.getElementById("keys").innerHTML =
+  `<span><i style="background:var(--clean)"></i>참값</span>` +
+  `<span><i style="background:var(--input)"></i>입력</span>` +
+  SHOW.map(m => `<span><i style="background:${RGB[m]}"></i>${LABEL[m]}</span>`).join("");
+
+function go(k) {
+  step = k;
+  const S = STEPS[k], [b0, b1] = bandOf(cond);
+  document.getElementById("step").textContent = `STEP ${k+1} / 3`;
+  document.getElementById("title").innerHTML = S.title;
+  const w = document.getElementById("w"); if (w) w.textContent = B.cond_label[cond];
+  document.getElementById("lede").textContent = S.lede;
+  [...document.getElementById("dots").children].forEach((n,i) =>
+    n.classList.toggle("on", i <= k));
+  const pin = psd(cond,"input"), pc = psd(cond,"clean"), p1 = psd(cond,"M01");
+  const num = document.getElementById("num"), lab = document.getElementById("numlab");
+  if (k === 0) { num.textContent = `+${(bandDb(pin,b0,b1)-bandDb(pc,b0,b1)).toFixed(0)} dB`;
+    num.style.color = "var(--hi)"; lab.textContent = "잡음이 그 대역을 참값보다 이만큼 밀어올렸다"; }
+  else if (k === 1) { num.textContent = `−${(bandDb(pin,b0,b1)-bandDb(p1,b0,b1)).toFixed(0)} dB`;
+    num.style.color = RGB.M01; lab.textContent = "M01 이 그 대역을 눌러 내린 양"; }
+  else { // **가장 센 대비를 마지막에 둔다** — 참값 스펙트럼에서 벗어난 거리.
+    const d1 = logdist(p1, pc);
+    const best = Math.min(...SHOW.slice(1).map(m => logdist(psd(cond,m), pc)));
+    num.textContent = `${(d1/best).toFixed(1)}배`;
+    num.style.color = "#ff6b6b";
+    lab.innerHTML = `M01 이 참값 스펙트럼에서 벗어난 거리 <b>${d1.toFixed(1)}</b> — `
+      + `다른 방법(${best.toFixed(1)})의 ${(d1/best).toFixed(1)} 배다`; }
+  document.getElementById("next").textContent = k === 2 ? "다시 보기 ↺" : "다음 →";
+  reveal = 0; animate(k === 0 ? 420 : 620, t => { reveal = t; draw(); });
+}
+document.getElementById("next").onclick = () => go((step + 1) % 3);
+document.getElementById("reset").onclick = () => go(0);
+
+const PS = {l:34, r:10, t:8, b:24};
+function draw() {
+  const on = STEPS[step].show;
+  { const {g, w, h} = fit(document.getElementById("wave"));
+    const a = Object.fromEntries(["input","clean",...SHOW].map(k => [k, trace(cond,k)]));
+    let m = 0; for (const k in a) for (const v of a[k]) m = Math.max(m, Math.abs(v));
+    const M = mapper(w, h, a.clean.length, -m*1.06, m*1.06, {l:4,r:4,t:6,b:6});
+    line(g, M.x, M.y, a.input, "#33322e", 1);
+    line(g, M.x, M.y, a.clean, "#5a5852", 2.2);
+    on.forEach((k,i) => line(g, M.x, M.y, a[k], RGB[k], 1.8,
+      Math.min(1, Math.max(0, reveal * on.length - i))));
+  }
+  { const {g, w, h} = fit(document.getElementById("spec"));
+    const a = Object.fromEntries(["input","clean",...SHOW].map(k => [k, psd(cond,k)]));
+    const M = mapper(w, h, HZ.length, -62, 14, PS);
+    const fx = f => PS.l + (f/100)*(w-PS.l-PS.r);
+    const [b0,b1] = bandOf(cond);
+    g.fillStyle = "rgba(255,212,0,.14)";
+    g.fillRect(fx(b0), PS.t, Math.max(4, fx(Math.min(b1,100))-fx(b0)), h-PS.t-PS.b);
+    g.strokeStyle = "rgba(255,255,255,.06)"; g.fillStyle = "#9a988f";
+    g.font = "10px ui-monospace,monospace";
+    for (const f of [0,20,40,60,80,100]) {
+      g.beginPath(); g.moveTo(fx(f),PS.t); g.lineTo(fx(f),h-PS.b); g.stroke();
+      g.fillText(String(f), fx(f)-5, h-8); }
+    for (const d of [0,-20,-40,-60]) {
+      g.beginPath(); g.moveTo(PS.l,M.y(d)); g.lineTo(w-PS.r,M.y(d)); g.stroke();
+      g.fillText(String(d), 8, M.y(d)+3); }
+    const X = i => fx(HZ[i]);
+    line(g, X, M.y, a.input, "#33322e", 1.4);
+    line(g, X, M.y, a.clean, "#5a5852", 2.2);
+    g.font = "700 11px ui-monospace,monospace"; g.textAlign = "right";
+    on.forEach((k,i) => {
+      const al = Math.min(1, Math.max(0, reveal * on.length - i));
+      line(g, X, M.y, a[k], RGB[k], 1.9, al);
+      g.globalAlpha = al; g.fillStyle = RGB[k];
+      g.fillText(k, w-PS.r-2, M.y(a[k][a[k].length-1])-4); g.globalAlpha = 1;
+    });
+    g.textAlign = "left";
+  }
+}
+addEventListener("resize", draw);
+go(0);
+</script>

@@ -1,0 +1,36 @@
+{
+  "env": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v22-x86_64-with-glibc2.39",
+    "git": "a19d1cd",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": "0.2.13",
+    "torch": "2.13.0+cu130"
+  },
+  "config": {
+    "source": "mitdb",
+    "snr": 5.0,
+    "conds": [
+      "pli",
+      "bw_synth",
+      "ma_synth",
+      "em_synth",
+      "impulse",
+      "awgn",
+      "mixed"
+    ],
+    "methods": [
+      "M_FE",
+      "M01",
+      "M04",
+      "M06",
+      "M08"
+    ]
+  },
+  "sources": {
+    "/home/user/ECG_denoising_method_comparision/scripts/build_card_bank.py": "1bedfce2bf8ebc84"
+  }
+}
