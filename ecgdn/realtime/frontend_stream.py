@@ -31,7 +31,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import signal as sps
 
-from ..config import DEFAULT_FE, FrontEndCfg
+from ..config import DEFAULT_FE_CAUSAL, FrontEndCfg
 from ..eval.spectral import pli_ratio
 
 __all__ = ["StreamingFrontEnd"]
@@ -40,7 +40,7 @@ __all__ = ["StreamingFrontEnd"]
 class StreamingFrontEnd:
     """상태를 유지하는 인과 front-end. `push(block) -> filtered block`."""
 
-    def __init__(self, fs: float, cfg: FrontEndCfg = DEFAULT_FE,
+    def __init__(self, fs: float, cfg: FrontEndCfg = DEFAULT_FE_CAUSAL,
                  decide_after_s: float = 4.0):
         self.fs = float(fs)
         self.cfg = cfg

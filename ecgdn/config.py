@@ -124,5 +124,18 @@ PVC_KERNEL = ECGKernel(
 
 
 DEFAULT_FE = FrontEndCfg()
+
+# **실시간(인과) 경로 전용 front-end.** 대역은 같고 **차수만 낮다.**
+#
+# 왜 따로 두는가 — 영위상 필터는 앞뒤로 두 번 걸어 비대칭 처짐이 상쇄되지만
+# 인과 필터는 그럴 수 없다. order 4 를 인과로 돌리면 QRS 하나가 필터 상태를
+# 걷어차고 그 회복이 RR 간격보다 느려, **기저선이 다음 박동까지 못 돌아온다**
+# (T-P 기울기 0.3 → 87 %/s, F-27).
+#
+# 그 처짐이 dB 로도 값이 비쌌다 `[측정]`. 차수만 4 → 1 로 낮추면 D1 에서
+# `M06` 이 −4.32 → **+0.89 dB**, `M06L6` 이 −0.45 → **+1.19 dB** 로 돌아온다
+# (`results/stream_verify.json`). **차단은 건드리지 않았다** — 0.05 Hz 까지
+# 내리면 기저선 변동이 5 배 남고 D1 에서 이득도 없다. 근거는 **D-19**.
+DEFAULT_FE_CAUSAL = FrontEndCfg(order=1)
 DEFAULT_SWT = SWTCfg()
 DEFAULT_KERNEL = ECGKernel()

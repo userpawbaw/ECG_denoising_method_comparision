@@ -68,10 +68,16 @@ def segment(axis: str, seconds: float, seed: int):
     return d["y"].astype(np.float64), d["x"].astype(np.float64)
 
 
+# 인과 FE 설계를 바꿔 보기 위한 전역. **참값 쪽과 처리 쪽이 반드시 같아야**
+# 비교가 성립하므로 한 곳에서 들고 있는다 (F-27).
+FE_CFG = [None]
+
+
 def causal_fe(x: np.ndarray, block: int = 25) -> np.ndarray:
     """참값을 **실시간 경로와 같은 인과 FE** 로 거른다."""
     from ecgdn.realtime.frontend_stream import StreamingFrontEnd
-    fe = StreamingFrontEnd(FS)
+    from ecgdn.config import DEFAULT_FE_CAUSAL
+    fe = StreamingFrontEnd(FS, FE_CFG[0] or DEFAULT_FE_CAUSAL)
     return np.concatenate([fe.push(x[i:i + block]) for i in range(0, x.size, block)])
 
 
@@ -135,8 +141,22 @@ def main() -> int:
     ap.add_argument("--segments", type=int, default=3)
     ap.add_argument("--grid", nargs="*", default=["12:12", "12:25", "12:64", "50:128"],
                     help="d:hop 쌍")
+    ap.add_argument("--hp-hz", type=float, default=None,
+                    help="인과 FE 의 고역통과 차단 [Hz]. 기본은 공통 FE 와 같다(0.5)")
+    ap.add_argument("--fe-order", type=int, default=None,
+                    help="인과 FE 의 차수. 기본은 공통 FE 와 같다(4)")
     ap.add_argument("--out", default="results/stream_verify.json")
     a = ap.parse_args()
+
+    if a.hp_hz is not None or a.fe_order is not None:
+        from dataclasses import replace as _rep
+        from ecgdn.config import DEFAULT_FE_CAUSAL as _BASE
+        kw = {}
+        if a.hp_hz is not None: kw["hp_hz"] = a.hp_hz
+        if a.fe_order is not None: kw["order"] = a.fe_order
+        FE_CFG[0] = _rep(_BASE, **kw)
+        print(f"[fe] 인과 FE 를 바꿔 잰다: hp={FE_CFG[0].hp_hz} Hz, "
+              f"order={FE_CFG[0].order}  (학습은 0.5 Hz 영위상이다 — F-27)")
 
     rows = []
     for axis in a.axis:
@@ -171,7 +191,7 @@ def main() -> int:
 
                     # (2) 파이프라인 전체: 각자의 참조로 잰다.
                     sp = StreamProcessor(meth_nofe, fs=FS, hop=hop, d=d,
-                                         frontend="causal")
+                                         frontend="causal", fe_cfg=FE_CFG[0])
                     out = sp.run(y)
                     lo2, hi2 = sp.origin + sp.win, sp.origin + out.size
                     if hi2 - lo2 < FS * 2:
@@ -201,7 +221,12 @@ def main() -> int:
 
     p = ROOT / a.out
     p.parent.mkdir(parents=True, exist_ok=True)
+    from ecgdn.config import DEFAULT_FE_CAUSAL
+    cfg = FE_CFG[0] or DEFAULT_FE_CAUSAL
+    # **어느 FE 로 잰 표인지 산출물이 스스로 말해야 한다.** 안 적으면 두 표를
+    # 나란히 놓았을 때 어느 쪽이 어느 설정인지 알 수 없다 (F-27).
     p.write_text(json.dumps(dict(fs=FS, seconds=a.seconds, segments=a.segments,
+                                 fe_hp_hz=cfg.hp_hz, fe_order=cfg.order,
                                  rows=rows), indent=1, ensure_ascii=False))
     print(f"\n-> {a.out}  {len(rows)} 행")
     return 0

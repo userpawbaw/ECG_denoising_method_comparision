@@ -95,7 +95,7 @@ class StreamProcessor:
 
     def __init__(self, method: Callable[..., np.ndarray], fs: float = 250.0,
                  win: int | None = None, hop: int = 12, d: int = 12,
-                 ctx_pre: int = 0, frontend: str = "causal"):
+                 ctx_pre: int = 0, frontend: str = "causal", fe_cfg=None):
         if hop < 1:
             raise ValueError(f"hop 은 1 이상이어야 한다: {hop}")
         if d < 0:
@@ -114,6 +114,10 @@ class StreamProcessor:
         if frontend not in ("causal", "none"):
             raise ValueError(f"frontend 는 'causal' 또는 'none': {frontend!r}")
         self.frontend = frontend
+        # 인과 FE 의 설계를 바꿔 볼 수 있게 열어 둔다. **기본값은 공통
+        # front-end 와 같다** — 다른 값을 주면 학습 분포에서 멀어지므로,
+        # 그 대가를 `verify_stream_processor.py` 로 재고 나서만 쓴다(F-27).
+        self.fe_cfg = fe_cfg
         if frontend == "causal" and _has_own_frontend(method):
             raise ValueError(
                 "방법이 자체 front-end 를 켜 둔 채로 인과 FE 를 앞단에 두면 "
@@ -127,7 +131,8 @@ class StreamProcessor:
         """버퍼와 누적을 비운다. 재생을 처음부터 다시 돌릴 때 쓴다."""
         if self.frontend == "causal":
             from .frontend_stream import StreamingFrontEnd
-            self._fe = StreamingFrontEnd(self.fs)
+            from ..config import DEFAULT_FE_CAUSAL
+            self._fe = StreamingFrontEnd(self.fs, self.fe_cfg or DEFAULT_FE_CAUSAL)
         else:
             self._fe = None
         self._buf = np.zeros(0)             # **front-end 를 통과한** 표본
