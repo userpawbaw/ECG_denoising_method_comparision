@@ -46,8 +46,8 @@
   .ph b{font-size:12.5px;letter-spacing:.02em}
   .ph span{font:11px ui-monospace,monospace;color:var(--mute)}
   canvas{width:100%;display:block}
-  #wave{height:250px}
-  #spec{height:250px}
+  #wave{height:420px}
+  #spec{height:420px}
   .keys{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12px}
   .keys i{display:inline-block;width:22px;height:3px;border-radius:2px;
     margin-right:6px;vertical-align:3px;font-style:normal}
@@ -70,6 +70,15 @@
      잡음을 바꾸면 양쪽이 함께 바뀐다.</p>
 
   <div class="rack" id="rack"></div>
+  <div class="rack" style="margin-top:-6px">
+    <span style="align-self:center;font-size:11px;color:var(--mute);letter-spacing:.06em">보이는 길이</span>
+    <button data-z="6" aria-pressed="true">6 s</button>
+    <button data-z="2">2 s</button>
+    <button data-z="1">한 박동</button>
+    <span style="width:14px"></span>
+    <button id="resid">잔차 보기</button>
+    <button id="play">▶ 흐르게</button>
+  </div>
 
   <div class="grid">
     <div class="panel">
@@ -90,11 +99,12 @@
 <script src="../card_bank.js"></script>
 <script type="module">
 import {B, SCENE, trace, psd, SHOW, LABEL, HZ, fit, mapper, line, bandOf, animate,
-        logdist, bandDb} from "./card_core.js";
+        logdist, bandDb, robustRange, drawLane, residual} from "./card_core.js";
 
 const CO = {M01:"var(--s1)", M04:"var(--s2)", M08:"var(--s3)"};
 const RGB = {M01:"#3987e5", M04:"#d95926", M08:"#199e70"};
 let cond = "pli", mix = 1, prev = null;
+let zoom = 6, scroll = 0, showResid = false, playing = null;
 
 // ---- 잡음 선택
 const rack = document.getElementById("rack");
@@ -119,27 +129,45 @@ document.getElementById("keys").innerHTML =
   SHOW.map(m => `<span><i style="background:${RGB[m]}"></i>${LABEL[m]}</span>`).join("");
 
 function draw() {
-  const s = SCENE[cond];
-  // ---------- 시간축
+  const s0 = SCENE[cond];
+  // ---------- 시간축 — **레인**. 겹쳐 그리면 R-peak 만 보인다.
   {
     const {g, w, h} = fit(document.getElementById("wave"));
-    const keys = ["clean", "input", ...SHOW];
-    const arrs = Object.fromEntries(keys.map(k => [k, trace(cond, k)]));
-    let m = 0; for (const k of keys) for (const v of arrs[k]) m = Math.max(m, Math.abs(v));
-    const M = mapper(w, h, arrs.clean.length, -m * 1.06, m * 1.06, {l:6,r:6,t:6,b:6});
-    g.strokeStyle = "rgba(255,255,255,.045)"; g.lineWidth = 1;   // 모눈
-    for (let x = 0; x < w; x += 22) { g.beginPath(); g.moveTo(x,0); g.lineTo(x,h); g.stroke(); }
-    for (let y = 0; y < h; y += 22) { g.beginPath(); g.moveTo(0,y); g.lineTo(w,y); g.stroke(); }
-    const cut = Math.max(2, Math.floor(arrs.clean.length * mix));
-    const clip = a => a.subarray(0, cut);
-    line(g, M.x, M.y, clip(arrs.input), "#39434d", 1);
-    line(g, M.x, M.y, clip(arrs.clean), "#5d6b78", 2.6);
-    g.shadowBlur = 12;                                   // 형광 — 이 안의 정체성
-    for (const k of SHOW) { g.shadowColor = RGB[k];
-      line(g, M.x, M.y, clip(arrs[k]), RGB[k], 1.7); }
-    g.shadowBlur = 0;
+    const keys = ["input", ...SHOW];
+    const full = Object.fromEntries(["clean", ...keys].map(k => [k, trace(cond, k)]));
+    const n = full.clean.length;
+    const len = Math.max(64, Math.round(zoom * B.fs));
+    const off = Math.min(n - len, Math.max(0, Math.round(scroll * (n - len))));
+    const cut = a => a.subarray(off, off + len);
+    const ref = cut(full.clean);
+    const rows = keys.map(k => ({k, v: cut(full[k])}));
+    // 세로 범위는 **모든 레인이 공유**한다 — 레인마다 다르면 비교가 아니다.
+    const range = robustRange([ref, ...rows.map(r => r.v)]);
+    const LH = (h - 6) / rows.length, pad = 5;
+    rows.forEach((r, i) => {
+      const box = {x: 46, y: 3 + i * LH, w: w - 52, h: LH - pad};
+      g.fillStyle = i % 2 ? "rgba(255,255,255,.018)" : "transparent";
+      g.fillRect(box.x - 4, box.y - 2, box.w + 8, box.h + 4);
+      const col = r.k === "input" ? "#6b7683" : RGB[r.k];
+      const show = Math.max(2, Math.round(r.v.length * mix));
+      drawLane(g, box, ref.subarray(0, show), r.v.subarray(0, show), col, {
+        range, glow: r.k === "input" ? 0 : 9, width: r.k === "input" ? 1 : 1.8,
+        refColor: "#4a545e", refWidth: 2.4, tilde: "#8a97a5",
+        grid: "rgba(255,255,255,.035)",
+      });
+      if (showResid && r.k !== "input") {           // 잔차 띠 — 차이를 직접 보인다
+        const rb = {x: box.x, y: box.y + box.h * 0.62, w: box.w, h: box.h * 0.36};
+        const rs = residual(ref.subarray(0, show), r.v.subarray(0, show));
+        drawLane(g, rb, null, rs, "#ff5c5c", {range: [range[0] * .5, range[1] * .5],
+          width: 1, alpha: .85, tilde: "#ff5c5c"});
+      }
+      g.fillStyle = r.k === "input" ? "#8a97a5" : RGB[r.k];
+      g.font = "700 11px ui-monospace,monospace";
+      g.fillText(r.k === "input" ? "입력" : r.k, 6, box.y + 13);
+    });
     document.getElementById("w-meta").textContent =
-      `${B.axis} · 기록 ${s.record} · ${B.snr} dB · ${(B.n / B.fs).toFixed(0)} s`;
+      `${B.axis} · 기록 ${s0.record} · ${B.snr} dB · ${zoom} s` +
+      (showResid ? " · 빨강 = 잔차(출력−참값)" : "");
   }
   // ---------- 스펙트럼
   {
@@ -207,6 +235,28 @@ function update() {
     : `<b>${B.cond_label[cond]}</b> 은 붉은 띠 대역에 산다. 세 방법이 그 띠를 얼마나 눌렀는지(왼쪽 숫자)와 <b>ECG 대역(0.5~40 Hz)을 얼마나 건드렸는지</b>(오른쪽 숫자)를 함께 봐야 한다 — 앞만 보면 다 지운 방법이 이긴다.`;
 }
 
+// 확대 — 한 박동까지 좁히면 P·T 굴곡이 보인다
+document.querySelectorAll("[data-z]").forEach(b => b.onclick = () => {
+  document.querySelectorAll("[data-z]").forEach(n =>
+    n.setAttribute("aria-pressed", String(n === b)));
+  zoom = +b.dataset.z; if (zoom === 1) scroll = 0.42;   // 대개 박동 하나가 잡힌다
+  mix = 0; animate(320, t => { mix = t; draw(); });
+});
+const rb = document.getElementById("resid");
+rb.onclick = () => { showResid = !showResid;
+  rb.setAttribute("aria-pressed", String(showResid)); draw(); };
+// 흐르게 — 감시장치처럼 창이 오른쪽으로 밀린다
+const pb = document.getElementById("play");
+pb.onclick = () => {
+  if (playing) { cancelAnimationFrame(playing); playing = null;
+    pb.textContent = "▶ 흐르게"; pb.setAttribute("aria-pressed", "false"); return; }
+  pb.textContent = "❚❚ 멈춤"; pb.setAttribute("aria-pressed", "true");
+  const t0 = performance.now();
+  (function step(now) {
+    scroll = ((now - t0) / 9000) % 1;                  // 9 초에 한 바퀴
+    draw(); playing = requestAnimationFrame(step);
+  })(t0);
+};
 addEventListener("resize", draw);
 update(); draw();
 </script>

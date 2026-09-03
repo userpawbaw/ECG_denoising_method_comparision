@@ -95,3 +95,71 @@ export function bandDb(p, f0, f1) {
   for (let i = 0; i < HZ.length; i++) if (HZ[i] >= f0 && HZ[i] <= f1) { s += p[i]; n++; }
   return n ? s / n : NaN;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 파형 레인 — **겹쳐 그리면 차이가 안 보인다.**
+ *
+ * 다섯 줄을 한 축에 겹치니 R-peak 만 보이고 나머지는 실타래가 됐다. 원인이
+ * 둘이다: (1) 겹침 자체, (2) **R-peak 가 나머지보다 5~10 배 커서** 세로축을
+ * 독차지한다 — P·T 와 잡음 질감이 눌려 1~2 픽셀이 된다.
+ *
+ * 그래서 둘 다 고친다.
+ *   (1) 방법마다 **자기 레인**을 준다. 레인 안에서만 참값과 겹친다.
+ *   (2) 세로 범위를 **로버스트 폭**으로 자르고, 넘어간 R-peak 는 잘라낸 자리에
+ *       물결(≈)을 찍는다. 심전도 판독기가 관습적으로 쓰는 표기다.
+ *       기저선을 아래쪽에 붙여 QRS 가 위로 뻗을 자리를 준다.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/** 잘라낼 세로 범위. R-peak 를 뺀 **본체**의 폭으로 정한다. */
+export function robustRange(arrs, k = 7.0, baseAt = 0.30) {
+  let all = [];
+  for (const a of arrs) for (let i = 0; i < a.length; i += 3) all.push(Math.abs(a[i]));
+  all.sort((x, y) => x - y);
+  const mad = all[Math.floor(all.length * 0.5)] || 1e-9;   // 중앙 절대편차
+  const span = k * mad;
+  // baseAt = 기저선을 레인 아래에서 몇 % 지점에 둘 것인가. 0.30 이면 위로
+  // 70 % 가 QRS 몫이다 — R 이 대개 위로 뻗으므로 가운데보다 이쪽이 넓다.
+  return [-span * baseAt / (1 - baseAt), span];
+}
+
+/** 레인 하나: 참값(회색) 위에 출력(색). 넘어간 곳은 잘라내고 ≈ 를 찍는다. */
+export function drawLane(g, box, ref, out, color, opt = {}) {
+  const {x, y, w, h} = box, [lo, hi] = opt.range;
+  // **`ref` 는 없을 수 있다** (잔차 레인). 가로 좌표는 그릴 배열에서 잡는다 —
+  // 처음에 `ref.length` 로 잡았다가 잔차 레인에서 통째로 터졌고, 그 **아래
+  // 레인들이 조용히 안 그려졌다.** 예외가 루프를 끊는 것을 화면만 보고는 못 잡는다.
+  const px = i => x + (i / (out.length - 1)) * w;
+  const py = v => y + h - ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * h;
+  if (opt.grid) {                                   // 레인 배경
+    g.save(); g.strokeStyle = opt.grid; g.lineWidth = 1;
+    for (let gx = x; gx < x + w; gx += 20) { g.beginPath(); g.moveTo(gx, y); g.lineTo(gx, y+h); g.stroke(); }
+    g.restore();
+  }
+  const stroke = (a, col, lw, alpha) => {
+    g.save(); g.globalAlpha = alpha == null ? 1 : alpha;
+    g.beginPath(); g.strokeStyle = col; g.lineWidth = lw;
+    g.lineJoin = "round"; g.lineCap = "round";
+    for (let i = 0; i < a.length; i++) i ? g.lineTo(px(i), py(a[i])) : g.moveTo(px(i), py(a[i]));
+    g.stroke(); g.restore();
+  };
+  if (ref) stroke(ref, opt.refColor || "#8a8a8a", opt.refWidth || 2.6, opt.refAlpha);
+  if (opt.glow) { g.save(); g.shadowColor = color; g.shadowBlur = opt.glow; }
+  stroke(out, color, opt.width || 1.6, opt.alpha);
+  if (opt.glow) g.restore();
+  // **잘린 자리에 ≈** — "여기 위로 더 있다" 를 숨기지 않는다.
+  g.save(); g.fillStyle = opt.tilde || color; g.font = "700 11px ui-monospace,monospace";
+  g.textAlign = "center";
+  let last = -99;
+  for (let i = 0; i < out.length; i++) {
+    if (out[i] > hi && i - last > 12) { g.fillText("≈", px(i), y + 9); last = i; }
+  }
+  g.restore(); g.textAlign = "left";
+  return {px, py};
+}
+
+/** 잔차(출력 − 참값). **무엇을 못 지웠고 무엇을 과하게 지웠는지**가 여기 있다. */
+export function residual(ref, out) {
+  const r = new Float64Array(ref.length);
+  for (let i = 0; i < ref.length; i++) r[i] = out[i] - ref[i];
+  return r;
+}
