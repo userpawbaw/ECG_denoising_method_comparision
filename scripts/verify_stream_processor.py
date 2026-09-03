@@ -167,6 +167,8 @@ def main() -> int:
     ap.add_argument("--fe-mode", default="causal",
                     choices=["causal", "zerophase", "median"],
                     help="실시간 front-end (docs/13 · docs/14)")
+    ap.add_argument("--force", action="store_true",
+                    help="행이 줄어드는 덮어쓰기를 허용한다")
     ap.add_argument("--out", default=None,
                     help="기본은 모드별로 다른 파일이다 — 서로 덮어쓰지 않게 (O-20)")
     a = ap.parse_args()
@@ -216,7 +218,7 @@ def main() -> int:
             cost = per_window_cost(meth_nofe, segs[0][0][:1024])
             for spec in a.grid:
                 d, hop = (int(v) for v in spec.split(":"))
-                plumb, pipe = [], []
+                plumb, pipe, tot = [], [], []
                 for (y, x) in segs:
                     # (1) 배관만: 양쪽 다 front-end 없음. 미리 걸어 둔 신호를 쓴다.
                     yz = zp_fe(y)
@@ -245,15 +247,24 @@ def main() -> int:
                     if hi2 - lo2 < FS * 2:
                         continue
                     s_rt = snr_scaled(xc[lo2:hi2], out[lo2 - sp.origin:hi2 - sp.origin])
+                    # **모드끼리 비교할 수 있는 유일한 숫자.** 위 `s_rt` 의 참조는
+                    # `FE_rt(clean)` 이라 **모드마다 다르다** — 그것으로 모드를
+                    # 비교하면 각 후보를 자기 과녁으로 채점하는 셈이고,
+                    # docs/15 §3 이 「안 된다」고 적은 형태다. 그래서 **모드와
+                    # 무관한 과녁**(오프라인 FE 통과 clean)으로 한 번 더 잰다.
+                    xz2 = zp_fe(x)
+                    s_tot = snr_scaled(xz2[lo2:hi2], out[lo2 - sp.origin:hi2 - sp.origin])
                     off = np.asarray(meth(y, FS, {}))       # 보고서가 쓰는 경로
                     s_off = snr_scaled(x[lo2:hi2], off[lo2:hi2])
                     pipe.append(s_rt - s_off)
+                    tot.append(s_tot - s_off)
                 if not plumb or not pipe:
                     continue
                 rows.append(dict(axis=axis, method=mid, d=d, hop=hop,
                                  delay_ms=round((d + hop) / FS * 1000, 1),
                                  plumbing_db=round(float(np.mean(plumb)), 3),
                                  pipeline_db=round(float(np.mean(pipe)), 3),
+                                 total_db=round(float(np.mean(tot)), 3),
                                  spread_db=round(float(np.std(pipe)), 3),
                                  runs_per_s=round(FS / hop, 1),
                                  cpu_frac=round(FS / hop * cost, 4)))
@@ -263,11 +274,28 @@ def main() -> int:
                       f"배관 {r['plumbing_db']:+6.3f} dB  "
                       f"파이프라인 {r['pipeline_db']:+6.2f} dB "
                       f"(±{r['spread_db']:.2f})  "
+                      f"**전체 {r['total_db']:+6.2f} dB**  "
                       f"추론 {r['runs_per_s']:>5.1f}/s  CPU {r['cpu_frac']*100:.0f}%",
                       flush=True)
 
     p = ROOT / a.out
     p.parent.mkdir(parents=True, exist_ok=True)
+    # **격자를 좁혀 다시 돌리면 산출물이 조용히 줄어든다.** 실제로 한 번 당했다 —
+    # 전체 격자 24 행을 만든 뒤 `--grid 12:12` 로 재측정하자 같은 파일이 6 행이
+    # 됐다. O-20 과 같은 형태(같은 출력에 두 실행이 겹친다)이므로, **줄어드는
+    # 덮어쓰기는 막고 어디로 쓰라고 알려 준다.**
+    if p.exists() and not a.force:
+        try:
+            old = json.loads(p.read_text()).get("rows", [])
+        except (json.JSONDecodeError, OSError):
+            old = []
+        if len(old) > len(rows):
+            alt = p.with_name(p.stem + "_grid" + "-".join(a.grid).replace(":", "x") + p.suffix)
+            raise SystemExit(
+                f"{a.out} 에는 이미 {len(old)} 행이 있는데 이번 실행은 {len(rows)} 행이다.\n"
+                f"  격자를 좁혀 돌린 것이면 **다른 파일로** 쓸 것:\n"
+                f"    --out {alt.relative_to(ROOT)}\n"
+                f"  정말 덮어쓸 것이면 --force.")
     from ecgdn.config import DEFAULT_FE_CAUSAL
     cfg = FE_CFG[0] or DEFAULT_FE_CAUSAL
     # **어느 FE 로 잰 표인지 산출물이 스스로 말해야 한다.** 안 적으면 두 표를
