@@ -221,6 +221,17 @@ class Aligner:
         out = {n: self.buf[n][lo - self.origin[n]: end - self.origin[n]]
                for n in self.names}
         self.sent = end
+        # **보낸 것은 버린다.** 이것이 없으면 버퍼가 세션 내내 자란다 —
+        # 그리고 그것이 CPU 를 먹는다. 파이썬의 세대별 GC 는 추적 대상 컨테이너의
+        # **슬롯을 전부 훑으므로**, 원소 수십만 개짜리 리스트가 있으면 gen2 수집
+        # 한 번의 비용이 그 길이에 비례한다. 즉 **시간이 갈수록 느려진다** —
+        # 초반엔 멀쩡하고 10 분쯤 뒤 RTF 와 큐드롭이 함께 오르는 그 증상이다.
+        # `raw` 는 20 s 로 묶여 있었는데(`lo > 20 * FS`) 여기만 빠져 있었다 (F-31).
+        for n in self.names:
+            k = end - self.origin[n]
+            if k > 0:
+                del self.buf[n][:k]
+                self.origin[n] = end        # buf[n][0] 의 절대 번호를 따라 올린다
         return lo, out
 
 
@@ -390,6 +401,8 @@ def main() -> int:
     ap.add_argument("--gain", type=float, default=1100.0,
                     help="아날로그 프런트엔드 총 이득 (AD8232 기본 약 1100)")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--diag", type=float, default=0.0,
+                    help="N 초마다 버퍼 크기와 RSS 를 적는다 (성능 저하 추적용)")
     args = ap.parse_args()
     # 진행 줄은 `\r` 로 덮어쓴다 — 파일로 넘기면 한 줄이 수만 자가 된다.
     if not sys.stdout.isatty():
@@ -478,7 +491,7 @@ def main() -> int:
     raw_base = 0                      # raw[0] 의 절대 인덱스
     stat = dict(lost=0, leadoff=0, bad=0, resync=0)
     t_frame = time.perf_counter()
-    t_start = t_frame
+    t_start = t_diag = t_frame
     cpu = 0.0
     n_in = 0                          # 처리기에 들어간 250 Hz 샘플 (= FE 가 낸 수)
     n_input = 0                       # front-end 에 들어간 250 Hz 샘플. `n_in` 과
@@ -591,6 +604,20 @@ def main() -> int:
                 raw = raw[lo:]
                 rawok = rawok[lo:]
                 raw_base = idx
+            if args.diag and now - t_diag >= args.diag:
+                t_diag = now
+                rss = 0
+                try:
+                    with open("/proc/self/status") as fh:
+                        for ln in fh:
+                            if ln.startswith("VmRSS:"):
+                                rss = int(ln.split()[1]) // 1024
+                except OSError:
+                    pass
+                albuf = sum(len(v) for v in al.buf.values())
+                print(f"\n[diag] {idx/FS:7.1f}s  RTF {payload['stat']['rtf']:.2f}  "
+                      f"큐드롭 {qdrop[0]:4d}  정렬기버퍼 {albuf:8d}  "
+                      f"raw {len(raw):7d}  RSS {rss:5d} MB", flush=True)
             if not args.quiet:
                 print(f"\r  {idx/FS:7.1f}s  손실 {stat['lost']:5d}  "
                       f"lead-off {stat['leadoff']:5d}  깨짐 {stat['bad']:4d}  "

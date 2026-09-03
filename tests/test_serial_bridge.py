@@ -142,3 +142,44 @@ def test_the_live_page_never_shows_a_performance_number():
     html = (ROOT / "demo" / "live.html").read_text()
     for bad in ("SNR 개선", "dB</", "snr_imp", "축 평균"):
         assert bad not in html, f"실측 화면에 성능 수치가 들어갔다: {bad}"
+
+
+# ------------------------------------------- 시간이 갈수록 느려지지 않아야 한다
+def test_aligner_buffers_stay_bounded():
+    """**보낸 것은 버려야 한다** (F-31).
+
+    `Aligner.buf` 가 안 줄어들면 세션 내내 자라고, 파이썬 GC 가 추적 컨테이너의
+    슬롯을 전부 훑으므로 **gen2 수집 비용이 그 길이에 비례**한다. 초반엔 멀쩡하고
+    10 분쯤 뒤 RTF 와 큐드롭이 함께 오르는 증상이 그것이었다. `raw` 는 20 s 로
+    묶여 있었는데 정렬기 버퍼만 빠져 있었다.
+    """
+    import numpy as np
+    m = _mod()
+    al = m.Aligner(["a", "b"])
+    for step in range(400):                       # 400 x 12 = 4800 표본
+        blk = np.zeros(12)
+        al.add("a", 0, blk)
+        al.add("b", 0, blk)
+        al.take()
+    total = sum(len(v) for v in al.buf.values())
+    assert total <= 4 * 12, (
+        f"정렬기 버퍼가 {total} 로 자랐다 — 보낸 것을 안 버리고 있다 (F-31)")
+    assert al.sent == 400 * 12, "보낸 위치 계산이 틀렸다"
+
+
+def test_aligner_still_aligns_after_trimming():
+    """트림이 **정렬 자체를 깨뜨리지 않는지** — 값과 시작 번호가 유지돼야 한다."""
+    import numpy as np
+    m = _mod()
+    al = m.Aligner(["a", "b"])
+    al.add("a", 0, np.arange(0, 30, dtype=float))
+    al.add("b", 10, np.arange(10, 25, dtype=float))   # 늦게 시작하고 짧다
+    idx, out = al.take()
+    assert idx == 10, f"공통 구간은 10 에서 시작해야 한다 (얻은 값 {idx})"
+    assert out["a"] == list(range(10, 25)) and out["b"] == list(range(10, 25))
+    # 다음 블록도 이어져야 한다
+    al.add("a", 0, np.arange(30, 36, dtype=float))
+    al.add("b", 10, np.arange(25, 31, dtype=float))
+    idx2, out2 = al.take()
+    assert idx2 == 25, f"이어지는 구간은 25 에서 시작해야 한다 (얻은 값 {idx2})"
+    assert out2["a"] == list(range(25, 31)) and out2["b"] == list(range(25, 31))

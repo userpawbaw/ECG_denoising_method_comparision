@@ -179,7 +179,7 @@ function fitc(c){
 
 /** 세로 스케일 — **보이는 구간의 로버스트 폭**. 최대값으로 잡으면 잡음 한 방에
  *  파형 전체가 납작해진다. 여러 계열을 겹칠 때는 **같은 스케일**을 공유한다. */
-function vscale(arrs, k){
+function rawScale(arrs, k){
   let m = 0, s = 0, cnt = 0;
   const n = Math.min(cap, Math.max(written, 1));
   for (const a of arrs){ for (let i = 0; i < n; i++){ m += a[i]; cnt++; } }
@@ -189,6 +189,38 @@ function vscale(arrs, k){
   // 나가면 어느 선인지 알 수 없어져, 분리 모드보다 여유를 더 준다.
   s = (k || 3.2) * (s / Math.max(cnt, 1)) || 1;
   return {m, s};
+}
+
+/** 1-2-5 사다리. 이 위에만 올려 두면 **작은 변화가 아무 변화도 만들지 않는다.** */
+function ladder(v){
+  if (!(v > 0) || !isFinite(v)) return 1;
+  const e = Math.floor(Math.log10(v)), b = v / Math.pow(10, e);
+  return (b <= 1 ? 1 : b <= 2 ? 2 : b <= 5 ? 5 : 10) * Math.pow(10, e);
+}
+
+/** 세로 스케일을 **한 번 정하면 붙여 둔다.**
+ *
+ * 원래는 `rawScale` 을 매 프레임 그대로 썼다. 캔버스는 매 프레임 버퍼에서
+ * **전부 다시** 그리므로, 중심 `m` 이나 폭 `s` 가 조금만 달라져도 «이미 그려진
+ * 파형까지» 함께 움직인다. R 피크가 20 s 창에 들고 날 때마다 `s` 가 튀어서
+ * **심박 주기로 화면이 들썩였다** (F-32).
+ *
+ * 그래서 병원 모니터처럼 **이득을 단계로 고정**한다:
+ *   - 폭은 1-2-5 사다리 위에만 두고, 현재 값의 +10 %/−45 % 밖으로 나가야 다시 잡는다
+ *   - 중심은 폭의 1/4 격자에 붙이고, 한 칸 안이면 안 움직인다
+ * 밴드 안에서는 **반환값이 완전히 동일한 객체**라 화면이 1 픽셀도 안 움직인다.
+ */
+const scaleState = new Map();
+function vscale(arrs, k, key){
+  const r = rawScale(arrs, k);
+  const st = scaleState.get(key);
+  const s = (!st || r.s > st.s * 1.10 || r.s < st.s * 0.55) ? ladder(r.s) : st.s;
+  const q = s / 4;
+  const m = Math.round(r.m / q) * q;
+  if (st && st.s === s && Math.abs(st.m - m) < q) return st;   // 아무것도 안 바꾼다
+  const next = {m, s};
+  scaleState.set(key, next);
+  return next;
 }
 
 /** 화면 칸 i(0..cap-1) 가 버퍼의 어느 자리인가.
@@ -246,7 +278,7 @@ function drawSplit(){
     const a = bufs.get(name); if (!a) continue;
     const {g, w, h} = fitc(c);
     shadeBad(g, w, h);
-    strokeBuf(g, a, w, h, vscale([a], 3.2), name === 'raw' ? '#8a8a8a' : '#184f95', 1.1);
+    strokeBuf(g, a, w, h, vscale([a], 3.2, name), name === 'raw' ? '#8a8a8a' : '#184f95', 1.1);
     cursorLine(g, w, h);
   }
 }
@@ -257,9 +289,11 @@ function drawOverlay(){
   shadeBad(g, w, h);
   const on = [...bufs.keys()].filter(n => n !== 'raw' && !hidden.has(n));
   const arrs = on.map(n => bufs.get(n));
-  const raw = bufs.get('raw');
+  // 입력도 끄고 켠다. **스케일은 입력을 뺀 채로 잡는다** — 잡음이 실린 입력이
+  // 폭을 정하면 출력들이 다 납작해져서 겹쳐 놓은 의미가 없어진다.
+  const raw = hidden.has('raw') ? null : bufs.get('raw');
   // **스케일을 공유한다.** 계열마다 따로 잡으면 겹쳐 놓는 의미가 없다.
-  const sc = vscale(arrs.length ? arrs : [raw], 5.0);
+  const sc = vscale(arrs.length ? arrs : [bufs.get('raw')], 5.0, 'overlay');
   if (raw) strokeBuf(g, raw, w, h, sc, '#c9c9c9', 1, 0.75);   // 입력을 옅게 뒤에
   on.forEach(n => strokeBuf(g, bufs.get(n), w, h, sc, colorOf.get(n), 1.8, 0.5));
   // 직접 라벨 — 50 % 로 겹치면 색이 섞여 보이므로 이름을 붙여야 한다
@@ -292,10 +326,9 @@ function relayout(){
     d.appendChild(overlayCv); host.appendChild(d);
     lg.hidden = false; lg.innerHTML = '';
     for (const n of bufs.keys()){
-      if (n === 'raw') continue;
       const b = document.createElement('button');
-      b.style.color = colorOf.get(n);
-      b.innerHTML = `<i></i>${n} · ${LABEL[n] || ''}`;
+      b.style.color = n === 'raw' ? '#8a8a8a' : colorOf.get(n);
+      b.innerHTML = `<i></i>${n === 'raw' ? '입력 (잡음)' : n} · ${LABEL[n] || ''}`;
       b.setAttribute('aria-pressed', String(!hidden.has(n)));
       b.onclick = () => { hidden.has(n) ? hidden.delete(n) : hidden.add(n);
         b.setAttribute('aria-pressed', String(!hidden.has(n))); dirty = true; };
@@ -359,7 +392,7 @@ es.onmessage = ev => {
   // front-end 를 바꾸면 브리지가 처리기 버퍼를 비운다 — 화면도 비워야 한다.
   // 안 비우면 **이전 필터로 만든 파형과 새 필터의 파형이 한 화면에 섞인다.**
   if (m.reset){
-    bufs.clear(); colorOf.clear(); hidden.clear();
+    bufs.clear(); colorOf.clear(); hidden.clear(); scaleState.clear();
     okBuf = null; head = -1; written = 0; relayout();
     feMode = m.fe; paintFe();
     const nt = el('fenote');
@@ -369,6 +402,7 @@ es.onmessage = ev => {
     return;
   }
   if (m.fs !== fs){ fs = m.fs; cap = WIN_S * fs; bufs.clear(); colorOf.clear();
+                    scaleState.clear();
                     okBuf = null; head = -1; written = 0; }
   let fresh = false;
   if (!bufs.has('raw')){ bufs.set('raw', alloc(cap)); okBuf = alloc(cap); fresh = true; }
