@@ -2,7 +2,7 @@
   "env": {
     "python": "3.11.15",
     "platform": "Linux-6.18.44-fc-v24-x86_64-with-glibc2.39",
-    "git": "0cf8387",
+    "git": "02532b7",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -11,18 +11,16 @@
     "torch": "2.13.0+cu130"
   },
   "config": {
-    "inject_frac": 0.5,
-    "cfgs": [
-      "영위상 o4 0.5 Hz (모드 B 기준)",
-      "인과 o4 0.5 Hz",
-      "인과 o2 0.5 Hz",
-      "인과 o1 0.5 Hz",
-      "인과 o4 0.05 Hz",
-      "인과 o2 0.05 Hz",
-      "인과 o1 0.05 Hz"
-    ]
+    "script": "explore_lookahead_fe",
+    "axes": [
+      "d0",
+      "d1"
+    ],
+    "past_s": 4.0,
+    "hop_s": 0.096,
+    "inject_frac": 0.5
   },
   "sources": {
-    "/home/user/ECG_denoising_method_comparision/scripts/compare_causal_fe.py": "1d2a86fda016a358"
+    "/home/user/ECG_denoising_method_comparision/scripts/explore_lookahead_fe.py": "f076657a8aa2c1f9"
   }
 }
