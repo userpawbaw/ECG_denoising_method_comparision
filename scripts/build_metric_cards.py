@@ -130,11 +130,107 @@ def fe(x: np.ndarray) -> np.ndarray:
 
 
 def one_beat(x: np.ndarray, pre=0.20, post=0.35):
-    """R-peak 하나를 중심으로 자를 구간. 형태 차이는 확대해야 보인다."""
+    """R-peak 하나를 중심으로 자를 구간. 형태 차이는 확대해야 보인다.
+
+    **교육용 카드에는 `pick_teaching_beat` 를 쓸 것.** 이 함수는 «가운데 박동»
+    을 그냥 집으므로 T 파가 뒤집힌 박동에 걸릴 수 있다 (실제로 걸렸다).
+    """
     from ecgdn.eval.rpeak import detect_rpeaks
     r = np.asarray(detect_rpeaks(x, FS), dtype=int)
     j = int(r[len(r) // 2]) if r.size else len(x) // 2
     return max(0, j - int(pre * FS)), min(len(x), j + int(post * FS))
+
+
+# ----------------------------------------------------- 교육용 박동 고르기
+# 카드는 **심전도를 처음 보는 사람**에게 «이것이 P-QRS-T 다» 를 먼저 가르쳐야
+# 한다. 그런데 무작위로 집은 박동은 그 일을 못 할 수 있다 — 첫 판에서 실제로
+# **T 파가 뒤집힌 박동**이 뽑혔다. 합성기의 `jitter_kernel` 이 12 % 확률로 T 를
+# 뒤집는 것은 **의도된 변이**라 버그가 아니지만, 교육용으로는 최악이다.
+#
+# 그래서 «가르치기 좋은 박동» 을 점수로 정의해 고른다. 점수 항목은 전부
+# **교과서적 정상 박동**의 조건이다.
+BEAT_W = dict(t_pos=1.0, p_pos=0.8, r_dom=1.0, tmpl=1.2)
+
+
+def _beat_score(v: np.ndarray, j: int, rr: int, tmpl: np.ndarray | None):
+    """박동 하나가 «가르치기 좋은가». 0~1 로 정규화한 항목의 가중합.
+
+    반환 `(점수, 항목별 값)`. 항목을 함께 돌려주는 것은 **왜 그 박동이 뽑혔는지
+    카드 만들 때 확인할 수 있어야** 하기 때문이다.
+    """
+    i0, i1 = j - int(0.25 * FS), j + int(0.45 * FS)
+    if i0 < 0 or i1 > v.size:
+        return -1.0, {}
+    seg = v[i0:i1]
+    base = float(np.median(v[j + int(0.42 * rr / FS * FS):min(v.size, j + rr)])) \
+        if j + rr <= v.size else float(np.median(seg))
+    r_amp = float(v[j]) - base
+    if r_amp <= 0:
+        return -1.0, {}
+    # T 파: R+150~400 ms 최고점이 기저선 위로 얼마나 (R 진폭 대비)
+    t = (float(np.max(v[j + int(0.15 * FS): j + int(0.40 * FS)])) - base) / r_amp
+    # P 파: R−250~−100 ms 최고점
+    p = (float(np.max(v[j - int(0.25 * FS): j - int(0.10 * FS)])) - base) / r_amp
+    # R 지배: 박동 안에서 R 이 가장 큰 편위인가 (아래로 큰 것이 있으면 감점)
+    dom = r_amp / max(r_amp, float(np.max(np.abs(seg - base))))
+    it = dict(t_pos=float(np.clip(t / 0.25, 0, 1)),      # T 가 R 의 25 % 면 만점
+              p_pos=float(np.clip(p / 0.15, 0, 1)),      # P 는 15 %
+              r_dom=float(np.clip(dom, 0, 1)))
+    if tmpl is not None and tmpl.size == seg.size:
+        a, b = seg - seg.mean(), tmpl - tmpl.mean()
+        den = float(np.sqrt((a @ a) * (b @ b)))
+        it["tmpl"] = float(np.clip((a @ b) / den, 0, 1)) if den > 0 else 0.0
+    else:
+        it["tmpl"] = 0.0
+    return sum(BEAT_W[k] * it[k] for k in BEAT_W) / sum(BEAT_W.values()), it
+
+
+def pick_teaching_beat(tag: str, pad_s: float = 2.5, max_records: int = 8):
+    """교육용 박동 하나를 고른다 — **P 양수 · T 양수 · R 지배 · PVC 아님 ·
+    자기 기록의 템플릿에 가까움.**
+
+    반환 `(x_raw, lo, hi, info)`. `x_raw` 는 **front-end 를 통과하기 전** 구간
+    이고(방법을 통과시켜야 하므로), `lo:hi` 는 그 안에서 그릴 박동의 범위다.
+    앞뒤로 `pad_s` 를 붙인다 — 0.5 Hz 고역통과는 수 초간 울리므로 여유가 없으면
+    잘라낸 자리가 전부 트랜지언트가 된다.
+    """
+    from ecgdn.data.sources import get_source
+    src = get_source("synthetic" if tag == "d0" else "mitdb")
+    best = None
+    for name in src.records("test")[:max_records]:
+        rec = src.get(name)
+        x_raw = np.asarray(rec.x, dtype=np.float64)
+        v = fe(x_raw)
+        rp = np.asarray(rec.r_peaks, dtype=int)
+        sym = np.asarray(rec.symbols)
+        keep = sym == "N"                       # **PVC·기타는 후보에서 뺀다**
+        if keep.sum() < 8:
+            continue
+        rr = int(np.median(np.diff(rp))) if rp.size > 2 else int(0.8 * FS)
+        # 템플릿 = 정상 beat 들의 중앙값 파형
+        w0, w1 = int(0.25 * FS), int(0.45 * FS)
+        stack = [v[j - w0: j + w1] for j in rp[keep]
+                 if j - w0 >= 0 and j + w1 <= v.size]
+        tmpl = np.median(np.stack(stack), axis=0) if len(stack) >= 5 else None
+        for j in rp[keep]:
+            pad = int(pad_s * FS)
+            if j - pad - w0 < 0 or j + pad + w1 > v.size:
+                continue                        # 여유가 안 나오는 자리는 뺀다
+            sc, it = _beat_score(v, int(j), rr, tmpl)
+            if best is None or sc > best[0]:
+                best = (sc, str(name), int(j), it)
+    if best is None:
+        raise SystemExit(f"{tag}: 교육용 박동을 못 골랐다 — 조건을 확인할 것")
+    sc, name, j, it = best
+    rec = src.get(name)
+    pad = int(pad_s * FS)
+    a, b = j - pad - int(0.25 * FS), j + pad + int(0.45 * FS)
+    x_raw = np.asarray(rec.x, dtype=np.float64)[a:b]
+    lo = (j - a) - int(0.20 * FS)
+    hi = (j - a) + int(0.35 * FS)
+    info = dict(record=name, score=round(sc, 3),
+                **{k: round(vv, 2) for k, vv in it.items()})
+    return x_raw, lo, hi, info
 
 
 def table(tag: str, exp: str) -> pd.DataFrame:
@@ -158,8 +254,8 @@ def floor_of(tag: str, metric: str) -> float | None:
 # =============================================================== C1
 def c1_gain_bias():
     """진폭만 줄어든 출력을 SNR 이 어떻게 처벌하는가."""
-    x = fe(clean_segment("d1", 6.0, seed=1))
-    lo, hi = one_beat(x)
+    x_raw, lo, hi, beat = pick_teaching_beat("d1")
+    x = fe(x_raw)
     xh = 0.9 * x                                  # 파형은 완벽, 크기만 10 % 작다
 
     def snr_strict(a, b):
@@ -168,7 +264,8 @@ def c1_gain_bias():
 
     g = float((x - x.mean()) @ (x - x.mean()) / ((x - x.mean()) @ (xh - xh.mean())))
     fig = card("① 파형은 완벽한데 크기만 10 % 작다",
-               "gain_bias · snr_out_strict vs snr_out_scaled  —  같은 신호를 0.9 배 한 것뿐이다")
+               "gain_bias · snr_out_strict vs snr_out_scaled  —  같은 신호를 0.9 배 한 것뿐이다"
+               f"   (d1 기록 {beat['record']})")
     ax = fig.add_axes([0.05, 0.30, 0.52, 0.50])
     t = np.arange(hi - lo) / FS * 1000
     ax.plot(t, x[lo:hi], color=CLEAN, lw=4, label="참값")
@@ -194,14 +291,14 @@ def c1_gain_bias():
 # =============================================================== C2
 def c2_r_amp(tag: str = "d0"):
     """잡음이 0 인데 R-peak 를 깎는다."""
-    x = clean_segment(tag, 8.0, seed=2)
+    x, lo, hi, beat = pick_teaching_beat(tag)
     ref = fe(x)
     outs = {m: run_clean(m, x) for m in ("M02", "M04")}
-    lo, hi = one_beat(ref)
     t = table(tag, "exp_c")
 
     fig = card("② 잡음이 하나도 없는데 R-peak 를 깎았다",
-               f"r_amp_err_pct  ·  EXP-C({tag}): 입력에 잡음을 0 으로 넣고 그대로 통과시킨다")
+               f"r_amp_err_pct  ·  EXP-C({tag}): 입력에 잡음을 0 으로 넣고 그대로 통과시킨다"
+               f"   ({tag} 기록 {beat['record']})")
     ax = fig.add_axes([0.05, 0.30, 0.52, 0.50])
     tt = np.arange(hi - lo) / FS * 1000
     ax.plot(tt, ref[lo:hi], color=CLEAN, lw=4.5, label="참값 (= 입력)")
@@ -268,129 +365,161 @@ def c3_psd(tag: str = "d0"):
 
 
 # =============================================================== C4
+# **C6 을 여기에 흡수했다.** 둘 다 «차이가 없다» 를 말해 중복이었고, 다른 것은
+# **왜 없는가** 뿐이다 — C4 는 «지표가 못 잰다», C6 은 «실제로 없다». 한 장에
+# 나란히 두면 그 구분 자체가 카드의 내용이 된다.
+C4_METHODS = ("M00", "M_FE", "M01", "M04", "M05", "M06", "M08")
+
+
 def c4_floor(tag: str = "d1", metric: str = "qrs_dur_err_ms"):
-    """지표 자체의 분해능 — 바닥 아래에는 순위가 없다."""
-    t = table(tag, "exp_c")[metric].dropna().sort_values()
+    """지표의 분해능(왼쪽)과 하류 과제의 무차별(오른쪽) — «차이가 없다» 두 종류."""
+    t = table(tag, "exp_c")[metric].dropna()
     fl = floor_of(tag, metric)
     if fl is None:
         raise SystemExit(f"{tag} floor.csv 가 없다")
-    # 손실 변형(-L3/-L5/-L6)과 중복 방법은 뺀다 — **지표**를 설명하는
-    # 카드이지 방법 목록이 아니다. 20 단이 넘으면 선 위/아래 대비가 죽는다.
-    drop = ("M04np",)
-    t = t[[m for m in t.index if m not in drop and "-L" not in m]]
+    # **방법 목록이 아니라 지표를 설명하는 카드다.** 15 단이 넘으면 선 위/아래
+    # 대비가 죽으므로 대표 일곱만 남긴다.
+    t = t[[m for m in C4_METHODS if m in t.index]].sort_values()
 
-    fig = card("④ 이 선 아래에서는 순위가 없다",
-               f"qrs_dur_err_ms  ·  {tag} 분해능 바닥(floor_p95) = {fl:.2f} ms  —  지표 자체가 그만큼밖에 못 잰다",
-               figsize=(11, 5.2))
-    ax = fig.add_axes([0.12, 0.22, 0.84, 0.58])
+    b = table(tag, "exp_b")
+    hr = b["hr_err_bpm"].dropna()
+    hr = hr[[m for m in C4_METHODS if m in hr.index]]
+    sn = b["snr_imp_scaled"].reindex(hr.index).dropna()
+
+    fig = card("④ «차이가 없다» 에는 두 종류가 있다",
+               f"{metric} + floor_p95  ·  hr_err_bpm  —  «지표가 못 재는 것» 과 «실제로 없는 것»",
+               figsize=(12.5, 5.0))
+
+    ax = fig.add_axes([0.10, 0.30, 0.40, 0.50])
     cols = [BAD if v > fl else "#c9c9c9" for v in t.values]
-    ax.barh(range(len(t)), t.values, color=cols, height=0.68)
-    ax.set_yticks(range(len(t))); ax.set_yticklabels(t.index, fontsize=9)
+    ax.barh(range(len(t)), t.values, color=cols, height=0.66)
+    ax.set_yticks(range(len(t))); ax.set_yticklabels(t.index, fontsize=9.5)
     ax.axvline(fl, color=BAD, lw=1.8)
-    ax.text(fl - max(t.values) * 0.012, -0.35, f"분해능 바닥 {fl:.1f} ms →",
-            color=BAD, fontsize=10, fontweight="bold", ha="right", va="center")
-    ax.set_xlabel("QRS duration 오차 [ms]  (작을수록 좋다)")
+    ax.set_xlabel("QRS duration 오차 [ms]  (작을수록 좋다)", fontsize=9.5)
+    ax.set_title(f"못 재는 것 — 분해능 바닥 {fl:.1f} ms", fontsize=10.5,
+                 loc="left", color=INK)
     for i, v in enumerate(t.values):
-        ax.text(v + max(t.values) * 0.01, i, f"{v:.1f}", va="center",
+        ax.text(v + max(t.values) * 0.015, i, f"{v:.1f}", va="center",
                 fontsize=8.5, color=INK if v > fl else MUTE)
     n_below = int((t.values <= fl).sum())
-    punch(fig, f"{len(t)} 개 방법 중 {n_below} 개가 선 아래에 있다 — 이들 사이의 순위는 «측정 잡음»이지 성능차가 아니다.\n"
-               "이 바닥을 재지 않고 표를 만들면 그 표의 절반은 의미가 없다. 그래서 실험 전에 먼저 쟀다.")
+
+    ax2 = fig.add_axes([0.60, 0.55, 0.37, 0.25])
+    ax2.bar(range(len(sn)), sn.values, color="#c9c9c9", width=0.68)
+    ax2.set_xticks([]); ax2.set_ylabel("SNR 개선 [dB]", fontsize=9)
+    ax2.set_ylim(0, max(sn.values) * 1.35)
+    ax2.set_title(f"실제로 없는 것 — SNR 은 {sn.min():.1f}~{sn.max():.1f} dB 로 갈리는데",
+                  fontsize=10.5, loc="left", color=INK)
+    for sp in ("top", "right"):
+        ax2.spines[sp].set_visible(False)
+
+    ax3 = fig.add_axes([0.60, 0.22, 0.37, 0.25])
+    ax3.bar(range(len(hr)), hr.values, color=C["M08"], width=0.68)
+    ax3.set_xticks(range(len(hr))); ax3.set_xticklabels(hr.index, fontsize=8.5)
+    ax3.set_ylabel("심박수 오차 [bpm]", fontsize=9)
+    ax3.set_ylim(0, max(hr.values) * 1.5)
+    ax3.text(0.01, 0.84, f"심박수 오차는 {hr.min():.2f}~{hr.max():.2f} bpm — 전부 같다",
+             transform=ax3.transAxes, fontsize=9.5, color=INK)
+    for sp in ("top", "right"):
+        ax3.spines[sp].set_visible(False)
+
+    punch(fig, f"왼쪽: {len(t)} 개 중 {n_below} 개가 선 아래다 — 이들 사이의 순위는 «측정 잡음»이지 성능차가 아니다.\n"
+               "오른쪽: 심박수만 필요하면 front-end 로 충분하다. 우리가 재는 차이는 «형태가 필요할 때» 의미가 있다.")
     return save(fig, "C4_metric_floor")
 
 
 # =============================================================== C5
-def c5_halluc(tag: str = "d1"):
-    """지운 자리에 무엇이 생기는가."""
+def c5_pvc():
+    """**합성에서만 보이던 위험이 실데이터에서 사라졌다** — EXP-E P3.
+
+    처음 판은 P2(3 초 지움)로 만들었는데, 그 배율에서는 모든 출력이 똑같이
+    평평해 **그림이 일을 안 했다.** P3 로 바꾸면 훼손이 파형에 그대로 보인다.
+
+    그리고 **한 축만 그리면 안 된다.** `M05` 의 PVC 훼손은 **D0 에서만** 나타나고
+    D1 에서는 부호가 뒤집힌다(F-28). 두 축을 나란히 두는 것이 이 카드의 내용이다 —
+    「합성에서 보인 것은 실데이터에서 다시 물어야 한다」(F-8)를 한 장으로 말한다.
+    """
     from ecgdn.data.mixer import mix_at_snr
-    from ecgdn.data.noise import mixed_noise
-    from ecgdn.methods import build
+    from ecgdn.data.noise import make_banks, mixed_noise
+    from ecgdn.data.sources import get_source
+    from ecgdn.eval.morphology import beat_matrix
+    from ecgdn.methods import build as build_method
     from ecgdn.utils import rng
 
-    x = clean_segment(tag, 12.0, seed=5)
-    i0 = int(len(x) * 0.40)
-    i1 = min(len(x), i0 + int(3.0 * FS))              # P2 — asystole 3 s
-    x_mod = x.copy()
-    x_mod[i0:i1] = float(np.median(x[max(0, i0 - int(0.3 * FS)):i0]))
-    g = rng("card", "p2", 0)
-    n, _ = mixed_noise(len(x), FS, g)
-    y, _, _ = mix_at_snr(x_mod, n, 5.0)
+    banks = make_banks("test", "data/raw/nstdb")
+    m05 = build_method("M05")
+    panes = []
+    for tag in ("d0", "d1"):
+        src = get_source("synthetic" if tag == "d0" else "mitdb")
+        got = None
+        for name in src.records("test"):
+            rec = src.get(name)
+            sym = np.asarray(rec.symbols)
+            rp = np.asarray(rec.r_peaks, dtype=int)
+            v = np.flatnonzero(sym == "V")
+            if v.size < 2:
+                continue
+            # P3 와 **같은 조건**: 60 s 구간, mixed 잡음, 5 dB
+            n_seg = int(60.0 * FS)
+            j = int(rp[v[v.size // 2]])
+            st = max(0, min(int(rec.x.size) - n_seg, j - n_seg // 2))
+            x = np.asarray(rec.x, dtype=np.float64)[st:st + n_seg]
+            m = (rp >= st) & (rp < st + n_seg)
+            rp_s, sym_s = rp[m] - st, sym[m]
+            if (sym_s == "V").sum() < 2 or (sym_s == "N").sum() < 4:
+                continue
+            g = rng("probe", "p3", str(name), 0)
+            nz, _ = mixed_noise(x.size, FS, g, banks=banks)
+            y, _, _ = mix_at_snr(x, nz, 5.0)
+            out = np.asarray(m05(y, FS, {}), dtype=np.float64)
+            got = (str(name), x, out, rp_s, sym_s)
+            break
+        if got is None:
+            raise SystemExit(f"{tag}: PVC 가 있는 구간을 못 찾았다")
+        name, x, out, rp_s, sym_s = got
+        cc = {}
+        for want in ("N", "V"):
+            k = sym_s == want
+            if k.sum() < 2:
+                continue
+            br, _ = beat_matrix(x, rp_s[k], FS)
+            bh, _ = beat_matrix(out, rp_s[k], FS)
+            if br.shape != bh.shape or br.size == 0:
+                continue
+            aa, bb = br - br.mean(1, keepdims=True), bh - bh.mean(1, keepdims=True)
+            den = np.sqrt((aa * aa).sum(1) * (bb * bb).sum(1))
+            with np.errstate(invalid="ignore", divide="ignore"):
+                cc[want] = float(np.nanmean((aa * bb).sum(1) / den))
+        jv = int(rp_s[np.flatnonzero(sym_s == "V")[0]])
+        lo, hi = max(0, jv - int(0.35 * FS)), min(x.size, jv + int(0.45 * FS))
+        panes.append(dict(tag=tag, name=name, x=x, out=out, lo=lo, hi=hi, cc=cc))
 
-    outs = {"M_FE": np.asarray(build("M_FE")(y, FS, {}), dtype=np.float64)}
-    ck = ROOT / "results" / tag / "m06_l1" / "best.pt"
-    if ck.exists():
-        from ecgdn.methods.dl_wrapper import DLDenoiser
-        outs["M06"] = np.asarray(DLDenoiser(ckpt=ck, name="M06")(y, FS, {}),
-                                 dtype=np.float64)
-    pr = pd.read_csv(ROOT / "results" / tag / "exp_e" / "probe.csv")
-    he = pr[pr.probe == "p2"].groupby("method").halluc_energy.mean()
-
-    lo, hi = max(0, i0 - int(1.0 * FS)), min(len(x), i1 + int(1.0 * FS))
-    fig = card("⑤ 심장이 3 초 멈춘 구간 — 없는 파형을 만들어내는가",
-               f"halluc_energy  ·  EXP-E P2({tag}): 3 초를 등전위선으로 지운 뒤 잡음을 얹어 통과시킨다")
-    ax = fig.add_axes([0.05, 0.30, 0.52, 0.50])
-    tt = np.arange(hi - lo) / FS
-    ax.axvspan((i0 - lo) / FS, (i1 - lo) / FS, color="#f2f2f2", zorder=0)
-    ax.plot(tt, y[lo:hi], color="#d8d8d8", lw=0.8, label="입력 (잡음)")
-    for m, v in outs.items():
-        ax.plot(tt, v[lo:hi], color=C[m], lw=1.4, label=m)
-    ax.set_xlabel("s"); ax.set_yticks([]); ax.legend(frameon=False, loc="upper right",
-                                                    ncol=3, fontsize=8.5)
-    ax.text((i0 - lo) / FS + 0.1, ax.get_ylim()[0] * 0.92,
-            "지운 구간 (여기엔 아무것도 없어야 한다)", fontsize=9, color=MUTE)
-    # **정직하게 적는다.** 이 배율에서는 두 출력이 똑같이 평평해 보인다.
-    # 차이는 그림이 아니라 오른쪽 숫자에만 있다 — 그것이 지표가 필요한 이유다.
-    ax.text((i0 - lo) / FS + 0.1, ax.get_ylim()[0] * 0.72,
-            "육안으로는 둘 다 평평하다. 차이는 오른쪽 숫자에만 있다.",
-            fontsize=8.5, color=BAD)
-
-    ax2 = fig.add_axes([0.66, 0.28, 0.31, 0.54])
-    order = [m for m in ("M00", "M_FE", "M01", "M04", "M05", "B01", "M08", "M06", "M07", "M10")
-             if m in he.index]
-    v = he[order]
-    ax2.barh(range(len(v)), v.values,
-             color=[C["M06"] if m.startswith(("M06", "M07", "M08", "M10")) else "#c9c9c9"
-                    for m in order], height=0.7)
-    ax2.set_yticks(range(len(v))); ax2.set_yticklabels(order, fontsize=8.5)
-    ax2.set_xlabel("halluc_energy  (낮을수록 안전)", fontsize=9)
-    ax2.spines["top"].set_visible(False); ax2.spines["right"].set_visible(False)
-    punch(fig, "«딥러닝은 없는 파형을 지어낸다» 는 걱정이 흔하다. 재보니 정반대였다 — 파랑(딥러닝)이 가장 낮다.\n"
-               f"M06 {he.get('M06', float('nan')):.3f} vs front-end {he.get('M_FE', float('nan')):.3f} · identity {he.get('M00', float('nan')):.3f}. 이것을 안 재면 «아마 위험할 것» 이 결론으로 남는다.")
-    return save(fig, "C5_halluc_energy")
-
-
-# =============================================================== C6
-def c6_downstream(tag: str = "d1"):
-    """층 3 에서는 차이가 사라진다 — 그것도 결과다."""
-    t = table(tag, "exp_b")
-    v = t["hr_err_bpm"].dropna().sort_values()
-    v = v[[m for m in v.index if m != "M04np"]]
-    s = t["snr_imp_scaled"].reindex(v.index)
-
-    fig = card("⑥ 차이가 없다는 것도 결과다",
-               f"hr_err_bpm  ·  EXP-B({tag}) 잡음 7 종 10 dB  —  층 3(하류 과제)에서 방법 간 차이가 사라진다",
-               figsize=(11, 5.0))
-    ax = fig.add_axes([0.07, 0.55, 0.88, 0.27])
-    ax.bar(range(len(s)), s.values, color="#c9c9c9", width=0.7)
-    ax.set_xticks([]); ax.set_ylabel("SNR 개선 [dB]", fontsize=9)
-    ax.set_ylim(0, max(s.values) * 1.32)      # 라벨이 막대에 걸리지 않게
-    ax.text(0.01, 0.86, f"SNR 은 {s.min():.1f} ~ {s.max():.1f} dB 로 갈린다",
-            transform=ax.transAxes, fontsize=10, color=INK)
-
-    ax2 = fig.add_axes([0.07, 0.20, 0.88, 0.27])
-    ax2.bar(range(len(v)), v.values, color=C["M08"], width=0.7)
-    ax2.set_xticks(range(len(v))); ax2.set_xticklabels(v.index, fontsize=8.5, rotation=0)
-    ax2.set_ylabel("심박수 오차 [bpm]", fontsize=9)
-    ax2.set_ylim(0, max(v.values) * 1.5)
-    ax2.text(0.01, 0.86, f"심박수 오차는 {v.min():.2f} ~ {v.max():.2f} bpm — 전부 같다",
-             transform=ax2.transAxes, fontsize=10, color=INK)
-    punch(fig, "심박수만 필요하면 front-end 로 충분하다. 우리가 재는 차이는 «형태가 필요할 때» 의미가 있다.\n"
-               "지표를 층으로 나누지 않았다면 «SNR 이 올랐으니 좋아졌다» 로 끝났을 것이다.")
-    return save(fig, "C6_downstream")
+    fig = card("⑤ 합성에서만 보이던 위험 — 실데이터에서는 없었다",
+               "beat_cc(V) − beat_cc(N)  ·  EXP-E P3: 부정맥(PVC) 박동의 형태를 "
+               "정상 박동만큼 지키는가", figsize=(12.5, 5.0))
+    for k, pn in enumerate(panes):
+        ax = fig.add_axes([0.06 + k * 0.47, 0.30, 0.38, 0.50])
+        tt = np.arange(pn["hi"] - pn["lo"]) / FS * 1000
+        ax.plot(tt, pn["x"][pn["lo"]:pn["hi"]], color=CLEAN, lw=4.0, label="참값 (PVC)")
+        ax.plot(tt, pn["out"][pn["lo"]:pn["hi"]], color=C["M05"], lw=1.6, label="M05 출력")
+        ax.set_xlabel("ms"); ax.set_yticks([])
+        d = pn["cc"].get("V", float("nan")) - pn["cc"].get("N", float("nan"))
+        ax.set_title(f"{pn['tag']} {'합성' if pn['tag']=='d0' else 'MIT-BIH'} "
+                     f"· 기록 {pn['name']}", fontsize=10.5, loc="left", color=INK)
+        ax.text(.98, .93, f"V − N = {d:+.3f}", transform=ax.transAxes, ha="right",
+                fontsize=13, fontweight="bold",
+                color=BAD if d < 0 else INK)
+        if k == 0:
+            ax.legend(frameon=False, loc="lower right", fontsize=9)
+    punch(fig, "왼쪽(합성): M05 의 위상 템플릿이 PVC 를 «정상 쪽으로» 끌어당긴다 — 유일하게 음수다.\n"
+               "오른쪽(실데이터): 같은 실험에서 부호가 뒤집힌다. 합성에서는 정상 박동이 모형에 정확히 맞아 "
+               "PVC 만 튀지만, 실기록은 정상 박동도 모형을 벗어나 PVC 가 특별히 불리하지 않다.")
+    return save(fig, "C5_pvc_damage")
 
 
+# **다섯 장이다.** C6(하류 과제)은 C4 에 흡수했다 — 둘 다 «차이가 없다» 를
+# 말해 중복이었고, 합치자 «못 재는 것 / 실제로 없는 것» 이라는 구분이 생겼다.
 CARDS = {"C1": c1_gain_bias, "C2": c2_r_amp, "C3": c3_psd,
-         "C4": c4_floor, "C5": c5_halluc, "C6": c6_downstream}
+         "C4": c4_floor, "C5": c5_pvc}
 
 # 카드마다 (지표, 무엇을 잡나, 근거). 문서는 **이 표에서 생성**한다 — 손으로
 # 쓰면 카드와 문서가 갈라지고 그것을 알아챌 방법이 없다(F-9 계열).
@@ -401,12 +530,12 @@ INDEX = [
      "EXP-C(d0) — 잡음 0 입력"),
     ("C3", "psd_logdist", "무엇을 지웠는지는 스펙트럼에만 보인다",
      "EXP-C(d0) — 잡음 0 입력"),
-    ("C4", "qrs_dur_err_ms + floor_p95", "지표 자체의 분해능 아래에는 순위가 없다",
-     "EXP-C(d1) + results/d1/metric_floor"),
-    ("C5", "halluc_energy", "없는 파형을 지어내는가 — 딥러닝이 가장 안전했다",
-     "EXP-E P2(d1) — 3 초를 지운 프로브"),
-    ("C6", "hr_err_bpm", "층 3 에서는 방법 간 차이가 사라진다",
-     "EXP-B(d1) 잡음 7 종 10 dB"),
+    ("C4", "qrs_dur_err_ms + floor_p95 · hr_err_bpm",
+     "«차이가 없다» 의 두 종류 — 지표가 못 재는 것과 실제로 없는 것",
+     "EXP-C(d1) + results/d1/metric_floor + EXP-B(d1)"),
+    ("C5", "beat_cc(V) − beat_cc(N)",
+     "합성에서만 보이던 위험 — 실데이터에서는 재현되지 않았다 (F-8 · F-28)",
+     "EXP-E P3(d0 · d1) — PVC 형태 보존"),
 ]
 
 

@@ -71,6 +71,25 @@ def segment(axis: str, seconds: float, seed: int):
 # 인과 FE 설계를 바꿔 보기 위한 전역. **참값 쪽과 처리 쪽이 반드시 같아야**
 # 비교가 성립하므로 한 곳에서 들고 있는다 (F-27).
 FE_CFG = [None]
+FE_MODE = ["causal"]        # causal / zerophase / median (docs/13 · docs/14)
+
+
+def rt_fe(x: np.ndarray, hop: int, block: int = 25) -> np.ndarray:
+    """**실시간 front-end 를 바깥에서 한 번만** 돌린다 — 브리지와 같은 경로다.
+
+    `StreamProcessor(frontend="causal")` 는 처리기 **안에서** FE 를 돌리는데,
+    지연이 있는 모드(`zerophase`·`median`)는 출력 길이가 입력과 달라 그 구조에
+    안 맞는다. 그리고 실제 시연 경로(`serial_bridge.py`)가 바깥에서 한 번
+    도는 구조이므로, **재는 경로와 도는 경로를 같게** 두는 것이 맞다 (F-25).
+
+    반환은 입력보다 `latency_samples` 만큼 짧고, **표본 번호는 0 부터 그대로**다
+    (`frontend_modes` 의 계약) — 그래서 잘라내기만 하면 정렬이 맞는다.
+    """
+    from ecgdn.realtime.frontend_modes import build_fe
+    if FE_MODE[0] == "causal" and FE_CFG[0] is not None:
+        return causal_fe(x, block)          # 차단/차수를 바꿔 재는 경로 (D-19)
+    fe = build_fe(FE_MODE[0], FS, hop_s=hop / FS)
+    return np.concatenate([fe.push(x[i:i + block]) for i in range(0, x.size, block)])
 
 
 def causal_fe(x: np.ndarray, block: int = 25) -> np.ndarray:
@@ -145,9 +164,17 @@ def main() -> int:
                     help="인과 FE 의 고역통과 차단 [Hz]. 기본은 공통 FE 와 같다(0.5)")
     ap.add_argument("--fe-order", type=int, default=None,
                     help="인과 FE 의 차수. 기본은 공통 FE 와 같다(4)")
-    ap.add_argument("--out", default="results/stream_verify.json")
+    ap.add_argument("--fe-mode", default="causal",
+                    choices=["causal", "zerophase", "median"],
+                    help="실시간 front-end (docs/13 · docs/14)")
+    ap.add_argument("--out", default=None,
+                    help="기본은 모드별로 다른 파일이다 — 서로 덮어쓰지 않게 (O-20)")
     a = ap.parse_args()
 
+    FE_MODE[0] = a.fe_mode
+    if a.out is None:
+        a.out = ("results/stream_verify.json" if a.fe_mode == "causal"
+                 else f"results/stream_verify_{a.fe_mode}.json")
     if a.hp_hz is not None or a.fe_order is not None:
         from dataclasses import replace as _rep
         from ecgdn.config import DEFAULT_FE_CAUSAL as _BASE
@@ -159,8 +186,23 @@ def main() -> int:
               f"order={FE_CFG[0].order}  (학습은 0.5 Hz 영위상이다 — F-27)")
 
     rows = []
+    fe_share = {}
     for axis in a.axis:
         segs = [segment(axis, a.seconds, s) for s in range(a.segments)]
+        # **front-end 의 몫** (docs/15 §5) — 방법과 무관한 항이라 여기서 한 번 잰다.
+        # 「실시간 FE 를 통과한 깨끗한 신호」가 「오프라인 FE 를 통과한 것」에서
+        # 얼마나 떨어져 있는가. 이것이 모든 방법에 공통으로 얹히는 손해다.
+        sh = []
+        for (_, x) in segs:
+            xr, xz = rt_fe(x, 12), zp_fe(x)
+            n = min(xr.size, xz.size)
+            k = int(2 * FS)                      # 앞의 warm-up 은 뺀다
+            if n - k < FS * 2:
+                continue
+            sh.append(snr_scaled(xz[k:n], xr[k:n]))
+        fe_share[axis] = round(float(np.mean(sh)), 3) if sh else None
+        print(f"[{axis}] front-end 의 몫 ({FE_MODE[0]}): "
+              f"{fe_share[axis]} dB — 오프라인 FE 대비, 방법과 무관")
         for mid in a.methods:
             if mid in FE_INTRINSIC:
                 print(f"[{axis}/{mid}] 건너뜀 — front-end 자체가 방법이라 "
@@ -190,14 +232,19 @@ def main() -> int:
                                  snr_scaled(xz[lo:hi], off0[lo:hi]))
 
                     # (2) 파이프라인 전체: 각자의 참조로 잰다.
+                    # front-end 는 **바깥에서 한 번** — 브리지와 같은 경로다.
+                    yr = rt_fe(y, hop)
                     sp = StreamProcessor(meth_nofe, fs=FS, hop=hop, d=d,
-                                         frontend="causal", fe_cfg=FE_CFG[0])
-                    out = sp.run(y)
+                                         frontend="none")
+                    out = sp.run(yr)
                     lo2, hi2 = sp.origin + sp.win, sp.origin + out.size
                     if hi2 - lo2 < FS * 2:
                         continue
-                    xc = causal_fe(x)
-                    s_rt = snr_scaled(xc[lo2:hi2], out[lo2 - sp.origin:])
+                    xc = rt_fe(x, hop)
+                    hi2 = min(hi2, xc.size)
+                    if hi2 - lo2 < FS * 2:
+                        continue
+                    s_rt = snr_scaled(xc[lo2:hi2], out[lo2 - sp.origin:hi2 - sp.origin])
                     off = np.asarray(meth(y, FS, {}))       # 보고서가 쓰는 경로
                     s_off = snr_scaled(x[lo2:hi2], off[lo2:hi2])
                     pipe.append(s_rt - s_off)
@@ -226,6 +273,7 @@ def main() -> int:
     # **어느 FE 로 잰 표인지 산출물이 스스로 말해야 한다.** 안 적으면 두 표를
     # 나란히 놓았을 때 어느 쪽이 어느 설정인지 알 수 없다 (F-27).
     p.write_text(json.dumps(dict(fs=FS, seconds=a.seconds, segments=a.segments,
+                                 fe_mode=a.fe_mode, fe_share_db=fe_share,
                                  fe_hp_hz=cfg.hp_hz, fe_order=cfg.order,
                                  rows=rows), indent=1, ensure_ascii=False))
     print(f"\n-> {a.out}  {len(rows)} 행")
