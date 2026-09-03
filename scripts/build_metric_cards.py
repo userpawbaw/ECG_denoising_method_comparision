@@ -439,7 +439,8 @@ def c5_pvc():
     「합성에서 보인 것은 실데이터에서 다시 물어야 한다」(F-8)를 한 장으로 말한다.
     """
     from ecgdn.data.mixer import mix_at_snr
-    from ecgdn.data.noise import make_banks, mixed_noise
+    from ecgdn.data.noise import mixed_noise
+    from ecgdn.data.nstdb import make_banks
     from ecgdn.data.sources import get_source
     from ecgdn.eval.morphology import beat_matrix
     from ecgdn.methods import build as build_method
@@ -491,10 +492,18 @@ def c5_pvc():
                 cc[want] = float(np.nanmean((aa * bb).sum(1) / den))
         jv = int(rp_s[np.flatnonzero(sym_s == "V")[0]])
         lo, hi = max(0, jv - int(0.35 * FS)), min(x.size, jv + int(0.45 * FS))
-        panes.append(dict(tag=tag, name=name, x=x, out=out, lo=lo, hi=hi, cc=cc))
+        # **축 평균을 산출물에서 읽어 함께 적는다.** 카드가 기록 하나만 보이면
+        # 그 숫자가 보고서(5.5 · 5.8.4)의 축 평균과 달라 보인다 — 축을 안 적은
+        # 인용이 F-28 을 만들었다. 두 숫자를 같이 두면 어긋날 수 없다.
+        pr = pd.read_csv(ROOT / "results" / tag / "exp_e" / "probe.csv")
+        p3 = pr[(pr.probe == "p3") & (pr.method == "M05")]
+        piv = p3.pivot_table(index="method", columns="beat_type", values="beat_cc")
+        axis_vn = float(piv["V"].iloc[0] - piv["N"].iloc[0])
+        panes.append(dict(tag=tag, name=name, x=x, out=out, lo=lo, hi=hi, cc=cc,
+                          axis_vn=axis_vn))
 
     fig = card("⑤ 합성에서만 보이던 위험 — 실데이터에서는 없었다",
-               "beat_cc(V) − beat_cc(N)  ·  EXP-E P3: 부정맥(PVC) 박동의 형태를 "
+               "beat_cc(V) - beat_cc(N)  ·  EXP-E P3: 부정맥(PVC) 박동의 형태를 "
                "정상 박동만큼 지키는가", figsize=(12.5, 5.0))
     for k, pn in enumerate(panes):
         ax = fig.add_axes([0.06 + k * 0.47, 0.30, 0.38, 0.50])
@@ -505,9 +514,11 @@ def c5_pvc():
         d = pn["cc"].get("V", float("nan")) - pn["cc"].get("N", float("nan"))
         ax.set_title(f"{pn['tag']} {'합성' if pn['tag']=='d0' else 'MIT-BIH'} "
                      f"· 기록 {pn['name']}", fontsize=10.5, loc="left", color=INK)
-        ax.text(.98, .93, f"V − N = {d:+.3f}", transform=ax.transAxes, ha="right",
+        ax.text(.98, .93, f"V - N = {d:+.3f}", transform=ax.transAxes, ha="right",
                 fontsize=13, fontweight="bold",
                 color=BAD if d < 0 else INK)
+        ax.text(.98, .855, f"이 기록 · 축 평균 {pn['axis_vn']:+.3f}",
+                transform=ax.transAxes, ha="right", fontsize=9, color=MUTE)
         if k == 0:
             ax.legend(frameon=False, loc="lower right", fontsize=9)
     punch(fig, "왼쪽(합성): M05 의 위상 템플릿이 PVC 를 «정상 쪽으로» 끌어당긴다 — 유일하게 음수다.\n"

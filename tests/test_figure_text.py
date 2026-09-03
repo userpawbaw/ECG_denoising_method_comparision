@@ -96,6 +96,22 @@ def test_scripts_that_draw_korean_select_a_korean_font():
     assert not bad, f"그림에 한글을 넣는데 폰트 선택이 없다: {bad}"
 
 
+def test_no_typographic_minus_reaches_a_figure():
+    """U+2212(−)는 **나눔 폰트에 없다** — 그림에서 두부(□)로 나온다.
+
+    `axes.unicode_minus: False` 는 **눈금 포맷**만 고친다. 문자열에 직접 적은
+    U+2212 는 그대로 남아 깨진다. 실제로 C5 카드의 «V − N» 이 그랬다.
+    본문(마크다운)에서는 U+2212 가 옳으므로, **그림에 가는 문자열만** 본다.
+    """
+    bad = []
+    for p, src in _figure_scripts():
+        for ln, v in _figure_strings(src):
+            if "\u2212" in v:
+                bad.append(f"{p.name}:{ln}: {v.strip()[:56]}")
+    assert not bad, ("그림 문자열에 U+2212 가 있다 — 나눔 폰트에 없는 글자다. "
+                     "빼기 기호는 ASCII '-' 로 쓸 것:\n" + "\n".join(bad))
+
+
 def test_scripts_that_draw_korean_disable_unicode_minus():
     """나눔 폰트에 U+2212(−) 가 없다 — 음수 눈금이 깨진다."""
     bad = [p.name for p, src in _korean_figure_scripts()

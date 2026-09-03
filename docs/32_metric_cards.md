@@ -19,9 +19,8 @@
 | **C1** | `gain_bias · strict/scaled` | 진폭만 눌린 출력을 SNR 이 과하게 처벌한다 | 합성 예시 (0.9 x). 보고서 3.2.2 의 단위 테스트와 같은 상황 |
 | **C2** | `r_amp_err_pct` | «고주파 = 잡음» 가정이 QRS 부터 깎는다 | EXP-C(d0) — 잡음 0 입력 |
 | **C3** | `psd_logdist` | 무엇을 지웠는지는 스펙트럼에만 보인다 | EXP-C(d0) — 잡음 0 입력 |
-| **C4** | `qrs_dur_err_ms + floor_p95` | 지표 자체의 분해능 아래에는 순위가 없다 | EXP-C(d1) + results/d1/metric_floor |
-| **C5** | `halluc_energy` | 없는 파형을 지어내는가 — 딥러닝이 가장 안전했다 | EXP-E P2(d1) — 3 초를 지운 프로브 |
-| **C6** | `hr_err_bpm` | 층 3 에서는 방법 간 차이가 사라진다 | EXP-B(d1) 잡음 7 종 10 dB |
+| **C4** | `qrs_dur_err_ms + floor_p95 · hr_err_bpm` | «차이가 없다» 의 두 종류 — 지표가 못 재는 것과 실제로 없는 것 | EXP-C(d1) + results/d1/metric_floor + EXP-B(d1) |
+| **C5** | `beat_cc(V) − beat_cc(N)` | 합성에서만 보이던 위험 — 실데이터에서는 재현되지 않았다 (F-8 · F-28) | EXP-E P3(d0 · d1) — PVC 형태 보존 |
 
 ```bash
 python3 scripts/build_metric_cards.py            # 여섯 장
