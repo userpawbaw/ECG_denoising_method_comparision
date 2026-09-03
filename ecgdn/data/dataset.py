@@ -66,7 +66,7 @@ class ECGDenoiseDataset:
                  salt: Any = 0, max_per_record: int | None = None,
                  normalize: bool = True, pre_denoise: str | None = None,
                  frontend: bool = True, fe_margin_s: float = EVAL_GUARD_S,
-                 ref_frontend: bool = True):
+                 ref_frontend: bool | None = None):
         self.source = source or get_source("auto")
         self.split = split
         self.win, self.hop = int(win), int(hop)
@@ -84,13 +84,24 @@ class ECGDenoiseDataset:
         self.frontend = bool(frontend)
         # 학습 타깃도 참조와 같은 대역이어야 한다. 다르면 신경망이 front-end 를
         # 되돌리는 법을 배우게 된다.
-        self.ref_frontend = bool(ref_frontend)
+        # **안 주면 `frontend` 를 따라간다.** 여기를 True 로 고정하면 예전에
+        # `frontend=False` 로 만들던 모든 호출의 의미가 조용히 바뀐다.
+        # 명시할 때만 «입력은 날것, 목표는 FE 통과» 가 된다 (docs/15 7절).
+        self.ref_frontend = bool(frontend if ref_frontend is None else ref_frontend)
         self.fe_margin_s = float(fe_margin_s)
         self._fe = None
         self.index = _index_windows(self.source, split, self.win, self.hop, max_per_record)
 
     def _fe_fn(self):
-        if not self.frontend:
+        """front-end 객체. **입력·참조 어느 한쪽이라도 쓰면** 만든다.
+
+        전에는 `self.frontend` 하나가 둘 다 껐다. 그러면 «입력은 날것,
+        목표는 FE 통과» 라는 조합을 표현할 수 없는데, **D1 에서는 그 조합만이
+        옳다** — 목표에서 FE 를 빼면 목표가 «MIT-BIH 원본» 이 되고 그것은
+        clean 이 아니다(**F-12**). 모델이 기록 자신의 잡음을 재현하도록
+        학습된다. 그래서 둘을 갈랐다.
+        """
+        if not (self.frontend or self.ref_frontend):
             return None
         if self._fe is None:
             from ..methods.frontend import FrontEnd
@@ -120,7 +131,10 @@ class ECGDenoiseDataset:
         # front-end 를 쓸 때는 창 양쪽에 **실제 이웃 구간**을 여유로 붙여 필터링한 뒤
         # 가운데만 잘라낸다. 0.5 Hz HPF 는 수 초간 링잉하므로 4.096 s 창에 그대로 걸면
         # 창 전체가 트랜지언트가 된다 (docs/01_design.md 2.0 guard band 측정 참조).
-        m = int(round(self.fe_margin_s * rec.fs)) if self.frontend else 0
+        # 참조에만 FE 를 걸어도 guard band 는 필요하다 — 경계 트랜지언트는
+        # 어느 쪽을 거르든 똑같이 생긴다.
+        m = (int(round(self.fe_margin_s * rec.fs))
+             if (self.frontend or self.ref_frontend) else 0)
         lo, hi = wi.start - m, wi.start + self.win + m
         pad_l, pad_r = max(0, -lo), max(0, hi - rec.x.size)
         seg = rec.x[max(lo, 0):min(hi, rec.x.size)]
@@ -136,7 +150,7 @@ class ECGDenoiseDataset:
         y_seg, _, _ = mix_at_snr(seg, n, snr)
 
         fe = self._fe_fn()
-        if fe is not None:
+        if fe is not None and self.frontend:
             y_seg = fe(y_seg, rec.fs)
 
         pre = self._pre_fn()

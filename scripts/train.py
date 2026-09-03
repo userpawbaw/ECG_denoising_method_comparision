@@ -43,7 +43,10 @@ def build_datasets(cfg: dict):
               snr_range=tuple(d.get("snr_range", (-5.0, 20.0))),
               max_per_record=d.get("max_per_record"),
               pre_denoise=d.get("pre_denoise"),
-              frontend=bool(d.get("frontend", True)))
+              frontend=bool(d.get("frontend", True)),
+              # **안 적으면 예전과 같다** — `frontend` 를 따라간다.
+              # 명시하면 «입력은 날것, 목표는 FE 통과» 를 만들 수 있다.
+              ref_frontend=bool(d.get("ref_frontend", d.get("frontend", True))))
     tr = ECGDenoiseDataset(src, "train", banks=make_banks("train", nstdb_root),
                            salt=("train", cfg.get("seed", 0)), **kw)
     va = ECGDenoiseDataset(src, "val", banks=make_banks("val", nstdb_root),

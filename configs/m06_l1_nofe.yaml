@@ -1,0 +1,41 @@
+exp_id: m06_l1_nofe
+seed: 0
+
+model:
+  name: resunet1d
+  kwargs: {}
+
+loss: L1
+
+data:
+  source: auto            # auto = MIT-BIH 가 있으면 그것, 없으면 합성
+  dur_s: 300.0            # 합성 소스일 때 기록 길이
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 1024
+  hop: 512
+  snr_range: [-5.0, 20.0]
+  max_per_record: 160     # 에폭당 window 수 상한 (계산량 조절)
+  nstdb_root: data/raw/nstdb
+  # ---- 이 설정의 전부: **입력만 날것으로 준다** (docs/15 7절 목적 B)
+  frontend: false         # 입력에 FE 를 안 건다 — 모델이 앞단까지 스스로 배운다
+  ref_frontend: true      # **목표는 FE 를 통과한 것 그대로 둔다.**
+                          # 여기를 false 로 하면 D1 의 목표가 «MIT-BIH 원본» 이
+                          # 되고, 그것은 clean 이 아니다 — 모델이 기록 자신의
+                          # 잡음을 재현하도록 학습된다 (F-12 재현). 그래서 참조는
+                          # 건드리지 않는다. 묻는 것은 «앞단을 스스로 배울 수
+                          # 있는가» 이지 «참조를 바꾸면 어떻게 되는가» 가 아니다.
+                          #
+                          # **주의**: 이 설정으로 학습한 체크포인트는 EXP-A~G 의
+                          # 표에 넣으면 안 된다. 공정성 규약(4.2)의 «모든 방법이
+                          # 같은 입력에서 출발한다» 를 일부러 깨는 조건이다.
+
+train:
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  batch_size: 64
+  epochs: 60
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0
