@@ -60,7 +60,7 @@ from ecgdn.data.synthetic import synth_ecg
 from ecgdn.eval.rpeak import detect_rpeaks
 from ecgdn.utils import ensure_dir, rng, save_manifest
 from explore_lookahead_fe import (C, INJECT_FRAC, _ko_font, f_lookahead, f_median,
-                                  f_offline, load, s_depth, t_amp, tp_band)
+                                  f_offline, load, s_depth, t_amp, tp_noise, tp_spread)
 
 ROOT = Path(__file__).resolve().parents[1]
 plt.rcParams.update({"font.family": _ko_font(), "axes.unicode_minus": False,
@@ -155,7 +155,7 @@ def measure_hr():
             v = fn(x)
             row[f"t_{key}"] = abs(t_amp(v, r, r_amp) - t_ref)
             row[f"s_{key}"] = abs(s_depth(v, r, r_amp) - s_ref)
-            row[f"b_{key}"] = tp_band(v, r, r_amp)
+            row[f"b_{key}"] = tp_spread(v, r, r_amp)
         rows.append(row)
     return rows
 
@@ -169,7 +169,7 @@ def fig_hr(rows, out: Path):
               ("med_s", "중앙값 100+300 ms", "#7fcfae", "--s"),
               ("la", "블록 영위상 0.5 s", C["look"], "-o"))
     for ax, key, ttl in ((axes[0], "t", "T 진폭 오차 [%R]  (T 파를 깎는가)"),
-                         (axes[1], "b", "T-P 대역폭 [%R]  (평평한가)")):
+                         (axes[1], "b", "T-P 준위 산포 [%R]  (박동마다 같은 높이인가)")):
         for k, lab, col, st in series:
             ax.plot(hr, [r[f"{key}_{k}"] for r in rows], st, color=col, label=lab,
                     lw=1.8, ms=5)
@@ -236,7 +236,8 @@ def measure_clean(tag: str):
                         floor_db=10 * np.log10((a @ a) / ((b - a) @ (b - a))),
                         t_err=abs(t_amp(v, r, r_amp) - t_ref),
                         s_err=abs(s_depth(v, r, r_amp) - s_ref),
-                        band=tp_band(v, r, r_amp)))
+                        band=tp_spread(v, r, r_amp),
+                        noise=tp_noise(v, r, r_amp)))
     return out, name
 
 
@@ -249,7 +250,7 @@ def fig_clean(per_axis, out: Path):
     w, idx = 0.36, np.arange(len(labs))
     for ax, key, ttl in ((axes[0], "floor_db",
                           "왜곡 하한 [dB]  (높을수록 영위상과 같다)"),
-                         (axes[1], "band", "T-P 대역폭 [%R]  (낮을수록 평평)")):
+                         (axes[1], "band", "T-P 준위 산포 [%R]  (낮을수록 평평)")):
         for k, tag in enumerate(("d0", "d1")):
             v = [r[key] for r in per_axis[tag][0]]
             ax.bar(idx + (k - 0.5) * w, v, w, color=cols,
@@ -322,12 +323,12 @@ def write_doc(hr_rows, clean, supers, made) -> Path:
             db = "−∞ (정확히 선형)" if not np.isfinite(r["err_db"]) else f"{r['err_db']:.1f}"
             L.append(f"| {tag} | {r['label']} | {db} | {r['err_pct_r']:.2f} |")
     L += ["",
-          "## 대가 (3) — 잡음 0 입력 `[측정]`", "", "| 축 | 방식 | 왜곡 하한 [dB] | T 오차 | S 오차 | T-P 폭 |",
-          "|---|---|---:|---:|---:|---:|"]
+          "## 대가 (3) — 잡음 0 입력 `[측정]`", "", "| 축 | 방식 | 왜곡 하한 [dB] | T 오차 | S 오차 | 준위 산포 | *구간내 잡음* |",
+          "|---|---|---:|---:|---:|---:|---:|"]
     for tag, (rows, name) in clean.items():
         for r in rows:
             L.append(f"| {tag} | {r['label']} | **{r['floor_db']:.1f}** | {r['t_err']:.1f} %R | "
-                     f"{r['s_err']:.1f} %R | {r['band']:.1f} %R |")
+                     f"{r['s_err']:.1f} %R | **{r['band']:.1f} %R** | *{r['noise']:.1f} %R* |")
     L += ["", "## 그림", ""]
     L += [f"![{p.stem}](../{p.relative_to(ROOT)})" for p in made] + [""]
     p = ROOT / "docs" / "14_median_vs_zerophase.md"

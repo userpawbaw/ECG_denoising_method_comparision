@@ -28,15 +28,18 @@ D-19 는 «인과 IIR 고역통과» 라는 **한 가지 형태** 안에서 차�
 ------------------------------------
 D-19 의 두 지표(박동당 이동·남은 변동)는 **화면에서 눈에 띄는 두 가지를 못 잡았다.**
 
-**(3) T-P 대역폭** `tp_band`   <- 새로 넣는다
+**(3a) T-P 준위 산포** `tp_spread` · **(3b) 준위 이탈** `tp_off`
 
-    모든 박동의 T-P 구간 표본을 모아 전체 중앙값을 뺀 뒤 p2.5~p97.5 폭.
-    지표 = 100 x 폭 / R 진폭                        [%R]
+    박동마다 T-P 구간의 **중앙값 하나**를 «그 박동의 평활 준위» 로 삼는다.
+    (3a) 그 준위들의 p2.5~p97.5 폭, (3b) 준위들의 |중앙 편차|. 둘 다 %R.
 
-    **"평활 대역의 모든 점이 중심선 둘레 몇 %R 안에 들어오는가."**
-    박동 안의 기울기와 박동 사이의 흔들림을 **하나로** 잡는다. 작을수록
-    P·Q·R·S·T 가 각각 또렷해진다. (1) 은 박동 안 기울기만 봐서 박동 사이
-    준위가 어긋나는 것을 못 봤다.
+    **"모든 박동의 평활 대역이 같은 높이에, 그리고 0 에 있는가."**
+
+    처음에는 구간의 표본을 **전부 모아** 산포를 쟀는데(`tp_band`), 그 산포의
+    대부분이 **구간 안 잡음**이었다 — 그리고 잡음은 모든 방식이 똑같이
+    통과시키므로 **지표가 방식을 못 갈랐다** (**F-30**). 구간 안이 매끈한지는
+    denoiser 의 몫이지 front-end 의 몫이 아니다. `tp_noise` 를 진단용으로
+    남겨 그 사실을 보인다.
 
 **(4) S 골 깊이 오차** `s_err`   <- 새로 넣는다
 
@@ -230,8 +233,49 @@ def drift_per_beat(v, r, r_amp):
     return 100 * float(np.median(out)) / r_amp if out else float("nan")
 
 
+def _tp_levels(v, r):
+    """**박동마다 T-P 준위 하나.** 구간 안의 잡음은 중앙값이 걷어낸다.
+
+    처음에는 구간의 표본을 **전부 모아** 산포를 쟀는데(옛 `tp_band`), 그
+    산포의 대부분이 **구간 안 잡음**이었다 — 그리고 잡음은 모든 방식이 똑같이
+    통과시키므로 지표가 방식을 못 갈랐다 (**F-30**). 평활도는 «이 박동의
+    평활 대역이 어느 높이에 있는가» 의 문제이지 «그 안이 얼마나 매끈한가» 가
+    아니다. 후자는 방법(denoiser)의 몫이고 front-end 의 몫이 아니다.
+    """
+    return np.array([np.median(v[i0:i1]) for i0, i1 in _tp_slices(r, v.size)])
+
+
+def tp_spread(v, r, r_amp):
+    """(3a) **박동별 T-P 준위의 산포** [%R] — 평활 대역이 같은 높이에 있는가."""
+    lv = _tp_levels(v, r)
+    if lv.size < 3:
+        return float("nan")
+    lv = lv - np.median(lv)
+    return 100 * float(np.percentile(lv, 97.5) - np.percentile(lv, 2.5)) / r_amp
+
+
+def tp_off(v, r, r_amp):
+    """(3b) **그 높이가 0 인가** [%R] — 박동별 준위의 |중앙값| 편차."""
+    lv = _tp_levels(v, r)
+    if lv.size < 3:
+        return float("nan")
+    return 100 * float(np.median(np.abs(lv - np.median(lv)))) / r_amp
+
+
+def tp_noise(v, r, r_amp):
+    """진단용 — 구간 **안**의 잡음 [%R]. front-end 로 안 갈리는 것을 보이려 남긴다."""
+    segs = [v[i0:i1] - np.median(v[i0:i1]) for i0, i1 in _tp_slices(r, v.size)]
+    if not segs:
+        return float("nan")
+    d = np.concatenate(segs)
+    return 100 * float(np.percentile(d, 97.5) - np.percentile(d, 2.5)) / r_amp
+
+
 def tp_band(v, r, r_amp):
-    """(3) 평활 대역의 모든 표본이 중심선 둘레 몇 %R 안에 드는가 [%R]."""
+    """**옛 정의** — 표본을 전부 모은 산포. F-30 에서 잡음 지배로 폐기했다.
+
+    문서에는 남겨 «왜 이것으로는 못 갈랐는가» 를 보인다.
+    """
     segs = [v[i0:i1] for i0, i1 in _tp_slices(r, v.size)]
     if not segs:
         return float("nan")
@@ -332,6 +376,9 @@ def measure(tag: str):
         rows.append(dict(
             label=lab, group=grp, latency_ms=lat,
             drift=drift_per_beat(v, r, r_amp),
+            tp_spread=tp_spread(v, r, r_amp),
+            tp_off=tp_off(v, r, r_amp),
+            tp_noise=tp_noise(v, r, r_amp),
             tp_band=tp_band(v, r, r_amp),
             s_dep=s_depth(v, r, r_amp),
             s_err=abs(s_depth(v, r, r_amp) - s_ref),
@@ -372,7 +419,7 @@ def figure(tag: str, out: Path):
                              gridspec_kw={"width_ratios": [1.25, 1.25, 0.9]})
     fig.suptitle(f"위상 왜곡을 차수 말고 다른 방법으로 없앨 수 있는가 — {tag} 기록 {name}",
                  x=0.02, ha="left", fontsize=14, fontweight="bold")
-    axes[0, 0].set_title("① 기저선 변동 없음 — T-P 가 중심선에 붙는가",
+    axes[0, 0].set_title("① 기저선 변동 없음 — 박동마다 평활 대역이 같은 높이인가",
                          fontsize=11, loc="left")
     axes[0, 1].set_title(f"② 기저선 변동 R 의 {INJECT_FRAC*100:.0f} % 주입 — 지우는가",
                          fontsize=11, loc="left")
@@ -407,7 +454,7 @@ def figure(tag: str, out: Path):
         axes[k, 0].set_ylabel(lab, rotation=0, ha="right", va="center",
                               fontsize=10, labelpad=8)
         if fn is not None:
-            axes[k, 0].text(.985, .90, f"T-P 폭 {tp_band(vx, r, r_amp):.0f} %R",
+            axes[k, 0].text(.985, .90, f"준위 산포 {tp_spread(vx, r, r_amp):.1f} %R",
                             transform=axes[k, 0].transAxes, ha="right",
                             fontsize=9.5, color=C["mute"])
             axes[k, 1].text(.985, .90, f"남은 변동 {wander_left(fn, x, r_amp, INJECT_FRAC*r_amp):.0f} %R",
@@ -446,12 +493,11 @@ def frontier(tag: str, rows, out: Path):
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.4), dpi=150)
     fig.suptitle(f"지연으로 무엇을 사는가 — {tag}", x=0.02, ha="left",
                  fontsize=13, fontweight="bold")
-    # **저울질하는 두 축을 그린다.** ③ T-P 대역폭은 d1 에서 후보 대부분이
-    # 4~7 %R 로 뭉쳐 갈리지 않는다(원기록 자체가 이미 15.9 %R 흔들린다) —
-    # 라벨을 어떻게 놓아도 안 읽히고, 무엇보다 **그 축에서는 결정할 수 없다.**
-    # 그래서 프런티어는 실제로 갈리는 (2) 와 (4) 로 그린다. ③ 은 표에 남긴다.
-    for ax, key, ttl in ((axes[0], "wander",
-                          "② 남은 기저선 변동 [%R]  (50 주입 · 낮을수록 잘 지운다)"),
+    # 저울질하는 두 축. 옛 `tp_band` 로 그렸을 때는 후보들이 4~7 %R 로 뭉쳐
+    # 갈리지 않았는데, 그것은 **지표가 잡음을 재고 있었기 때문**이다(F-30).
+    # 박동별 준위로 바꾸자 갈린다.
+    for ax, key, ttl in ((axes[0], "tp_spread",
+                          "③a T-P 준위 산포 [%R]  (낮을수록 박동마다 같은 높이)"),
                          (axes[1], "s_err",
                           "④ S 골 깊이 오차 [%R]  (낮을수록 안 찌그러진다)")):
         for rw in rows:
@@ -546,13 +592,14 @@ def write_doc(per_axis: dict, made: list[Path], costs: list[dict]) -> Path:
          ""]
     for tag, (rows, meta) in per_axis.items():
         L += [f"## {tag} — 기록 {meta['record']} · 박동 {meta['n_beats']} 개", "",
-              "| 방식 | 추가 지연 | (3) T-P 폭 | (4) S 오차 | (5) T 진폭 오차 | (1) 박동당 이동 | (2) 남은 변동 | 영위상과의 차 |",
-              "|---|---:|---:|---:|---:|---:|---:|---:|"]
+              "| 방식 | 추가 지연 | (3a) 준위 산포 | (3b) 준위 이탈 | (4) S 오차 | (5) T 진폭 오차 | (1) 박동당 이동 | (2) 남은 변동 | 영위상과의 차 | *(폐기) T-P 폭* | *구간내 잡음* |",
+              "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
         for rw in rows:
             lat = "—" if not np.isfinite(rw["latency_ms"]) else f"{rw['latency_ms']:.0f} ms"
-            L.append(f"| {rw['label']} | {lat} | **{rw['tp_band']:.1f}** | "
-                     f"**{rw['s_err']:.1f}** | {rw['t_err']:.1f} | {rw['drift']:.1f} | "
-                     f"{rw['wander']:.1f} | {rw['zperr']:.1f} |")
+            L.append(f"| {rw['label']} | {lat} | **{rw['tp_spread']:.1f}** | "
+                     f"**{rw['tp_off']:.1f}** | **{rw['s_err']:.1f}** | {rw['t_err']:.1f} | "
+                     f"{rw['drift']:.1f} | {rw['wander']:.1f} | {rw['zperr']:.1f} | "
+                     f"*{rw['tp_band']:.1f}* | *{rw['tp_noise']:.1f}* |")
         L.append("")
     def g(tag, label, key):
         """**결론 문장의 숫자를 표에서 뽑는다.** 손으로 박으면 재측정 때 갈라진다(F-9 계열)."""
@@ -576,7 +623,8 @@ def write_doc(per_axis: dict, made: list[Path], costs: list[dict]) -> Path:
           f"블록 영위상은 과거 {PAST_S:g} s + 미리보기를 매 블록 다시 거르지만, IIR 은 "
           "표본당 몇 연산이라 **예산의 1 % 도 안 쓴다.** 비용은 이 선택의 고려사항이 아니다.",
           "", "## 무엇을 고를 것인가", "",
-          "**블록 영위상 · 미리보기 0.5 s 를 권한다.**", "",
+          "**블록 영위상 · 미리보기 0.5 s 를 권한다.** 단 **평활도 하나만 보면 중앙값이 낫다** —",
+          "둘을 화면에서 바꿔 가며 볼 수 있게 해 두었다(`docs/30_realtime_demo.md`).", "",
           "| | 근거 |",
           "|---|---|",
           "| 위상 왜곡이 **원리적으로** 0 | 앞뒤로 한 번씩 거르므로 위상이 상쇄된다. 차수를 낮춰 «덜 나쁘게» 만든 것이 아니다 |",
@@ -584,6 +632,9 @@ def write_doc(per_axis: dict, made: list[Path], costs: list[dict]) -> Path:
           f"| 남은 기저선 변동 d1 **{g('d1',LA5,'wander'):.1f}** · d0 **{g('d0',LA5,'wander'):.1f}** %R "f"| 현재는 {g('d1',CUR,'wander'):.1f} · {g('d0',CUR,'wander'):.1f} %R. 오프라인 영위상({g('d1',ZP,'wander'):.1f} · {g('d0',ZP,'wander'):.1f})에 거의 붙는다 |",
           "| 대가는 지연 596 ms 뿐 | 연산은 예산의 0.5 %. 화면은 수동적으로 보는 것이라 0.6 s 는 알아채기 어렵다 |",
           "| 새 조정이 없다 | 지금 쓰는 필터 **설계 그대로** 돌리는 방식만 바꾼다 |",
+          f"| 평활도도 영위상 수준이다 | 준위 산포 d1 {g('d1',LA5,'tp_spread'):.1f} %R "
+          f"= 오프라인 영위상 {g('d1',ZP,'tp_spread'):.1f}. 중앙값({g('d1',MED,'tp_spread'):.1f})보다는 크다 |",
+          "| **선형이다** | 우리 평가는 참조를 `FE(clean)` 으로 두므로(D-3) front-end 의 선형성 위에 서 있다 |",
           "",
           "**미리보기 0.25 s 로는 안 된다.** 역방향 패스가 자리를 잡는 데 시간이 걸려서,",
           f"0.25 s 에서는 영위상과의 차가 오히려 인과보다 크다"f"(d1 {g('d1','블록 영위상 · 미리보기 0.25 s','zperr'):.1f} vs {g('d1',CUR,'zperr'):.1f} %R).",
@@ -591,7 +642,7 @@ def write_doc(per_axis: dict, made: list[Path], costs: list[dict]) -> Path:
           "### 왜 다른 것을 안 고르나", "",
           "| 후보 | 왜 아닌가 |",
           "|---|---|",
-          f"| 중앙값 200+600 ms | 지연이 100 ms 짧고 d0 에서 T-P 가 제일 평평하지만, S 오차가 "f"**축에 따라 흔들린다**(d0 {g('d0',MED,'s_err'):.1f} → d1 {g('d1',MED,'s_err'):.1f} %R). "f"그리고 100+300 판은 **T 파를 {g('d0','중앙값 100+300 ms','t_err'):.0f} %R 깎는다** — ""실시간 이동 중앙값을 새로 짜야 하는 것도 비용이다. 자세히는 `docs/14_median_vs_zerophase.md` |",
+          f"| 중앙값 200+600 ms | **평활도는 이쪽이 낫다** — 준위 산포 d0 {g('d0',MED,'tp_spread'):.1f} · "f"d1 {g('d1',MED,'tp_spread'):.1f} %R 로 오프라인 영위상"f"({g('d0',ZP,'tp_spread'):.1f} · {g('d1',ZP,'tp_spread'):.1f})보다도 낮다. 그런데 **S 오차가 "f"d1 {g('d1',MED,'s_err'):.1f} %R** 로, 사용자가 이미 «찌그러진다» 고 지적한 인과 o1 0.5"f"({g('d1',CUR,'s_err'):.1f} %R)와 거의 같다 — 눈에 띄는 왜곡을 **다른 왜곡으로 바꾸는** 셈이다. "f"100+300 판은 **T 파를 {g('d0','중앙값 100+300 ms','t_err'):.0f} %R 깎는다**. ""비선형이라 중첩이 깨지는 것도 값이다 — `docs/14_median_vs_zerophase.md` |",
           f"| 인과 o1 · 0.05 Hz | 기저선을 사실상 못 지운다"f"(잔여 d0 {g('d0',LOW,'wander'):.0f} · d1 {g('d1',LOW,'wander'):.0f} %R, 주입량이 50 %R). 존재 이유가 없다는 판단이 맞다 |",
           "| 아날로그 HPF 로 옮기기 | **아날로그도 인과다** — 다음 절 |",
           "",
@@ -636,7 +687,7 @@ def main() -> int:
         rows, meta = measure(tag)
         per_axis[tag] = (rows, meta)
         for rw in rows:
-            print(f"  {rw['label']:<30} T-P {rw['tp_band']:6.1f}  S오차 {rw['s_err']:6.1f}"
+            print(f"  {rw['label']:<30} 준위산포 {rw['tp_spread']:6.1f}  S오차 {rw['s_err']:6.1f}"
                   f"  T오차 {rw['t_err']:6.1f}  이동 {rw['drift']:6.1f}"
                   f"  잔여 {rw['wander']:6.1f}")
         made.append(figure(tag, ROOT / "results" / "fig" / f"lookahead_fe_{tag}.png"))

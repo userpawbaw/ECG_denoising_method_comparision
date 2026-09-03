@@ -94,6 +94,8 @@
   <div><span class="k">재생</span>
     <button class="seg" id="p-scroll" aria-pressed="true">스크롤</button><button
             class="seg" id="p-sweep">스윕</button></div>
+  <div><span class="k">front-end</span><span id="feseg"></span></div>
+  <div id="fenote" class="warn" hidden></div>
   <div id="ovnote" class="warn" hidden></div>
 </div>
 
@@ -322,8 +324,50 @@ const el = id => document.getElementById(id);
 const es = new EventSource('/stream');
 es.onopen = () => { el('conn').innerHTML = '<i class="dot on"></i>연결됨'; };
 es.onerror = () => { el('conn').innerHTML = '<i class="dot"></i>끊김 — 다시 붙는 중'; };
+
+/* front-end 를 고른다.
+ *
+ * **위상 왜곡과 «평활 대역이 중심선에 붙는가» 는 같은 방향으로 못 간다.**
+ * 어느 쪽을 더 싫어하는지는 보는 사람이 정할 문제라 여기서 바꿀 수 있게 뒀다.
+ * 버튼 목록과 설명은 **브리지에서 받아 온다**(`GET /fe`) — 화면에 그대로
+ * 적으면 구현이 바뀔 때 갈라진다. */
+let feMode = null, feModes = {};
+function paintFe(){
+  const box = el('feseg');
+  box.innerHTML = '';
+  for (const [id, m] of Object.entries(feModes)){
+    const b = document.createElement('button');
+    b.className = 'seg';
+    b.textContent = m.label;
+    b.title = m.note;
+    b.setAttribute('aria-pressed', String(id === feMode));
+    b.onclick = () => {
+      if (id === feMode) return;
+      fetch('/fe', {method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({mode:id})})
+        .catch(() => { const n = el('fenote');
+                       n.hidden = false; n.textContent = '브리지에 못 보냈다'; });
+    };
+    box.appendChild(b);
+  }
+}
+fetch('/fe').then(r => r.json()).then(d => {
+  feModes = d.modes || {}; feMode = d.current; paintFe();
+}).catch(() => {});
 es.onmessage = ev => {
   const m = JSON.parse(ev.data);
+  // front-end 를 바꾸면 브리지가 처리기 버퍼를 비운다 — 화면도 비워야 한다.
+  // 안 비우면 **이전 필터로 만든 파형과 새 필터의 파형이 한 화면에 섞인다.**
+  if (m.reset){
+    bufs.clear(); colorOf.clear(); hidden.clear();
+    okBuf = null; head = -1; written = 0; relayout();
+    feMode = m.fe; paintFe();
+    const nt = el('fenote');
+    nt.hidden = false;
+    nt.textContent = `${m.fe_label} 로 바꿨다 (+${m.fe_lat_ms} ms) — 화면을 다시 채우는 중`;
+    setTimeout(() => { nt.hidden = true; }, 6000);
+    return;
+  }
   if (m.fs !== fs){ fs = m.fs; cap = WIN_S * fs; bufs.clear(); colorOf.clear();
                     okBuf = null; head = -1; written = 0; }
   let fresh = false;
@@ -352,6 +396,8 @@ es.onmessage = ev => {
     ? `겹치기는 색으로 ${OVER_MAX} 개까지만 가른다 — 나머지는 아래에서 켜고 끈다`
     : '';
   const s = m.stat;
+  // 다른 창에서 바꿨을 수도 있다 — 브리지가 말하는 것을 따른다.
+  if (s.fe && s.fe !== feMode){ feMode = s.fe; paintFe(); }
   el('lat').textContent  = s.lat_ms + ' ms';
   el('elapsed').textContent = (m.i / m.fs).toFixed(1) + ' s';
   el('lost').textContent = s.lost + ' 샘플';

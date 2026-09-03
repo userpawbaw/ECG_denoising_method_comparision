@@ -47,7 +47,7 @@ from pathlib import Path
 import numpy as np
 
 from ecgdn.config import FS
-from ecgdn.realtime.frontend_stream import StreamingFrontEnd
+from ecgdn.realtime.frontend_modes import FE_MODES, build_fe, fe_intrinsic
 from ecgdn.realtime.serial_link import (SYNC, AsciiParser, BinaryParser,
                                         CausalDecimator, SampleChunk, adc_to_mv)
 from ecgdn.realtime.stream import StreamProcessor
@@ -56,10 +56,14 @@ ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "demo"
 
 # **필터가 곧 방법인 것들.** 실시간 경로에서 이들의 대응물은 앞단의
-# `StreamingFrontEnd` **자신**이므로 처리기를 따로 두지 않는다. 처리기를 두면
-# 인과 FE 가 이미 걸린 신호에 같은 필터를 한 번 더 거는 셈이 된다(F-25).
+# front-end **자신**이므로 처리기 출력 대신 그것을 쓴다. 처리기를 쓰면 이미
+# 걸린 신호에 같은 필터를 한 번 더 거는 셈이 된다(F-25).
 # `scripts/verify_stream_processor.py` 가 이들을 건너뛰는 것과 같은 이유다.
-FE_INTRINSIC = {"M_FE", "M01", "M01d"}
+#
+# **모드마다 다르다** — `fe_intrinsic(mode)` 가 정한다. 중앙값 front-end 는
+# 대역통과가 아니므로 `M01` 을 대체하지 않는다. 그래서 처리기는 `M_FE` 를
+# 뺀 **모든** 이름에 대해 만들어 두고, 어느 것을 쓸지는 모드가 고른다.
+ALWAYS_INTRINSIC = {"M_FE"}
 
 
 # --------------------------------------------------------------------- 방법
@@ -255,7 +259,30 @@ class Hub:
                 self.dropped += 1
 
 
-def make_server(hub: Hub, port: int):
+class FeSwitch:
+    """front-end 전환 요청함. **스레드 하나만 상태를 바꾼다.**
+
+    HTTP 스레드는 `request()` 로 이름만 남기고, 리더 스레드가 `take()` 로
+    가져가 자기 시점에 갈아 끼운다. 리더가 도는 중에 HTTP 스레드가 필터
+    상태를 건드리면 그 블록의 출력이 반쯤 옛 필터가 된다.
+    """
+
+    def __init__(self, mode: str):
+        self.mode = mode
+        self._want: str | None = None
+        self._lock = threading.Lock()
+
+    def request(self, mode: str) -> None:
+        with self._lock:
+            self._want = mode
+
+    def take(self) -> str | None:
+        with self._lock:
+            m, self._want = self._want, None
+        return m
+
+
+def make_server(hub: Hub, port: int, switch: "FeSwitch | None" = None):
     from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
     class H(SimpleHTTPRequestHandler):
@@ -265,8 +292,22 @@ def make_server(hub: Hub, port: int):
         def log_message(self, *a):            # 콘솔을 조용하게
             pass
 
+        def _json(self, code: int, obj) -> None:
+            body = json.dumps(obj, ensure_ascii=False).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):
-            if self.path.split("?")[0] != "/stream":
+            path = self.path.split("?")[0]
+            if path == "/fe":
+                # 화면이 목록을 물어본다 — 이름표를 **코드에서** 받아 가게 해서
+                # UI 와 구현이 갈라지지 않게 한다.
+                return self._json(200, {"modes": FE_MODES,
+                                        "current": switch.mode if switch else None})
+            if path != "/stream":
                 return super().do_GET()
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -288,6 +329,20 @@ def make_server(hub: Hub, port: int):
                 pass
             finally:
                 hub.unregister(q)
+
+        def do_POST(self):
+            if self.path.split("?")[0] != "/fe" or switch is None:
+                return self._json(404, {"error": "그런 경로가 없다"})
+            n = int(self.headers.get("Content-Length", 0) or 0)
+            try:
+                mode = json.loads(self.rfile.read(n) or b"{}").get("mode")
+            except json.JSONDecodeError:
+                return self._json(400, {"error": "JSON 이 아니다"})
+            if mode not in FE_MODES:
+                return self._json(400, {"error": f"모드가 아니다: {mode!r}",
+                                        "modes": sorted(FE_MODES)})
+            switch.request(mode)
+            return self._json(200, {"ok": True, "mode": mode})
 
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", port), H)
@@ -319,6 +374,8 @@ def main() -> int:
     ap.add_argument("--methods", default="M_FE,M01,M04",
                     help="쉼표로. 딥러닝은 체크포인트가 있어야 한다")
     ap.add_argument("--axis", default="d1", help="딥러닝 체크포인트 축")
+    ap.add_argument("--fe", default="zerophase", choices=sorted(FE_MODES),
+                    help="front-end 모드. 화면에서 실행 중에도 바꿀 수 있다")
     ap.add_argument("--d", type=int, default=12, help="미래 문맥 [샘플]")
     ap.add_argument("--hop", type=int, default=12, help="추론 간격 [샘플]")
     ap.add_argument("--fps", type=float, default=25.0, help="화면 갱신률")
@@ -347,23 +404,34 @@ def main() -> int:
         print(f"[warn] 보드 {args.board_fs} Hz -> {FS:g} Hz 로 {dec.m} 배 데시메이션한다. "
               "보드를 250 Hz 로 돌리면 리샘플이 아예 없다 (권장).")
 
-    # ---- front-end 는 여기서 **한 번만**
-    fe = StreamingFrontEnd(FS)
+    # ---- front-end 는 여기서 **한 번만**. 방법은 한 번 만들어 재사용한다
+    # (모델 적재가 비싸다) — 전환 때는 `reset()` 만 부른다.
+    hop_s = args.hop / FS
+    fe = build_fe(args.fe, FS, hop_s=hop_s)
     procs = {}
     for n in names:
-        if n in FE_INTRINSIC:
+        if n in ALWAYS_INTRINSIC:
             continue                       # 출력이 곧 FE 출력이다 (위 주석)
         procs[n] = StreamProcessor(build_stream_method(n, args.axis), fs=FS,
                                    hop=args.hop, d=args.d, frontend="none")
     if not procs:
         raise SystemExit("처리기가 하나도 없다 — front-end 말고 다른 방법을 하나는 넣을 것")
-    fe_names = [n for n in names if n in FE_INTRINSIC]
+
+    def split_names(mode: str):
+        """이 모드에서 어느 이름을 front-end 출력으로 낼지 고른다."""
+        intr = fe_intrinsic(mode)
+        return ([n for n in names if n in intr],
+                [n for n in names if n not in intr and n in procs])
+
+    fe_names, proc_names = split_names(args.fe)
     lat_ms = 1000.0 * next(iter(procs.values())).latency_s
     warm_s = max(p.warmup_s for p in procs.values())
     print(f"방법 {names} · 지연 {lat_ms:.0f} ms · warm-up {warm_s:.1f} s "
           f"· 추론 {next(iter(procs.values())).runs_per_s:.0f} 회/s")
     if fe_names:
-        print(f"  {fe_names} 는 인과 front-end 출력 그대로다 — 필터가 곧 방법이다")
+        print(f"  {fe_names} 는 front-end 출력 그대로다 — 필터가 곧 방법이다")
+    print(f"  front-end: {args.fe} — {FE_MODES[args.fe]['label']} "
+          f"(+{fe.latency_samples / FS * 1000:.0f} ms)")
 
     # ---- 입력원은 **모델을 다 올린 뒤에** 연다. 먼저 열면 적재에 걸린 몇 초
     # 동안 보드가 보낸 것이 큐에 쌓여, 시작부터 밀린 상태로 출발한다.
@@ -375,8 +443,9 @@ def main() -> int:
                               leadoff_every_s=args.leadoff_every, csv=args.csv)
 
     hub = Hub()
+    switch = FeSwitch(args.fe)
     if args.serve:
-        make_server(hub, args.http_port)
+        make_server(hub, args.http_port, switch)
         print(f"-> http://127.0.0.1:{args.http_port}/live.html")
 
     # ---- 읽기 스레드. **읽어서 큐에 넣기만 한다.**
@@ -411,7 +480,9 @@ def main() -> int:
     t_frame = time.perf_counter()
     t_start = t_frame
     cpu = 0.0
-    n_in = 0                          # 처리기에 들어간 250 Hz 샘플
+    n_in = 0                          # 처리기에 들어간 250 Hz 샘플 (= FE 가 낸 수)
+    n_input = 0                       # front-end 에 들어간 250 Hz 샘플. `n_in` 과
+                                      # 갈라진다 — 지연 있는 FE 는 늦게 낸다.
     n_board = 0                       # 보드가 보낸 샘플 (손실률의 분모)
     rtf_cpu = rtf_wall = rtf_core = 0.0   # warm-up 이후의 정상 상태
     core = 0.0
@@ -423,6 +494,28 @@ def main() -> int:
                 data = q.get(timeout=0.5)
             except queue.Empty:
                 continue
+            want = switch.take()
+            if want and want != switch.mode:
+                # **화면을 다시 채운다.** 방법들의 내부 버퍼는 이전 front-end
+                # 출력으로 채워져 있어, 그대로 두면 두 필터가 섞인 구간이 나온다.
+                # 처리기는 다시 만들지 않고 `reset()` 만 한다 — 모델 적재가 비싸다.
+                switch.mode = want
+                fe = build_fe(want, FS, hop_s=hop_s)
+                # **어느 이름이 «필터가 곧 방법» 인지도 모드마다 다르다.**
+                # 중앙값은 대역통과가 아니라 `M01` 을 대체하지 않는다.
+                fe_names, proc_names = split_names(want)
+                for pr in procs.values():
+                    pr.reset()
+                al = Aligner(names)
+                raw, rawok, raw_base, n_in, n_input = [], [], 0, 0, 0
+                fe_lat_ms = fe.latency_samples / FS * 1000.0
+                hub.publish(json.dumps({"reset": True, "fe": want,
+                                        "fe_label": FE_MODES[want]["label"],
+                                        "fe_lat_ms": round(fe_lat_ms, 0)},
+                                       ensure_ascii=False))
+                if not args.quiet:
+                    print(f"\n  front-end -> {want} ({FE_MODES[want]['label']}, "
+                          f"+{fe_lat_ms:.0f} ms) · 화면을 다시 채운다")
             pre: SampleChunk = parser.feed(data)
             n_board += pre.x.size          # **보드 기준** 샘플 (채운 것 포함)
             ch: SampleChunk = dec(pre)
@@ -435,7 +528,7 @@ def main() -> int:
                 for p in procs.values():
                     p.reset()
                 al = Aligner(names)
-                raw, rawok, raw_base = [], [], n_in
+                raw, rawok, raw_base = [], [], n_input
                 continue
             stat["lost"] += ch.n_lost
             stat["leadoff"] += ch.n_leadoff
@@ -450,11 +543,15 @@ def main() -> int:
             # 보여야 무엇이 제거됐는지 눈에 들어온다.
             raw.extend(mv.tolist())
             rawok.extend(ch.ok.tolist())
-            x = fe.push(mv)                         # 인과 FE, 한 번만
+            n_input += mv.size
+            x = fe.push(mv)                # front-end 는 한 번만 (F-25)
             n_in += x.size
+            if x.size == 0:                # 지연 있는 모드의 첫 몇 블록
+                continue
 
             t0, c0 = time.perf_counter(), time.process_time()
-            for name, p in procs.items():
+            for name in proc_names:
+                p = procs[name]
                 al.add(name, p.origin, p.push(x))
             for name in fe_names:
                 al.add(name, 0, x)          # FE 출력은 지연 없이 바로 확정된다
@@ -480,7 +577,8 @@ def main() -> int:
                 "ok": [int(b) for b in rawok[lo:lo + k]],
                 "out": {n: [round(v, 4) for v in vs] for n, vs in outs.items()},
                 "stat": {**stat, "qdrop": qdrop[0], "sse_drop": hub.dropped,
-                         "lat_ms": round(lat_ms, 1),
+                         "lat_ms": round(lat_ms + fe.latency_samples / FS * 1000.0, 1),
+                         "fe": switch.mode,
                          "rtf": round(cpu / max(el, 1e-9), 3)},
             }
             if idx > (warm_s + 2.0) * FS:      # warm-up 과 첫 적재는 뺀다

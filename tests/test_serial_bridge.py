@@ -111,17 +111,30 @@ def test_aligner_takes_nothing_twice():
 
 # --------------------------------------------------- 이중 필터를 막는 규칙
 def test_front_end_methods_are_not_given_their_own_processor():
-    """`M_FE`·`M01` 은 **필터가 곧 방법**이다.
+    """`M_FE`·`M01` 은 **필터가 곧 방법**이다 — 단 **front-end 가 대역통과일 때만.**
 
-    실시간 경로는 앞단에 인과 FE 를 이미 한 번 걸었으므로, 이들에 처리기를
-    또 붙이면 같은 필터가 두 번 걸린다 — R-4 에서 −15 dB 를 만든 그 실수다
-    (F-25). `verify_stream_processor.py` 가 이들을 건너뛰는 것과 같은 이유다.
+    실시간 경로는 앞단에 FE 를 이미 한 번 걸었으므로, 대역통과 FE 에서 이들에
+    처리기를 또 붙이면 같은 필터가 두 번 걸린다 — R-4 에서 −15 dB 를 만든 그
+    실수다 (F-25). `verify_stream_processor.py` 가 이들을 건너뛰는 것과 같은 이유다.
+
+    **중앙값 front-end 는 대역통과가 아니다.** 거기서 `M01` 을 FE 출력으로
+    대체하면 «대역통과+노치» 라고 이름 붙인 자리에 **전혀 다른 필터의 출력**이
+    나간다. 그래서 대체는 모드에 따라 갈려야 한다.
     """
+    from ecgdn.realtime.frontend_modes import FE_MODES, fe_intrinsic
     m = _mod()
-    assert m.FE_INTRINSIC == {"M_FE", "M01", "M01d"}
+    assert m.ALWAYS_INTRINSIC == {"M_FE"}
+    for mode, spec in FE_MODES.items():
+        got = fe_intrinsic(mode)
+        assert "M_FE" in got, f"{mode}: M_FE 는 언제나 FE 출력 그 자체다"
+        if spec["bandpass"]:
+            assert got == {"M_FE", "M01", "M01d"}, f"{mode}: 이중 필터가 된다 (F-25)"
+        else:
+            assert "M01" not in got, \
+                f"{mode}: 대역통과가 아닌 FE 출력을 M01 이라고 내보내고 있다"
     src = ROOT / "scripts" / "serial_bridge.py"
-    assert "if n in FE_INTRINSIC:" in src.read_text(), \
-        "FE 내재 방법을 걸러내는 분기가 사라졌다"
+    assert "split_names(" in src.read_text(), \
+        "모드별로 FE 내재 방법을 가르는 분기가 사라졌다"
 
 
 def test_the_live_page_never_shows_a_performance_number():
