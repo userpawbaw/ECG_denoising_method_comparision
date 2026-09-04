@@ -2,7 +2,7 @@
   "env": {
     "python": "3.11.15",
     "platform": "Linux-6.18.44-fc-v24-x86_64-with-glibc2.39",
-    "git": "722780b",
+    "git": "01ed388",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -14,8 +14,8 @@
     "analysis": "nofe"
   },
   "sources": {
-    "scripts/analyze_nofe.py": "03744cd524a0a56a",
-    "configs/exp_nofe.yaml": "fb337aaca48900a4"
+    "scripts/analyze_nofe.py": "cc1356e3e8a9a4ed",
+    "configs/exp_nofe.yaml": "e6a460a7f957229d"
   },
-  "n_mech_items": 48
+  "n_mech_items": 72
 }
