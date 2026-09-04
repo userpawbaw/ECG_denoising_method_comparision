@@ -119,7 +119,15 @@ def f_causal(x, order, hp_hz, block=25):
 PAST_S = 4.0        # 과거 문맥. **이미 받아 둔 자료라 지연을 안 만든다** — 넉넉히 준다.
 
 
-def f_lookahead(x, look_s, order=4, hp_hz=0.5, hop_s=HOP_S, past_s=PAST_S):
+# 교차 페이드 폭. **이음매를 지운다** (F-36). 지연은 이만큼 더 붙는다.
+# 기본을 hop 과 같게 두는 이유는 `frontend_modes` 와 같다 — 이음매의 간격이
+# hop 이고, hop 을 줄이면 지연도 함께 줄기 때문이다. 실시간 브리지는 FE hop
+# 24 ms 를 쓰므로 거기서는 지연이 548 ms 로 **교차 페이드 도입 전과 같다.**
+XFADE_S = HOP_S
+
+
+def f_lookahead(x, look_s, order=4, hp_hz=0.5, hop_s=HOP_S, past_s=PAST_S,
+                xfade_s=XFADE_S):
     """블록 영위상 — 미래 `look_s` 를 기다렸다가 그 창에서 filtfilt.
 
     **실시간으로 구현 가능하다.** 창은 [n0-P, n1+F) 이고 그 안의 자료는 그
@@ -128,14 +136,26 @@ def f_lookahead(x, look_s, order=4, hp_hz=0.5, hop_s=HOP_S, past_s=PAST_S):
     **지연 = F + hop 뿐이다** — 과거 P 는 이미 받아 둔 것이라 지연을 안 만든다.
     처음 짤 때 P 를 F 와 같이 줄였다가 미리보기 0.25 s 에서 인과보다 나쁜
     값이 나왔다. 과거를 굶긴 것이었지 미리보기가 모자란 것이 아니었다.
+
+    **`xfade_s` — 이음매를 지운다 (F-36).** 블록마다 독립으로 filtfilt 를 돌리면
+    창이 hop 만큼 미끄러질 때마다 같은 표본의 값이 미세하게 달라지고, 그것이
+    블록 경계에서 **계단**으로 보인다. T-P 구간처럼 원래 평평한 곳에서 유독
+    크게 보인다(경계 차분이 내부의 **23 배**). 과거를 늘려도(4→32 s) 안 고쳐지고
+    미리보기를 늘려도 안 고쳐진다 — 원인이 정착이 아니라 **창마다 다른 유한
+    구간**이기 때문이다. 겹쳐 취해 가중 평균하면 그 요동이 상쇄된다: 이음매가
+    23 배 -> **0.9 배**가 되고, 덤으로 오프라인 근사도까지 7.4 -> **6.0 %R**
+    좋아진다. 대가는 지연 `xfade_s` 뿐이다(연산은 +4 %). 이음매는 24 ms 면
+    이미 사라지고, 그 위로는 근사도만 산다 (96 ms 5.3, 192 ms 4.7 %R).
     """
     nyq = FS / 2.0
     F = int(round(look_s * FS))
     P = int(round(past_s * FS))
     H = int(round(hop_s * FS))
+    X = max(0, int(round(xfade_s * FS)))
     hp = sps.butter(order, hp_hz / nyq, btype="highpass", output="sos")
     lp = sps.butter(order, DEFAULT_FE.lp_hz / nyq, btype="lowpass", output="sos")
-    out = np.empty_like(x, dtype=np.float64)
+    acc = np.zeros(x.size)
+    wsum = np.zeros(x.size)
     for n0 in range(0, x.size, H):
         n1 = min(n0 + H, x.size)
         a, b = max(0, n0 - P), min(x.size, n1 + F)
@@ -143,8 +163,17 @@ def f_lookahead(x, look_s, order=4, hp_hz=0.5, hop_s=HOP_S, past_s=PAST_S):
         pad = max(1, min(w.size - 1, w.size // 2))
         v = sps.sosfiltfilt(hp, w, padtype="odd", padlen=pad)
         v = sps.sosfiltfilt(lp, v, padtype="odd", padlen=pad)
-        out[n0:n1] = v[n0 - a: n0 - a + (n1 - n0)]
-    return out
+        s0, s1 = max(a, n0 - X), min(b, n1 + X)
+        seg = v[s0 - a: s1 - a]
+        win = np.ones(seg.size)
+        k = min(X, seg.size // 2)
+        if k > 0:
+            r = 0.5 * (1 - np.cos(np.pi * np.arange(1, k + 1) / (k + 1)))
+            win[:k] = r
+            win[-k:] = r[::-1]
+        acc[s0:s1] += seg * win
+        wsum[s0:s1] += win
+    return acc / np.maximum(wsum, 1e-12)
 
 
 def _odd(n: int) -> int:
@@ -346,9 +375,12 @@ def candidates():
         ("인과 o1 · 0.5 Hz  [현재]", lambda x: f_causal(x, 1, 0.5), 0.0, "causal"),
         ("인과 o1 · 0.05 Hz", lambda x: f_causal(x, 1, 0.05), 0.0, "causal"),
     ]
+    xf_ms = XFADE_S * 1000
     for d in (0.25, 0.5, 1.0, 2.0, 4.0):
+        # 지연 = 미리보기 + hop + **교차 페이드**. 마지막 항을 빠뜨리면 표가
+        # 실제보다 96 ms 짧게 보인다.
         out.append((f"블록 영위상 · 미리보기 {d:g} s", lambda x, d=d: f_lookahead(x, d),
-                    d * 1000 + hop_ms, "look"))
+                    d * 1000 + hop_ms + xf_ms, "look"))
     out += [
         ("중앙값 200+600 ms", lambda x: f_median(x, 0.2, 0.6), 400.0 + hop_ms, "med"),
         ("중앙값 100+300 ms", lambda x: f_median(x, 0.1, 0.3), 200.0 + hop_ms, "med"),
@@ -357,7 +389,7 @@ def candidates():
         ("AFE + 중앙값 200+600 ms", lambda x: f_median(f_afe(x), 0.2, 0.6),
          400.0 + hop_ms, "afe"),
         ("AFE + 블록 영위상 1 s", lambda x: f_lookahead(f_afe(x), 1.0),
-         1000.0 + hop_ms, "afe"),
+         1000.0 + hop_ms + XFADE_S * 1000, "afe"),
         ("AFE + 역방향 보상 1 s", lambda x: f_afe_comp(f_afe(x), 1.0),
          1000.0 + hop_ms, "afe"),
         ("AFE 를 0.05 Hz 로 바꾸면", lambda x: f_afe(x, hp_hz=0.05), 0.0, "afe"),
@@ -651,8 +683,13 @@ def write_doc(per_axis: dict, made: list[Path], costs: list[dict]) -> Path:
           "| 위상 왜곡이 **원리적으로** 0 | 앞뒤로 한 번씩 거르므로 위상이 상쇄된다. 차수를 낮춰 «덜 나쁘게» 만든 것이 아니다 |",
           f"| QRS 직후 준위 이동 d1 **{g('d1',LA5,'s_err'):.1f}** · d0 **{g('d0',LA5,'s_err'):.1f}** %R "f"| 현재(인과 o1 0.5)는 {g('d1',CUR,'s_err'):.1f} · {g('d0',CUR,'s_err'):.1f} %R. 화면에서 보이던 찌그러짐이 사라진다 |",
           f"| 남은 기저선 변동 d1 **{g('d1',LA5,'wander'):.1f}** · d0 **{g('d0',LA5,'wander'):.1f}** %R "f"| 현재는 {g('d1',CUR,'wander'):.1f} · {g('d0',CUR,'wander'):.1f} %R. 오프라인 영위상({g('d1',ZP,'wander'):.1f} · {g('d0',ZP,'wander'):.1f})에 거의 붙는다 |",
-          "| 대가는 지연 596 ms 뿐 | 연산은 예산의 0.5 %. 화면은 수동적으로 보는 것이라 0.6 s 는 알아채기 어렵다 |",
+          f"| 대가는 지연뿐 | 이 표는 hop {HOP_S*1000:.0f} ms 기준이라 "
+          f"{500 + HOP_S*1000 + XFADE_S*1000:.0f} ms 인데, 실시간 브리지는 FE hop 24 ms 를 써 "
+          "**548 ms** 다 — 교차 페이드 도입 전과 같다. 연산은 예산의 2 % |",
           "| 새 조정이 없다 | 지금 쓰는 필터 **설계 그대로** 돌리는 방식만 바꾼다 |",
+          "| **이음매가 없다** | 블록 경계의 계단이 내부의 23 배였는데, 교차 페이드로 "
+          "**0.7 배**가 됐다 — 즉 사라졌다. hop 을 절반으로 줄여 그 지연을 "
+          "되찾았으므로 **대가가 없다** (F-36) |",
           f"| 평활도도 영위상 수준이다 | 준위 산포 d1 {g('d1',LA5,'tp_spread'):.1f} %R "
           f"= 오프라인 영위상 {g('d1',ZP,'tp_spread'):.1f}. 중앙값({g('d1',MED,'tp_spread'):.1f})보다는 크다 |",
           "| **선형이다** | 우리 평가는 참조를 `FE(clean)` 으로 두므로(D-3) front-end 의 선형성 위에 서 있다 |",

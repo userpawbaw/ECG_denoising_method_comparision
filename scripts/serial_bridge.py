@@ -389,6 +389,12 @@ def main() -> int:
                     help="front-end 모드. 화면에서 실행 중에도 바꿀 수 있다")
     ap.add_argument("--d", type=int, default=12, help="미래 문맥 [샘플]")
     ap.add_argument("--hop", type=int, default=12, help="추론 간격 [샘플]")
+    # **FE 의 블록은 추론과 분리한다.** FE 는 블록당 0.57 ms 라 자주 돌려도
+    # 싸고, 블록 영위상의 지연·이음매가 이 값에 걸려 있다 — 교차 페이드가
+    # hop 과 같으므로 hop 을 줄이면 **지연이 함께 준다** (F-36). 추론까지 같이
+    # 줄이면 CPU 가 2 배가 되므로 묶어 두면 안 된다.
+    ap.add_argument("--fe-hop", type=int, default=6,
+                    help="front-end 블록 [샘플]. 작을수록 지연이 줄고 CPU 만 조금 든다")
     ap.add_argument("--fps", type=float, default=25.0, help="화면 갱신률")
     ap.add_argument("--serve", action="store_true", help="브라우저용 SSE 서버를 연다")
     ap.add_argument("--http-port", type=int, default=8765)
@@ -420,7 +426,8 @@ def main() -> int:
     # ---- front-end 는 여기서 **한 번만**. 방법은 한 번 만들어 재사용한다
     # (모델 적재가 비싸다) — 전환 때는 `reset()` 만 부른다.
     hop_s = args.hop / FS
-    fe = build_fe(args.fe, FS, hop_s=hop_s)
+    fe_hop_s = max(1, args.fe_hop) / FS
+    fe = build_fe(args.fe, FS, hop_s=fe_hop_s)
     procs = {}
     for n in names:
         if n in ALWAYS_INTRINSIC:
@@ -513,7 +520,7 @@ def main() -> int:
                 # 출력으로 채워져 있어, 그대로 두면 두 필터가 섞인 구간이 나온다.
                 # 처리기는 다시 만들지 않고 `reset()` 만 한다 — 모델 적재가 비싸다.
                 switch.mode = want
-                fe = build_fe(want, FS, hop_s=hop_s)
+                fe = build_fe(want, FS, hop_s=fe_hop_s)
                 # **어느 이름이 «필터가 곧 방법» 인지도 모드마다 다르다.**
                 # 중앙값은 대역통과가 아니라 `M01` 을 대체하지 않는다.
                 fe_names, proc_names = split_names(want)

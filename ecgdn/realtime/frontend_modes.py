@@ -6,11 +6,23 @@
 어느 쪽을 더 싫어하는지는 **보는 사람이 정할 문제**라, 화면에서 바꿔 볼 수
 있게 셋을 나란히 둔다 (`docs/13_lookahead_fe.md` · `docs/14_median_vs_zerophase.md`):
 
-| 모드 | 지연 | S 골 오차 d1 | T-P 준위 산포 d1 | 성격 |
+| 모드 | 지연 | QRS 직후 준위 이동 d1 | T-P 준위 산포 d1 | 성격 |
 |---|---|---|---|---|
 | `causal`  | **0 ms**  | 5.7 %R | 4.7 %R | 선형. 가장 빠르고 가장 찌그러진다 |
-| `zerophase` | 596 ms | **0.0 %R** | 2.5 %R | 선형. 위상 왜곡이 원리적으로 0 |
-| `median`  | 496 ms | 4.7 %R | **1.0 %R** | **비선형.** 가장 평평하지만 중첩이 깨진다 |
+| `zerophase` | 548 ms | **0.1 %R** | 2.5 %R | 선형. 위상 왜곡이 원리적으로 0 |
+| `median`  | 448 ms | 4.7 %R | **1.0 %R** | **비선형.** 가장 평평하지만 중첩이 깨진다 |
+
+(지연은 실시간 브리지 설정 기준 — FE hop 24 ms, 교차 페이드 24 ms.)
+
+(4)번 열은 처음에 「S 골 오차」라고 불렀는데 **그 이름이 틀렸다** — S 골 자체는
+어느 방식도 안 깎는다(`docs/16` §1). 재는 것은 QRS 옆의 기준 준위 = ST 이동이다.
+
+지연에는 **교차 페이드**가 들어 있다. 그것이 없으면 블록 경계에 계단이 생겨
+T-P 구간에서 내부 차분의 **23 배**로 튄다 (F-36). 기본값은 `hop` 과 같다 —
+이음매의 간격이 hop 이라 거기에 묶는 것이 자연스럽고, **hop 을 줄이면 지연도
+함께 준다.** 그래서 FE hop 을 48 -> 24 ms 로 줄이면 교차 페이드를 넣고도
+지연이 548 ms 로 **예전과 같다** (이음매 15.0 -> 0.65, 오프라인차 8.5 -> 6.2 %R).
+FE 는 블록당 0.57 ms 라 hop 을 줄여도 예산의 2 % 다.
 
 계약 — **지연이 있어도 표본 번호는 안 밀린다**
 ---------------------------------------------
@@ -48,7 +60,7 @@ FE_MODES = {
     "causal": dict(label="인과 o1 · 0.5 Hz", bandpass=True,
                    note="지연 0 — 가장 빠르다. QRS 뒤가 찌그러진다"),
     "zerophase": dict(label="블록 영위상 · 미리보기 0.5 s", bandpass=True,
-                      note="위상 왜곡 0 — S 골이 기준과 겹친다"),
+                      note="위상 왜곡 0 — ST 준위가 기준과 겹친다"),
     "median": dict(label="중앙값 200+600 ms", bandpass=False,
                    note="가장 평평하다. 비선형이라 평가 기준이 흔들린다"),
 }
@@ -111,15 +123,40 @@ class _Windowed(_Base):
     """
 
     def __init__(self, fs: float = FS, look_s: float = 0.5, past_s: float = 4.0,
-                 hop_s: float = 0.096):
+                 hop_s: float = 0.096, xfade_s: float | None = None):
         super().__init__(fs)
         self.look = int(round(look_s * fs))
         self.past = int(round(past_s * fs))
         self.hop = max(1, int(round(hop_s * fs)))
-        self.latency_samples = self.look + self.hop
+        # **기본은 hop 과 같다.** 이음매의 간격이 hop 이므로 그것에 묶는 것이
+        # 자연스럽고, hop 을 줄이면 지연도 함께 준다. 0 을 주면 끌 수 있다
+        # (회귀 시험이 «껐을 때 결함이 나타나는지» 를 확인하는 데 쓴다).
+        self.xfade = self.hop if xfade_s is None else max(0, int(round(xfade_s * fs)))
+        # 교차 페이드는 **지연을 산다.** 표본 n 은 그것을 덮는 마지막 블록이
+        # 처리된 뒤에 확정되고, 그 블록은 n 보다 xfade 만큼 뒤에서 시작한다.
+        self.latency_samples = self.look + self.hop + self.xfade
+        # 겹쳐 더한 값과 가중치 합. **numpy 로 둔다** — 파이썬 리스트에서
+        # 앞을 하나씩 지우면 매번 전체가 밀려 O(n^2) 이 된다 (F-31 과 같은 함정).
+        self._acc = np.zeros(0)
+        self._wsum = np.zeros(0)
+        self._acc0 = 0                    # _acc[0] 의 절대 표본 번호
 
     def _process(self, w: np.ndarray) -> np.ndarray:   # pragma: no cover
         raise NotImplementedError
+
+    def reset(self) -> None:
+        super().reset()
+        self._acc, self._wsum, self._acc0 = np.zeros(0), np.zeros(0), 0
+
+    def _fade(self, m: int) -> np.ndarray:
+        """양 끝을 raised-cosine 으로 눕힌 가중치. 겹치는 두 조각의 합이 1 이다."""
+        w = np.ones(m)
+        k = min(self.xfade, m // 2)
+        if k > 0:
+            r = 0.5 * (1 - np.cos(np.pi * np.arange(1, k + 1) / (k + 1)))
+            w[:k] = r
+            w[-k:] = r[::-1]
+        return w
 
     def push(self, block):
         block = np.asarray(block, dtype=np.float64).ravel()
@@ -132,15 +169,48 @@ class _Windowed(_Base):
             b = min(self._n_seen, self._n_out + self.hop + self.look)
             w = np.asarray(self._buf[a - base: b - base], dtype=np.float64)
             v = self._process(w)
-            k0 = self._n_out - a
-            out.extend(v[k0: k0 + self.hop].tolist())
-            self._n_out += self.hop
+            if self.xfade == 0:
+                k0 = self._n_out - a
+                out.extend(v[k0: k0 + self.hop].tolist())
+                self._n_out += self.hop
+            else:
+                out.extend(self._blend(v, a, b))
             # 더 필요 없는 과거는 버린다 — 무한히 자라면 안 된다
-            keep = self.past + self.hop + self.look + self.hop
+            keep = self.past + self.hop + self.look + self.hop + self.xfade
             if len(self._buf) > keep:
-                drop = len(self._buf) - keep
-                del self._buf[:drop]
+                del self._buf[:len(self._buf) - keep]
         return np.asarray(out, dtype=np.float64)
+
+    def _blend(self, v, a, b) -> list[float]:
+        """창 하나의 결과를 누적기에 **겹쳐 더하고**, 확정된 것만 돌려준다.
+
+        같은 표본을 서로 다른 창으로 계산한 값의 가중 평균이 된다. 창 위치에
+        따른 오차는 부호가 오가므로 평균에서 상쇄된다 — 그래서 이음매가
+        사라질 뿐 아니라 **오프라인 근사도까지 좋아진다** (F-36).
+        """
+        X, H = self.xfade, self.hop
+        s0, s1 = max(a, self._n_out - X), min(b, self._n_out + H + X)
+        if self._acc.size == 0:
+            self._acc0 = s0
+        need = s1 - self._acc0
+        if need > self._acc.size:                     # 누적기를 오른쪽으로 넓힌다
+            grow = need - self._acc.size
+            self._acc = np.concatenate([self._acc, np.zeros(grow)])
+            self._wsum = np.concatenate([self._wsum, np.zeros(grow)])
+        seg = v[s0 - a: s1 - a]
+        wgt = self._fade(seg.size)
+        i = s0 - self._acc0
+        self._acc[i: i + seg.size] += seg * wgt
+        self._wsum[i: i + seg.size] += wgt
+        self._n_out += H
+        # 다음 창은 `_n_out - X` 부터 덮는다 — 그 앞은 더 안 바뀌므로 확정이다
+        k = min(max(0, self._n_out - X - self._acc0), self._acc.size)
+        if k == 0:
+            return []
+        ready = np.where(self._wsum[:k] > 1e-12, self._acc[:k] / self._wsum[:k], 0.0)
+        self._acc, self._wsum = self._acc[k:], self._wsum[k:]
+        self._acc0 += k
+        return ready.tolist()
 
 
 class BlockZeroPhaseFE(_Windowed):
@@ -151,8 +221,8 @@ class BlockZeroPhaseFE(_Windowed):
     """
 
     def __init__(self, fs: float = FS, look_s: float = 0.5, past_s: float = 4.0,
-                 hop_s: float = 0.096, cfg=DEFAULT_FE):
-        super().__init__(fs, look_s, past_s, hop_s)
+                 hop_s: float = 0.096, cfg=DEFAULT_FE, xfade_s: float | None = None):
+        super().__init__(fs, look_s, past_s, hop_s, xfade_s)
         nyq = fs / 2.0
         self._hp = sps.butter(cfg.order, cfg.hp_hz / nyq, btype="highpass", output="sos")
         self._lp = sps.butter(cfg.order, cfg.lp_hz / nyq, btype="lowpass", output="sos")
@@ -172,11 +242,17 @@ class MedianBaselineFE(_Windowed):
     """
 
     def __init__(self, fs: float = FS, w1_s: float = 0.2, w2_s: float = 0.6,
-                 past_s: float = 4.0, hop_s: float = 0.096, cfg=DEFAULT_FE):
+                 past_s: float = 4.0, hop_s: float = 0.096, cfg=DEFAULT_FE,
+                 xfade_s: float | None = 0.0):
+        # **기본은 끔.** 중앙값은 창 w1·w2 안의 자료만 보는 **국소 연산**이라
+        # 창이 hop 만큼 미끄러져도 결과가 거의 안 바뀐다 — 이음매 비를 재 보면
+        # 교차 페이드 없이도 0.95 다. 반면 `filtfilt` 는 **창 전체의 함수**라
+        # 창이 바뀌면 값이 바뀐다(비 23). 그래서 교차 페이드가 필요한 쪽은
+        # 영위상뿐이고, 여기서 켜면 지연만 hop 만큼 는다 (F-36).
         self.w1 = _odd(int(round(w1_s * fs)))
         self.w2 = _odd(int(round(w2_s * fs)))
         super().__init__(fs, look_s=(self.w1 // 2 + self.w2 // 2) / fs, past_s=past_s,
-                         hop_s=hop_s)
+                         hop_s=hop_s, xfade_s=xfade_s)
         self._lp = sps.butter(cfg.order, cfg.lp_hz / (fs / 2), btype="lowpass",
                               output="sos")
 
