@@ -227,10 +227,23 @@ class BlockZeroPhaseFE(_Windowed):
         self._hp = sps.butter(cfg.order, cfg.hp_hz / nyq, btype="highpass", output="sos")
         self._lp = sps.butter(cfg.order, cfg.lp_hz / nyq, btype="lowpass", output="sos")
 
+    # 창 가장자리 확장. **`odd` 가 아니라 `constant` 다** (F-37).
+    #
+    # `odd` 확장은 끝점을 중심으로 점대칭 반사라 **끝점의 기울기를 그대로
+    # 연장**한다. ECG 는 창 끝이 어디에 떨어지든(T 파 사면이든 QRS 든)
+    # 기울기가 있으므로, 늘 **가짜 램프**가 붙는다. 램프는 저주파가 크고
+    # 0.5 Hz 고역통과가 그것을 과도현상으로 바꿔 **평활 구간에 굴곡**을 남긴다.
+    # `constant`(끝값 유지)는 기울기가 0 이라 DC 만 더하고, 고역통과가 DC 는
+    # 깨끗이 지운다.
+    #
+    # 기저선 변동과 무관하다 — 변동을 0 으로 줘도 `odd` 가 3.4 배 나쁘다.
+    # 처음에는 «변동이 있을 때 램프가 생긴다» 고 봤는데 그것은 틀렸다.
+    PAD_S = 1.0
+
     def _process(self, w):
-        pad = max(1, min(w.size - 1, w.size // 2))
-        v = sps.sosfiltfilt(self._hp, w, padtype="odd", padlen=pad)
-        return sps.sosfiltfilt(self._lp, v, padtype="odd", padlen=pad)
+        pad = max(1, min(w.size - 1, int(round(self.PAD_S * self.fs))))
+        v = sps.sosfiltfilt(self._hp, w, padtype="constant", padlen=pad)
+        return sps.sosfiltfilt(self._lp, v, padtype="constant", padlen=pad)
 
 
 class MedianBaselineFE(_Windowed):

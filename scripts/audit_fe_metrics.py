@@ -72,6 +72,22 @@ def rs_pp(v, r, r_amp):
     return float(np.median(out)) if out else float("nan")
 
 
+def tp_curve(v, r, r_amp):
+    """평활 구간 **안**의 굴곡 [%R] — 직선을 뺀 잔차 RMS (F-37).
+
+    준위 산포(구간 **사이**)와도, 이음매(경계의 불연속)와도 다른 양이다.
+    셋이 다른 원인을 갖는다는 것이 이 절의 요지다.
+    """
+    out = []
+    for i0, i1 in _tp_slices(r, v.size):
+        seg = v[i0:i1]
+        if seg.size < 12:
+            continue
+        t = np.arange(seg.size)
+        out.append(np.sqrt(np.mean((seg - np.polyval(np.polyfit(t, seg, 1), t)) ** 2)))
+    return 100 * float(np.median(out)) / r_amp if out else float("nan")
+
+
 def st_level(v, r, r_amp, at=ST_AT_S):
     """R+100 ms 의 준위 [%R], 그 박동의 T-P 중앙값 기준.
 
@@ -216,6 +232,53 @@ def audit_st(amp_frac=0.10, n_rec=8):
     return rows
 
 
+# ============================================================ 감사 5: 굴곡
+def audit_curvature():
+    """**평활 구간 안의 굴곡** — 창 확장 방식이 원인이다 (F-37).
+
+    이음매를 고친 뒤에도 남던 결함이다. 이음매(경계 불연속)와 굴곡(구간 내
+    저주파 요동)은 **다른 원인**이라 대책도 다르다.
+    """
+    from ecgdn.realtime.frontend_modes import (BlockZeroPhaseFE, CausalFE,
+                                               MedianBaselineFE)
+    rows = []
+    for tag in ("d0", "d1"):
+        x, r, r_amp, name = take(tag)
+        y = with_wander(x, r_amp)
+        H = 6
+        outs = [("오프라인 영위상 (바닥)", f_offline(y)),
+                ("블록 영위상 — `odd` 확장 (전)",
+                 _stream(_OddPad(FS, hop_s=H / FS), y, H)),
+                ("블록 영위상 — `constant` 확장 (후)",
+                 _stream(BlockZeroPhaseFE(FS, hop_s=H / FS), y, H)),
+                ("중앙값 200+600 ms", _stream(MedianBaselineFE(FS, hop_s=H / FS), y, H)),
+                ("인과 o1 0.5 Hz", _stream(CausalFE(FS), y, H))]
+        for who, v in outs:
+            rows.append(dict(axis=tag, record=name, who=who,
+                             curve=tp_curve(v, r, r_amp),
+                             spread=tp_spread(v, r, r_amp)))
+    return rows
+
+
+def _stream(fe, y, H):
+    return np.concatenate([fe.push(y[i:i + H]) for i in range(0, y.size, H)])
+
+
+class _OddPad:
+    """**고치기 전** 판 — 창 확장이 `odd` 다. 전후를 나란히 놓으려고 남긴다."""
+
+    def __new__(cls, fs=FS, **kw):
+        from ecgdn.realtime.frontend_modes import BlockZeroPhaseFE
+
+        class _Impl(BlockZeroPhaseFE):
+            def _process(self, w):
+                pad = max(1, min(w.size - 1, w.size // 2))
+                v = sps.sosfiltfilt(self._hp, w, padtype="odd", padlen=pad)
+                return sps.sosfiltfilt(self._lp, v, padtype="odd", padlen=pad)
+
+        return _Impl(fs, **kw)
+
+
 # ============================================================ 그림
 def seam_figure(out: Path, tag: str = "d0", show_s: float = 3.2):
     """**이음매를 눈으로 본다** — 교차 페이드 전후를 같은 구간에서 (F-36).
@@ -233,17 +296,19 @@ def seam_figure(out: Path, tag: str = "d0", show_s: float = 3.2):
     hi = min(x.size, lo + int(show_s * FS))
     t = np.arange(hi - lo) / FS
 
-    rows = [("고치기 전  ·  FE hop 48 ms, 교차 페이드 없음", 0.048, 0.0, "#c05010"),
-            ("고친 뒤  ·  FE hop 24 ms, 교차 페이드 24 ms", 0.024, None, "#2a78d6")]
-    # **세로 배율을 공유한다.** 안 그러면 두 칸이 다른 배율로 그려져 «위 칸이
+    rows = [("① 처음  ·  odd 확장, 교차 페이드 없음", 0.048, 0.0, True, "#c05010"),
+            ("② 이음매만 고침  ·  odd 확장, 교차 페이드", 0.024, None, True, "#b08020"),
+            ("③ 지금  ·  constant 확장, 교차 페이드", 0.024, None, False, "#2a78d6")]
+    # **세로 배율을 공유한다.** 안 그러면 칸마다 다른 배율로 그려져 «위 칸이
     # 더 크게 흔들린다» 가 배율 탓인지 결함 탓인지 못 가른다.
-    fig, axes = plt.subplots(2, 1, figsize=(13.5, 6.4), dpi=150,
+    fig, axes = plt.subplots(3, 1, figsize=(13.5, 8.4), dpi=150,
                              sharex=True, sharey=True)
-    fig.suptitle("블록 영위상의 이음매 — 같은 지연 548 ms, 같은 구간   ·   "
+    fig.suptitle("블록 영위상 — 두 수정이 각각 무엇을 고쳤나 (같은 지연 548 ms)   ·   "
                  f"합성 (D0) 기록 {name}", x=0.02, ha="left", fontsize=13.5,
                  fontweight="bold")
-    for ax, (lab, hop_s, xf, col) in zip(axes, rows):
-        fe = BlockZeroPhaseFE(FS, look_s=0.5, hop_s=hop_s, xfade_s=xf)
+    for ax, (lab, hop_s, xf, odd, col) in zip(axes, rows):
+        fe = (_OddPad(FS, look_s=0.5, hop_s=hop_s, xfade_s=xf) if odd
+              else BlockZeroPhaseFE(FS, look_s=0.5, hop_s=hop_s, xfade_s=xf))
         H = int(round(hop_s * FS))
         v = np.concatenate([fe.push(y[i:i + H]) for i in range(0, y.size, H)])
         seg = v[lo:hi]
@@ -256,15 +321,18 @@ def seam_figure(out: Path, tag: str = "d0", show_s: float = 3.2):
         ax.set_yticks([])
         for sp in ("top", "right", "left"):
             ax.spines[sp].set_visible(False)
-        ax.text(.995, .06, f"지연 {fe.latency_samples / FS * 1000:.0f} ms",
+        ax.text(.995, .06,
+                f"지연 {fe.latency_samples / FS * 1000:.0f} ms · "
+                f"굴곡 {tp_curve(v, r, r_amp):.2f} %R",
                 transform=ax.transAxes, ha="right", fontsize=9.5, color="#6b6b6b")
     axes[0].set_ylim(-0.30 * r_amp, 0.42 * r_amp)      # T-P 를 크게 — QRS 는 잘린다
     axes[-1].set_xlabel("s")
     fig.text(0.02, 0.015,
-             "세로 눈금이 블록 경계다. 위 칸에서 계단이 그 눈금에 맞는 것이 "
-             "이음매다 — QRS 는 세로로 잘려 있다 (T-P 를 크게 보려고).",
+             "세로 눈금이 블록 경계다. ①의 계단이 그 눈금에 맞는 것이 «이음매», "
+             "②에 남은 완만한 휨이 «굴곡» 이다 — 원인이 달라 대책도 달랐다. "
+             "QRS 는 세로로 잘려 있다 (T-P 를 크게 보려고).",
              fontsize=10, color="#1b1b1b")
-    fig.tight_layout(rect=[0.02, 0.035, 1, 0.94])
+    fig.tight_layout(rect=[0.02, 0.035, 1, 0.955])
     ensure_dir(out.parent); fig.savefig(out, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return out
@@ -330,6 +398,7 @@ def main() -> int:
     s1, m1 = audit_s("d1")
     t0, _ = audit_tp("d0")
     t1, _ = audit_tp("d1")
+    curve = audit_curvature()
     ref, names = audit_reference()
     st = pd.DataFrame(audit_st())
 
@@ -345,14 +414,15 @@ def main() -> int:
     fig_p = figure(ref, FIG / "fe_audit_d0.png")
     seam_p = seam_figure(FIG / "fe_seam_d0.png")
     print(f"-> {seam_p.relative_to(ROOT)}")
-    write_doc(s0, m0, s1, m1, t0, t1, g, d_true, d_off, sg, names, fig_p)
+    write_doc(s0, m0, s1, m1, t0, t1, g, d_true, d_off, sg, names, fig_p, curve)
     save_manifest(FIG, cfg={"script": "audit_fe_metrics"},
                   extra={"n_records": len(names)}, sources=[__file__])
     print(f"-> {DOC.relative_to(ROOT)}\n-> {fig_p.relative_to(ROOT)}")
     return 0
 
 
-def write_doc(s0, m0, s1, m1, t0, t1, g, d_true, d_off, sg, names, fig_p) -> None:
+def write_doc(s0, m0, s1, m1, t0, t1, g, d_true, d_off, sg, names, fig_p,
+              curve) -> None:
     """**숫자에서** 쓴다. 손으로 옮기지 않는다 (그러다 한 번 틀렸다)."""
     import pandas as pd
 
@@ -367,6 +437,17 @@ def write_doc(s0, m0, s1, m1, t0, t1, g, d_true, d_off, sg, names, fig_p) -> Non
     ft = ("{}", "{:+.2f}", "{:.2f}", "{:.2f}")
     n_flip = int((d_true > 0).sum())
     cond_w = f"+{INJECT_FRAC*100:.0f} %R 변동"
+    cv = pd.DataFrame(curve).pivot_table(index="who", columns="axis", values="curve")
+    _order = ["오프라인 영위상 (바닥)", "블록 영위상 — `odd` 확장 (전)",
+              "블록 영위상 — `constant` 확장 (후)", "중앙값 200+600 ms",
+              "인과 o1 0.5 Hz"]
+    cv = cv.reindex([o for o in _order if o in cv.index])
+    curve_md = "\n".join(
+        ["| | 굴곡 D0 [%R] | 굴곡 D1 [%R] |", "|---|---|---|"]
+        + [f"| {w} | {r['d0']:.3f} | {r['d1']:.3f} |" for w, r in cv.iterrows()])
+    _base = cv.loc["오프라인 영위상 (바닥)", "d0"]
+    curve_ratio = cv.loc["블록 영위상 — `odd` 확장 (전)", "d0"] / _base
+    curve_after = cv.loc["블록 영위상 — `constant` 확장 (후)", "d0"] / _base
     # T 파 높이는 «왜 D0 만 T-P 가 내려가나» 의 근거다 — 직접 잰다
     t_d0, t_d1 = (t_amp(f_offline(take(t)[0]), *take(t)[1:3]) for t in ("d0", "d1"))
 
@@ -687,6 +768,86 @@ D1(기록 100)에서는 교차 페이드 없이도 이음매 비가 1.50 뿐이�
 > 시험을 짜면서 한 번 틀렸다. 평평한 구간을 «차분이 작은 하위 60 %» 로
 > 골랐는데, 그러면 **이음매가 큰 표본이 스스로 걸러진다** — 재려는 것을 빼고
 > 재는 꼴이라 결함이 있는데도 비가 1.0 근처로 나왔다. 위치로 골라야 한다.
+
+---
+
+## 7. 이음매를 고쳤더니 **굴곡**이 보였다 — 창 확장이 원인 `[측정]`
+
+계단이 없어지자 다음 것이 보였다: 블록 영위상만 평활 구간이 **완만하게
+휜다.** 이음매(구간 **사이**의 불연속)와 다른 양이라 지표도 따로 필요했다 —
+**평활 구간 안에서 직선을 뺀 잔차 RMS**.
+
+{curve_md}
+
+**블록 영위상만 바닥의 {curve_ratio:.1f} 배였다**(D0). 중앙값과 인과는 바닥과 같다 —
+블록화 방식 고유의 결함이다. **교차 페이드는 여기에 거의 영향이 없었다**
+(1.32 -> 1.23) — 이음매와 굴곡은 원인이 다르다. 아래에서 고쳐 **{curve_after:.1f} 배**로
+내렸고, 표의 «후» 행이 그 결과다.
+
+### 원인 — 미리보기가 짧아 **역방향 패스가 정착 못 한다**
+
+미리보기 `F` 를 늘리며 재면 단조롭게 준다 (D0, 교차 페이드 켠 채):
+
+| 미리보기 | 0.5 s | 1 s | 2 s | **4 s** | 8 s |
+|---|---|---|---|---|---|
+| 굴곡 [%R] | 1.229 | 0.676 | 0.515 | **0.206** | 0.208 |
+
+**4 s 면 바닥(0.209)과 구별이 안 된다.** 4 차 0.5 Hz 필터의 역방향 패스가
+정착하는 데 그만큼 걸린다는 뜻이다. 과거 문맥은 반대로 **늘릴수록 나쁘다**
+(2 s 0.960 -> 16 s 1.325) — 정방향은 이미 정착했고 문제는 오른쪽 끝이다.
+
+그런데 **미리보기 = 지연**이다. 4 s 는 화면용으로 못 쓴다.
+
+### 안 통하는 대책 — 차수와 차단
+
+| | 굴곡 | 남은 변동 | ST 차 |
+|---|---|---|---|
+| 1 차 0.5 Hz | 2.216 | 10.6 | +1.69 |
+| 2 차 0.5 Hz | 1.546 | 8.4 | +1.66 |
+| **4 차 0.5 Hz (지금)** | **1.229** | **6.7** | **+1.61** |
+| 4 차 0.7 Hz | 0.888 | 1.4 | **-3.47** |
+| 4 차 1.0 Hz | 1.799 | 0.5 | **-6.82** |
+
+**차수를 낮추면 오히려 나빠진다** — 통과대역 감쇠가 완만해 저주파를 덜 지우고
+그 잔여가 굴곡으로 보인다. 차단을 올리면 굴곡은 줄지만 **ST 를 판다**(0.7 Hz
+에서 -3.5 %R). 둘 다 답이 아니다.
+
+### 통하는 대책 — **창 확장을 `odd` 에서 `constant` 로**
+
+`scipy` 의 `filtfilt` 는 창 밖을 확장해 가장자리 효과를 줄인다. 기본이자
+지금까지 쓰던 `odd` 는 **끝점을 중심으로 점대칭 반사**라 **끝점의 기울기를
+그대로 연장**한다. ECG 는 창 끝이 어디에 떨어지든 — T 파 사면이든 — 기울기가
+있으므로 **늘 가짜 램프가 붙고**, 램프는 저주파가 커서 0.5 Hz 고역통과가
+그것을 과도현상으로 바꾼다. `constant`(끝값 유지)는 기울기가 0 이라 DC 만
+더하고, 고역통과는 DC 를 깨끗이 지운다.
+
+| 창 확장 | 굴곡 | 남은 변동 | ST 차 | 오프라인차 p99 |
+|---|---|---|---|---|
+| `odd`, 창의 절반 (전) | 1.229 | 6.7 | +1.61 | 6.19 |
+| `constant`, 0.25 s | 0.656 | 3.9 | -1.46 | 5.04 |
+| **`constant`, 1 s (채택)** | **0.366** | **5.6** | **+0.80** | **4.88** |
+| `constant`, 2 s | 0.551 | 5.9 | +1.14 | 4.98 |
+| Gustafsson 초기조건 | 0.199 | 8.3 | -1.36 | 9.63 |
+
+**네 지표가 모두 좋아진다 — 무엇도 팔지 않는다.** 지연도 연산도 그대로다.
+Gustafsson(초기조건 최적 추정)은 굴곡이 가장 작지만 남은 변동과 오프라인차가
+크게 나빠져 채택하지 않았다.
+
+### 기제 확인 — 그리고 **첫 설명은 틀렸다**
+
+처음에는 «기저선 변동이 있을 때 램프가 생긴다» 고 봤다. 주입 변동을 0~100 %R
+로 훑어 보니 **비가 3.3~3.4 로 일정했다** — 변동이 0 이어도 `odd` 가 3.4 배
+나쁘다. 원인은 기저선이 아니라 **ECG 자신의 기울기**다.
+
+같은 것을 회귀 시험에서도 확인했다. 시험 신호에 QRS 만 넣었을 때는 `odd` 가
+**오히려 굴곡이 작게** 나왔다(0.0016 대 0.0029). **T 파를 넣자 뒤집혔다**
+(0.0143 대 0.0063). 창 끝이 **완만한 사면에 떨어질 수 있어야** 재현된다 —
+QRS 만 있으면 창 끝은 거의 항상 평평한 곳이다.
+
+> **재사용할 것.** «가장자리 처리» 는 보통 신경 안 쓰는 기본값인데, **창을
+> 짧게 쓰는 실시간 경로에서는 가장자리가 결과의 상당 부분**이다. 오프라인은
+> 창이 기록 전체라 가장자리가 전체의 0.1 % 지만, 여기서는 미리보기 0.5 s
+> 자체가 가장자리다. **같은 필터라도 창이 짧아지면 다른 기본값이 필요하다.**
 """
     DOC.write_text(body)
 

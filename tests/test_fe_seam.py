@@ -12,6 +12,8 @@ T-P 구간처럼 원래 평평한 곳에서 유독 크게 보인다 — 그곳�
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 
 from ecgdn.config import FS
@@ -34,8 +36,17 @@ def _signal(seconds=40.0, seed=7):
     t = np.arange(n) / FS
     g = np.random.default_rng(seed)
     x = 0.5 * np.sin(2 * np.pi * 0.13 * t) + 0.3 * np.sin(2 * np.pi * 0.31 * t + 1.0)
+    # **T 파가 반드시 있어야 한다.** 처음에는 QRS 만 넣었는데, 그러면 `odd`
+    # 확장이 오히려 굴곡이 작게 나와 F-37 을 못 잡았다. 원인이 «창 끝의
+    # 기울기» 이므로 **창 끝이 완만한 사면에 떨어질 수 있어야** 재현된다 —
+    # QRS 만 있으면 창 끝은 거의 항상 평평한 곳이다. 시험 신호가 기제를
+    # 담지 못하면 결함이 있어도 통과한다.
+    tw = int(0.16 * FS)                     # T 파 — 넓고 완만한 사면
     for i in _beats(n):
-        x[i:i + 10] += np.hanning(10) * 3.0
+        x[i:i + 10] += np.hanning(10) * 3.0                    # QRS
+        j = i + int(0.20 * FS)
+        if j + tw < n:
+            x[j:j + tw] += np.hanning(tw) * 0.8
     return x + 1e-4 * g.standard_normal(n)
 
 
@@ -52,9 +63,9 @@ def _flat_mask(n):
     """
     m = np.zeros(n, bool)
     for i in _beats(n):
-        a, b = i + int(0.30 * FS), i + int(BEAT_S * FS) - int(0.10 * FS)
+        a, b = i + int(0.40 * FS), i + int(BEAT_S * FS) - int(0.10 * FS)
         if b <= n:
-            m[a:b] = True
+            m[a:b] = True                    # T 파(0.20~0.36 s)가 끝난 뒤부터
     return m
 
 
@@ -175,6 +186,58 @@ def test_cross_fade_keeps_the_sample_contract():
     pk_out = int(np.argmax(out))
     assert abs(pk_out - (mark + 5)) <= 4, \
         f"봉우리가 {mark + 5} -> {pk_out} 으로 밀렸다 — 표본 번호 계약이 깨졌다"
+
+
+def _curvature(v, mask=None):
+    """평평한 구간 **안**의 굴곡 — 직선을 뺀 잔차의 RMS.
+
+    이음매(구간 **사이**의 불연속)와 다른 양이다. 교차 페이드는 이음매를
+    지우지만 굴곡은 거의 못 줄인다 — 원인이 다르기 때문이다 (F-37).
+    """
+    m = _flat_mask(v.size) if mask is None else mask
+    out = []
+    for i in _beats(v.size):
+        a, b = i + int(0.40 * FS), i + int(BEAT_S * FS) - int(0.10 * FS)
+        if b > v.size or b - a < 12:
+            continue
+        seg = v[a:b]
+        t = np.arange(seg.size)
+        out.append(np.sqrt(np.mean((seg - np.polyval(np.polyfit(t, seg, 1), t)) ** 2)))
+    assert len(out) >= 5, f"박동이 모자라 굴곡을 못 잰다 ({len(out)})"
+    return float(np.median(out))
+
+
+def test_constant_padding_removes_the_curvature_in_flat_segments():
+    """**F-37 의 회귀 시험** — 창 확장을 `odd` 로 되돌리면 굴곡이 돌아온다.
+
+    `odd` 확장은 끝점을 중심으로 점대칭이라 **끝점의 기울기를 연장**한다.
+    ECG 는 창 끝이 어디에 떨어지든 기울기가 있으므로 늘 가짜 램프가 붙고,
+    0.5 Hz 고역통과가 그것을 과도현상으로 바꿔 평활 구간에 굴곡을 남긴다.
+    """
+    x = _signal()
+    good = _curvature(_run(BlockZeroPhaseFE(FS), x))
+
+    class _Odd(BlockZeroPhaseFE):
+        def _process(self, w):
+            import scipy.signal as sp
+            pad = max(1, min(w.size - 1, w.size // 2))
+            v = sp.sosfiltfilt(self._hp, w, padtype="odd", padlen=pad)
+            return sp.sosfiltfilt(self._lp, v, padtype="odd", padlen=pad)
+
+    bad = _curvature(_run(_Odd(FS), x))
+    assert bad > good * 1.8, (
+        f"`odd` 로 되돌렸는데 굴곡이 안 돌아온다 ({bad:.4f} vs {good:.4f}) — "
+        "시험이 결함을 못 잡고 있다")
+
+
+def test_the_block_filter_declares_its_padding_choice():
+    """`constant` 가 조용히 `odd` 로 돌아가면 굴곡이 되살아난다 (F-37)."""
+    src = (Path(__file__).resolve().parent.parent
+           / "ecgdn" / "realtime" / "frontend_modes.py").read_text()
+    body = src[src.index("class BlockZeroPhaseFE"):]
+    body = body[:body.index("class MedianBaselineFE")]
+    assert 'padtype="constant"' in body, "블록 영위상이 constant 확장을 안 쓴다"
+    assert 'padtype="odd"' not in body, "odd 확장이 되살아났다"
 
 
 def test_accumulator_stays_bounded():

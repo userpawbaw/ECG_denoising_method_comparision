@@ -124,6 +124,7 @@ PAST_S = 4.0        # 과거 문맥. **이미 받아 둔 자료라 지연을 안
 # hop 이고, hop 을 줄이면 지연도 함께 줄기 때문이다. 실시간 브리지는 FE hop
 # 24 ms 를 쓰므로 거기서는 지연이 548 ms 로 **교차 페이드 도입 전과 같다.**
 XFADE_S = HOP_S
+PAD_S = 1.0          # 창 가장자리 확장 길이 (F-37). `constant` 로 이만큼.
 
 
 def f_lookahead(x, look_s, order=4, hp_hz=0.5, hop_s=HOP_S, past_s=PAST_S,
@@ -160,9 +161,11 @@ def f_lookahead(x, look_s, order=4, hp_hz=0.5, hop_s=HOP_S, past_s=PAST_S,
         n1 = min(n0 + H, x.size)
         a, b = max(0, n0 - P), min(x.size, n1 + F)
         w = np.asarray(x[a:b], dtype=np.float64)
-        pad = max(1, min(w.size - 1, w.size // 2))
-        v = sps.sosfiltfilt(hp, w, padtype="odd", padlen=pad)
-        v = sps.sosfiltfilt(lp, v, padtype="odd", padlen=pad)
+        # **`constant` 확장** — `odd` 는 창 끝의 기울기를 연장해 가짜 램프를
+        # 만들고, 그것이 평활 구간의 굴곡이 된다 (F-37).
+        pad = max(1, min(w.size - 1, int(round(PAD_S * FS))))
+        v = sps.sosfiltfilt(hp, w, padtype="constant", padlen=pad)
+        v = sps.sosfiltfilt(lp, v, padtype="constant", padlen=pad)
         s0, s1 = max(a, n0 - X), min(b, n1 + X)
         seg = v[s0 - a: s1 - a]
         win = np.ones(seg.size)
