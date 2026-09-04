@@ -134,16 +134,20 @@ def test_training_runner_covers_every_referenced_checkpoint():
     needed: set[str] = set()
     for p in CONFIGS:
         cfg = yaml.safe_load(p.read_text()) or {}
-        side = (cfg.get("side_experiment") or {}).get("train")
+        # `train`, `train2`, ... 여러 줄을 허용한다 — 곁가지가 체크포인트를
+        # 둘 이상 쓰면 각각의 만드는 법이 다 적혀야 한다.
+        side_cmds = [v for k, v in (cfg.get("side_experiment") or {}).items()
+                     if str(k).startswith("train")]
         made_here: set[str] = set()
-        if side:
+        for side in side_cmds:
             assert (ROOT / side.split()[1]).exists(), \
-                f"{p.name}: side_experiment.train 이 없는 스크립트를 가리킨다 ({side})"
+                f"{p.name}: side_experiment 가 없는 스크립트를 가리킨다 ({side})"
             for tok in side.split():
                 if (ROOT / "configs" / f"{tok}.yaml").exists():
                     made_here.add(tok)
+        if side_cmds:
             assert made_here, \
-                f"{p.name}: side_experiment.train 이 어떤 config 도 학습하지 않는다"
+                f"{p.name}: side_experiment 가 어떤 config 도 학습하지 않는다"
         for spec in (cfg.get("dl_methods") or {}).values():
             ck = spec if isinstance(spec, str) else (spec or {}).get("ckpt")
             if ck:
