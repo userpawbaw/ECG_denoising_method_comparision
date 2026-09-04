@@ -145,6 +145,19 @@ def mechanism(n_rec: int = 6, snrs=(0.0, 10.0)) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def val_best(run: str) -> tuple[float, int]:
+    """그 학습이 **모델 선택에 쓴** 값과 epoch. 체크포인트에서 읽는다.
+
+    처음에는 `log.csv` 의 끝 몇 줄을 눈으로 읽고 손으로 옮겨 적었다가
+    **틀렸다** — 마지막 epoch 은 best 가 아니다(m06_l1 은 ep 34 가 best 인데
+    ep 44~46 을 보고 +2.6 이라고 적었다. 실제는 +3.437). 손으로 옮기지 않는다.
+    """
+    import torch
+    ck = torch.load(ROOT / "results" / "d1" / run / "best.pt",
+                    map_location="cpu", weights_only=False)
+    return float(ck["best_metric"]), int(ck["epoch"])
+
+
 def main() -> int:
     if not EXP.exists():
         print(f"{EXP} 가 없다. 먼저:\n"
@@ -202,6 +215,7 @@ def write_doc(snr, prdn, bcc, qrs, ramp, f1, piv, mech, pli, n_pli_rec) -> None:
     ib = lambda who: w("0.5~40 Hz 신호대역", who) / 100 * w("오차파워 [%R^2]", who)  # noqa: E731
     # f-string 안에서는 중괄호를 못 쓴다 — 표는 밖에서 만든다.
     pli_md = md(pli, fmt="{:.1f}", first="방법 (판정 비율 %)")
+    (vfe, efe), (vno, eno) = val_best("m06_l1"), val_best("m06_l1_nofe")
 
     body = f"""## 11. FE 없는 판을 학습했다 — **FE 가 이긴다. 다만 내가 예상한 이유는 아니었다** `[측정]`
 
@@ -210,16 +224,16 @@ def write_doc(snr, prdn, bcc, qrs, ramp, f1, piv, mech, pli, n_pli_rec) -> None:
 참조가 「MIT-BIH 원본」이 되어 **F-12 를 재현**한다 — 묻는 것은 «앞단을 스스로
 배울 수 있는가» 이지 «참조를 바꾸면 어떻게 되는가» 가 아니다.
 
-60 에폭 완주, best epoch 49.
+60 에폭 완주, best epoch {eno}.
 
 ### 먼저 — **학습 로그의 숫자로 견주면 안 된다**
 
-| | val `snr_imp` |
+| | val `snr_imp` (모델 선택에 쓴 값) |
 |---|---|
-| `m06_l1` (FE 판) | +2.6 dB |
-| `m06_l1_nofe` | **+9.6 dB** |
+| `m06_l1` (FE 판) | {vfe:+.2f} dB (ep {efe}) |
+| `m06_l1_nofe` | **{vno:+.2f} dB** (ep {eno}) |
 
-세 배 넘게 좋아 보이는데 **이것은 성능 차가 아니라 분모 차다.** `snr_imp` 는
+{vno/vfe:.1f} 배 좋아 보이는데 **이것은 성능 차가 아니라 분모 차다.** `snr_imp` 는
 「그 학습이 받은 입력」 대비 개선이다. FE 판의 입력은 이미 기저선 변동이
 빠진 것이라 개선할 여지가 적고, nofe 판의 입력은 날것이라 **변동 제거분까지
 자기 공로로 계산된다.** F-10 이 정확히 이 덫이었다.
