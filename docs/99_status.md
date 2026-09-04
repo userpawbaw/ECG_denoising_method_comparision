@@ -483,6 +483,11 @@ Routine 은 **깨울 일이 있을 때만 켠다.**
 | 학습·실험 등 **몇 시간짜리 무인 실행을 띄운 직후** | **켠다** |
 | 그 실행이 끝났고 다음 계획이 없다 | **대기로 되돌린다** |
 
+> **띄우기 전에 확인한다.** `list_triggers(enabled=true)` 가 비어 있으면
+> **먼저 켜고 나서** 무인 실행을 띄운다. 이 순서를 어겨 학습이 한 번 죽었다
+> (**O-23**) — 규칙이 있는데도 「끈다」와 「띄운다」 사이에 다른 대화가 끼면
+> 두 번째를 잊는다.
+
 ```
 켜기   update_trigger(trigger_id="trig_01FmVcrnqGyQSQoMdG6v5Hbx", enabled=true,
                       name="ECG 학습 watchdog (60분)")

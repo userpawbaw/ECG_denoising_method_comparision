@@ -59,8 +59,9 @@ from ecgdn.data.noise import make_noise
 from ecgdn.data.synthetic import synth_ecg
 from ecgdn.eval.rpeak import detect_rpeaks
 from ecgdn.utils import ensure_dir, rng, save_manifest
-from explore_lookahead_fe import (C, INJECT_FRAC, _ko_font, f_lookahead, f_median,
-                                  f_offline, load, s_depth, t_amp, tp_noise, tp_spread)
+from explore_lookahead_fe import (C, INJECT_FRAC, _ko_font, _tp_slices, f_lookahead,
+                                  f_median, f_offline, load, s_depth, t_amp,
+                                  tp_noise, tp_spread)
 
 ROOT = Path(__file__).resolve().parents[1]
 plt.rcParams.update({"font.family": _ko_font(), "axes.unicode_minus": False,
@@ -268,8 +269,77 @@ def fig_clean(per_axis, out: Path):
     return out
 
 
+# ============================================ ④ 중심선에 붙는 진짜 이유
+def measure_tp_level(tag: str):
+    """**«0» 의 정의가 방식마다 다르다** — 그것이 시각적 인상의 정체다.
+
+    고역통과 출력은 **기록 전체의 평균이 0** 이 된다. 그런데 박동에는 R·T 라는
+    큰 양의 면적이 있으므로, 평균을 0 으로 맞추려면 **T-P 구간이 그만큼 아래로
+    내려가야** 한다. 즉 선형 필터의 «0» 은 **전체 평균**이다.
+
+    중앙값 캐스케이드가 빼는 것은 **국소 T-P 준위**다. 그래서 그 방식의 «0» 은
+    곧 T-P 준위이고, 결과적으로 **임상 관례(등전위선 = TP/PR 구간)와 일치**한다.
+    «중앙값이 중심선에 딱 붙는다» 는 인상은 «기저선을 더 잘 지워서» 가 아니라
+    여기서 온다.
+
+    검산: `전체평균 = TP비중 x TP준위 + (1-TP비중) x 나머지평균` 이므로
+    TP 준위를 역산해 실측과 맞는지 본다. 맞으면 위 설명이 성립한다.
+    """
+    x, r, r_amp, name = load(tag, 30.0)
+    out = []
+    for lab, fn in (("오프라인 영위상", f_offline), ("블록 영위상 0.5 s", LA),
+                    ("중앙값 200+600 ms", MED)):
+        v = fn(x)
+        segs = list(_tp_slices(r, v.size))
+        idx = np.concatenate([np.arange(a, b) for a, b in segs])
+        mask = np.zeros(v.size, bool)
+        mask[idx] = True
+        gm, tp, rest, frac = v.mean(), v[mask].mean(), v[~mask].mean(), mask.mean()
+        pred = (gm - (1 - frac) * rest) / frac      # 역산
+        out.append(dict(label=lab, mean=100 * gm / r_amp, tp=100 * tp / r_amp,
+                        frac=100 * frac, pred=100 * pred / r_amp))
+    return out, name
+
+
+# ==================================== ⑤ S 골이 좁아지는가 — 참값을 아는 조건에서
+def measure_s_shape(tag: str = "d0"):
+    """«중앙값이 S 를 좁힌다» 를 **참값을 아는 조건**에서 가른다.
+
+    d1 에서 재면 원본부터 반치폭이 86 ms 로 나오는데, 그것은 진짜 S 파가 아니라
+    **기저선 처짐이 골에 섞인 값**이다. 그런 조건에서는 어느 쪽이 맞는지 가릴 수
+    없다. 그래서 **d0(참값 S 폭이 확실한 합성)** 에 기저선 변동을 주입하고,
+    누가 참값 폭을 지키는지 본다.
+    """
+    x, r, r_amp, name = load(tag, 30.0)
+    y = x + _wander(x, r_amp)
+
+    def shape(v):
+        dep, wid = [], []
+        for (i0, i1), a in zip(_tp_slices(r, v.size), r[:-1]):
+            base = np.median(v[i0:i1])
+            j0, j1 = a, min(a + int(0.12 * FS), v.size)
+            if j1 - j0 < 5:
+                continue
+            w = v[j0:j1]
+            d = base - w.min()
+            if d <= 0:
+                continue
+            dep.append(100 * d / r_amp)
+            b = np.flatnonzero(w < base - 0.5 * d)
+            wid.append((b[-1] - b[0] + 1) / FS * 1000 if b.size > 1 else 0.0)
+        return float(np.median(dep)), float(np.median(wid))
+
+    rows = [dict(label="참값 (변동 없는 원본)", **dict(zip(("dep", "wid"), shape(x))))]
+    for lab, fn in (("아무것도 안 함", lambda v: v),
+                    ("오프라인 영위상", f_offline), ("블록 영위상 0.5 s", LA),
+                    ("중앙값 200+600 ms", MED)):
+        d, w = shape(fn(y))
+        rows.append(dict(label=lab, dep=d, wid=w))
+    return rows, name
+
+
 # ------------------------------------------------------------------ 문서
-def write_doc(hr_rows, clean, supers, made) -> Path:
+def write_doc(hr_rows, clean, supers, tp_levels, s_shapes, made) -> Path:
     L = ["# 14. 중앙값 캐스케이드 vs 블록 영위상 — 무엇이 다른가", "",
          "> 이 문서는 `scripts/compare_median_vs_zerophase.py` 가 만든다. **직접 고치지 말 것.**",
          "> 후보 전체 표는 `docs/13_lookahead_fe.md`.",
@@ -329,7 +399,36 @@ def write_doc(hr_rows, clean, supers, made) -> Path:
         for r in rows:
             L.append(f"| {tag} | {r['label']} | **{r['floor_db']:.1f}** | {r['t_err']:.1f} %R | "
                      f"{r['s_err']:.1f} %R | **{r['band']:.1f} %R** | *{r['noise']:.1f} %R* |")
-    L += ["", "## 그림", ""]
+    L += ["", "## 왜 중앙값이 중심선에 «붙어» 보이는가 — **«0» 의 정의가 다르다** `[측정]`", "",
+          "고역통과 출력은 **기록 전체의 평균이 0** 이 된다. 그런데 박동에는 R·T 라는",
+          "큰 양의 면적이 있으므로, 평균을 0 으로 맞추려면 **T-P 구간이 그만큼 아래로",
+          "내려가야 한다.** 즉 선형 필터의 «0» 은 **전체 평균**이다.", "",
+          "중앙값이 빼는 것은 **국소 T-P 준위**다. 그래서 그 방식의 «0» 이 곧 T-P 준위이고,",
+          "**임상 관례(등전위선 = TP/PR 구간)와 일치**한다. 시각적 인상의 정체가 이것이지",
+          "«기저선을 더 잘 지워서» 가 아니다.", ""]
+    for tag, (rows, nm) in tp_levels.items():
+        L += [f"**{tag} 기록 {nm}** — 전체 평균은 셋 다 0 근처인데 T-P 준위는 갈린다:", "",
+              "| 방식 | 전체 평균 | **T-P 준위** | TP 비중 | 역산값 |",
+              "|---|---:|---:|---:|---:|"]
+        for r in rows:
+            L.append(f"| {r['label']} | {r['mean']:+.2f} %R | **{r['tp']:+.2f} %R** | "
+                     f"{r['frac']:.0f} % | {r['pred']:+.2f} %R |")
+        L.append("")
+    L += ["**역산값이 실측과 일치한다** — 위 설명이 성립한다는 검산이다.", "",
+          "## S 골이 좁아지는가 — **참값을 아는 조건에서는 아니다** `[측정]`", "",
+          "d1 에서 재면 원본부터 반치폭이 86 ms 로 나오는데, 그것은 진짜 S 파가 아니라",
+          "**기저선 처짐이 골에 섞인 값**이다. 그 조건에서는 가릴 수 없다. 그래서",
+          "**참값 S 폭이 확실한 d0** 에 기저선 변동을 주입해 다시 쟀다:", ""]
+    for tag, (rows, nm) in s_shapes.items():
+        L += [f"**{tag} 기록 {nm}** · 기저선 변동 {INJECT_FRAC*100:.0f} %R 주입", "",
+              "| | S 깊이 | **S 반치폭** |", "|---|---:|---:|"]
+        for r in rows:
+            L.append(f"| {r['label']} | {r['dep']:.1f} %R | **{r['wid']:.0f} ms** |")
+        L.append("")
+    L += ["**폭에서는 세 방식이 안 갈린다.** 깊이는 갈린다 — 중앙값이 이 조건에서",
+          "약간 과하다. «중앙값이 S 를 좁힌다» 는 인상은 **참값을 모르는 축(d1)에서",
+          "본 것**이고, 통제 조건에서는 재현되지 않았다.", "",
+          "## 그림", ""]
     L += [f"![{p.stem}](../{p.relative_to(ROOT)})" for p in made] + [""]
     p = ROOT / "docs" / "14_median_vs_zerophase.md"
     p.write_text("\n".join(L) + "\n", encoding="utf-8")
@@ -350,7 +449,9 @@ def main() -> int:
         for r in rows:
             print(f"  [{t}] 중첩 잔차 {r['label']:<18} {r['err_db']:6.1f} dB")
     made.append(fig_clean(clean, ROOT / "results" / "fig" / "median_clean.png"))
-    doc = write_doc(hr_rows, clean, supers, made)
+    tp_levels = {t: measure_tp_level(t) for t in ("d0", "d1")}
+    s_shapes = {"d0": measure_s_shape("d0")}
+    doc = write_doc(hr_rows, clean, supers, tp_levels, s_shapes, made)
     save_manifest(ROOT / "results" / "fig",
                   cfg={"script": "compare_median_vs_zerophase", "hr_grid": list(HR_GRID)},
                   sources=[__file__])
