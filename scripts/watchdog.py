@@ -63,6 +63,8 @@ STALE_LOG_S = 900
 # 같은 이유로 재시작은 몇 번까지만. OOM 처럼 매번 죽는 학습을 무한히 되살리면
 # 로그에 '재시작' 만 쌓이고 원인은 가려진다.
 MAX_RESTARTS = 3
+# 락을 잡는 러너들. **일회성 러너를 빠뜨리면 그 실행은 감시 밖이다**(O-24).
+RUNNER_NAMES = ("run_all_training.sh", "run_one_training.sh")
 
 
 def _argv(pid: int) -> list[str]:
@@ -123,11 +125,15 @@ def assess() -> dict:
         except (ValueError, OSError):
             lock_pid = None
 
-    runner_alive = lock_pid is not None and _is(lock_pid, ("run_all_training.sh",))
+    lock_cmd = _lock_cmd()
+    runner_alive = lock_pid is not None and _is(lock_pid, RUNNER_NAMES)
     trainers = _pids(("train.py",))
     log_age = _newest_log_age()
 
     if not LOCK.exists():
+        # **락 없이 도는 학습은 감시 밖이다.** 락이 없으면 감시자는 "돌아야 할
+        # 학습이 있다" 를 알 수 없고, 그것이 죽어도 stalled 로 갈 수 없다 —
+        # 영원히 idle 이다. 그래서 이것 자체를 이상으로 보고한다 (O-24).
         state = "idle" if not trainers else "trainer_without_lock"
     elif runner_alive:
         state = "running"
@@ -142,7 +148,22 @@ def assess() -> dict:
 
     return dict(ts=now, state=state, lock=LOCK.exists(), lock_pid=lock_pid,
                 runner_alive=runner_alive, trainers=trainers,
-                log_age_s=round(log_age, 1))
+                log_age_s=round(log_age, 1), lock_cmd=lock_cmd)
+
+
+def _lock_cmd() -> list[str] | None:
+    """락이 적어 둔 **재개 명령.**
+
+    러너 전체를 기본값으로 되살리면, 목록에 없는 일회성 학습은 **되살아나지
+    않고 엉뚱한 학습이 대신 돈다.** 무엇을 띄워야 하는지는 그 실행만 안다.
+    """
+    f = LOCK / "cmd"
+    try:
+        raw = f.read_bytes()
+    except OSError:
+        return None
+    argv = [a for a in raw.decode("utf-8", "replace").split("\0") if a]
+    return argv or None
 
 
 def _last_recorded() -> dict | None:
@@ -295,14 +316,22 @@ def main() -> int:
         print("  **실험 락만 남았다.** 재개하려면 먼저 치워야 한다:\n"
               "    rm -rf results/.exp.lock")
 
-    if st["state"] == "orphan_trainer":
+    if st["state"] == "trainer_without_lock":
+        print("  **락 없이 학습이 돌고 있다 — 감시 밖이다.** 이 실행이 죽으면\n"
+              "  감시자는 idle 로 보고할 뿐 되살리지 못한다 (O-24). 일회성\n"
+              "  학습도 락을 잡는 러너로 띄울 것:\n"
+              "    bash scripts/run_one_training.sh <축> <설정>")
+    elif st["state"] == "orphan_trainer":
         print("  러너 셸은 죽었지만 **학습 프로세스가 살아 있다.** 재시작하지 "
               "않는다 — 같은 경로에 두 학습이 쓰면 O-7 이 재현된다.")
     elif st["state"] == "stalled":
         print("  **학습이 죽었다.** --restart 를 주면 보존 후 재개한다.")
 
     if a.restart:
-        cmd = a.cmd or ["bash", "scripts/run_all_training.sh", "auto"]
+        # **락이 적어 둔 명령이 기본값보다 우선한다.** 러너 전체를 되살리면
+        # 목록에 없는 일회성 학습은 되살아나지 않는다 (O-24).
+        cmd = a.cmd or st.get("lock_cmd") or [
+            "bash", "scripts/run_all_training.sh", "auto"]
         return restart(st, cmd)
     healthy = st["state"] in ("running", "orphan_trainer", "idle", "settling")
     return 0 if healthy and ex["state"] != "stalled" else 1

@@ -166,3 +166,71 @@ def test_events_log_only_records_changes(tmp_path, monkeypatch):
     m._record(dict(ts="t5", state="stalled", action="restart"), force=True)
     n = len((tmp_path / "wd" / "events.jsonl").read_text().strip().splitlines())
     assert n == 3, f"상태 변화와 개입은 적혀야 한다 ({n} 줄)"
+
+
+# ------------------------------------------- 일회성 학습도 감시 안에 있어야 한다
+def test_single_run_runner_counts_as_a_runner():
+    """`run_one_training.sh` 가 러너 목록에 없으면 그 실행은 **감시 밖이다**(O-24).
+
+    락 PID 가 살아 있어도 `runner_alive` 가 False 가 되어 `orphan_trainer` 로
+    잘못 분류되고, 죽은 뒤에도 판정이 흐려진다.
+    """
+    m = _mod()
+    assert "run_one_training.sh" in m.RUNNER_NAMES
+    assert "run_all_training.sh" in m.RUNNER_NAMES
+
+
+def test_a_trainer_without_a_lock_is_reported_as_a_fault(tmp_path, monkeypatch):
+    """**락 없이 도는 학습은 정상이 아니다.**
+
+    감시자는 락으로만 "돌아야 할 학습이 있다" 를 안다. 락이 없으면 그 실행이
+    죽어도 `stalled` 로 갈 수 없고 영원히 `idle` 이다 — 45 분을 그렇게 잃었다
+    (O-24). 그래서 종료코드가 이상을 알려야 한다.
+    """
+    m = _mod()
+    monkeypatch.setattr(m, "LOCK", tmp_path / ".train.lock")
+    monkeypatch.setattr(m, "EXP_LOCK", tmp_path / ".exp.lock")
+    monkeypatch.setattr(m, "STATE", tmp_path / "wd")
+    monkeypatch.setattr(m, "EVENTS", tmp_path / "wd" / "events.jsonl")
+    monkeypatch.setattr(m, "_pids", lambda names: [4242] if "train.py" in names else [])
+    monkeypatch.setattr(m, "_newest_log_age", lambda: 1.0)
+    assert m.assess()["state"] == "trainer_without_lock"
+    monkeypatch.setattr(sys, "argv", ["watchdog.py"])
+    assert m.main() == 1, "감시 밖의 학습을 정상으로 보고하면 안 된다"
+
+
+def test_restart_uses_the_command_the_lock_recorded(tmp_path, monkeypatch):
+    """일회성 학습을 러너 전체로 되살리면 **엉뚱한 학습이 대신 돈다**(O-24).
+
+    `run_all_training.sh` 의 기본 목록에 `m06_l1_nofe` 는 없다. 무엇을 띄워야
+    하는지는 그 실행이 락에 적어 둔 것뿐이다.
+    """
+    m = _mod()
+    monkeypatch.setattr(m, "LOCK", tmp_path / ".train.lock")
+    monkeypatch.setattr(m, "EXP_LOCK", tmp_path / ".exp.lock")
+    monkeypatch.setattr(m, "STATE", tmp_path / "wd")
+    monkeypatch.setattr(m, "EVENTS", tmp_path / "wd" / "events.jsonl")
+    monkeypatch.setattr(m, "ROOT", tmp_path)
+    m.LOCK.mkdir()
+    (m.LOCK / "pid").write_text("999999")
+    want = ["bash", "scripts/run_one_training.sh", "mitdb", "m06_l1_nofe"]
+    (m.LOCK / "cmd").write_bytes(b"\0".join(a.encode() for a in want) + b"\0")
+    monkeypatch.setattr(m, "_pids", lambda names: [])
+    monkeypatch.setattr(m, "_newest_log_age", lambda: 1e9)
+
+    st = m.assess()
+    assert st["state"] == "stalled"
+    assert st["lock_cmd"] == want, "락이 적어 둔 재개 명령을 못 읽었다"
+
+    seen: list = []
+    monkeypatch.setattr(m.subprocess, "Popen",
+                        lambda cmd, **kw: seen.append(cmd) or _FakeProc())
+    monkeypatch.setattr(sys, "argv", ["watchdog.py", "--restart"])
+    (tmp_path / "results" / "logs").mkdir(parents=True)
+    m.main()
+    assert seen and seen[0] == want, (
+        f"락의 명령 대신 {seen} 을 띄웠다 — 목록에 없는 학습은 되살아나지 않는다")
+
+
+class _FakeProc:
+    pid = 12345
