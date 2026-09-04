@@ -114,10 +114,17 @@ def test_dl_checkpoints_have_a_training_config(cfg_path: Path):
 
 
 def test_training_runner_covers_every_referenced_checkpoint():
-    """어떤 실험이 쓰는 체크포인트는 전부 기본 학습 러너가 만들어야 한다.
+    """어떤 실험이 쓰는 체크포인트는 전부 **재현 가능한 러너**가 만들어야 한다.
 
     러너에서 빠진 학습이 있으면, 그 실험은 '체크포인트 없음' 으로 조용히
     건너뛰어진다. F-9 가 정확히 그렇게 발생했다.
+
+    **곁가지 실험은 예외를 둔다 — 다만 공짜가 아니다.** 주 파이프라인이
+    학습하면 안 되는 조건(예: 공정성 규약을 일부러 깨는 `m06_l1_nofe`)이
+    있는데, 그것을 기본 `RUNS` 에 넣으면 축마다 30 분씩 낭비하고 무엇보다
+    **주 표에 들어갈 자격이 있는 것처럼 보인다.** 그래서 config 가
+    `side_experiment.train` 에 **그 체크포인트를 만드는 명령**을 적도록
+    요구한다. 목적은 같다 — 「이 체크포인트는 누가 만드는가」에 답이 있을 것.
     """
     runner = (ROOT / "scripts" / "run_all_training.sh").read_text()
     m = re.search(r'RUNS="\$\{\*:-([^}]+)\}"', runner)
@@ -127,10 +134,22 @@ def test_training_runner_covers_every_referenced_checkpoint():
     needed: set[str] = set()
     for p in CONFIGS:
         cfg = yaml.safe_load(p.read_text()) or {}
+        side = (cfg.get("side_experiment") or {}).get("train")
+        made_here: set[str] = set()
+        if side:
+            assert (ROOT / side.split()[1]).exists(), \
+                f"{p.name}: side_experiment.train 이 없는 스크립트를 가리킨다 ({side})"
+            for tok in side.split():
+                if (ROOT / "configs" / f"{tok}.yaml").exists():
+                    made_here.add(tok)
+            assert made_here, \
+                f"{p.name}: side_experiment.train 이 어떤 config 도 학습하지 않는다"
         for spec in (cfg.get("dl_methods") or {}).values():
             ck = spec if isinstance(spec, str) else (spec or {}).get("ckpt")
             if ck:
-                needed.add(Path(str(ck).replace("{tag}", "d0")).parent.name)
+                name = Path(str(ck).replace("{tag}", "d0")).parent.name
+                if name not in made_here:
+                    needed.add(name)
     assert not (needed - runs), \
         f"실험이 쓰지만 러너가 학습하지 않는 체크포인트: {sorted(needed - runs)}"
 

@@ -16,6 +16,12 @@
 # EXP-A 와 **같은 평가 세트**를 쓴다(seed·격자·조건 동일). 그래서 여기의
 # M06 열은 EXP-A 의 M06 열과 같아야 하고, 다르면 무언가 어긋난 것이다.
 exp_id: exp_nofe
+
+# **주 학습 러너가 만들지 않는 체크포인트를 쓴다** — 일부러 그렇다. 기본
+# RUNS 에 넣으면 축마다 30 분을 쓰고, 무엇보다 주 표에 들어갈 자격이 있는
+# 것처럼 보인다. 대신 「누가 만드는가」에 답을 적어 둔다 (F-9 의 요구).
+side_experiment:
+  train: bash scripts/run_one_training.sh mitdb m06_l1_nofe
 frontend: true
 mode: snr
 
