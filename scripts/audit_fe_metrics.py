@@ -217,6 +217,59 @@ def audit_st(amp_frac=0.10, n_rec=8):
 
 
 # ============================================================ 그림
+def seam_figure(out: Path, tag: str = "d0", show_s: float = 3.2):
+    """**이음매를 눈으로 본다** — 교차 페이드 전후를 같은 구간에서 (F-36).
+
+    숫자(«경계 차분이 내부의 23 배»)는 맞지만, 화면에서 무엇이 달라지는지는
+    보여야 안다. 블록 경계에 눈금을 찍어 **계단이 거기에 맞는지**까지 보인다.
+    """
+    from ecgdn.realtime.frontend_modes import BlockZeroPhaseFE
+
+    x, r, r_amp, name = take(tag)
+    y = with_wander(x, r_amp)
+    # T-P 구간이 넓게 들어오도록 R 하나 뒤에서 시작한다
+    j = int(r[len(r) // 3])
+    lo = max(0, j - int(0.1 * FS))
+    hi = min(x.size, lo + int(show_s * FS))
+    t = np.arange(hi - lo) / FS
+
+    rows = [("고치기 전  ·  FE hop 48 ms, 교차 페이드 없음", 0.048, 0.0, "#c05010"),
+            ("고친 뒤  ·  FE hop 24 ms, 교차 페이드 24 ms", 0.024, None, "#2a78d6")]
+    # **세로 배율을 공유한다.** 안 그러면 두 칸이 다른 배율로 그려져 «위 칸이
+    # 더 크게 흔들린다» 가 배율 탓인지 결함 탓인지 못 가른다.
+    fig, axes = plt.subplots(2, 1, figsize=(13.5, 6.4), dpi=150,
+                             sharex=True, sharey=True)
+    fig.suptitle("블록 영위상의 이음매 — 같은 지연 548 ms, 같은 구간   ·   "
+                 f"합성 (D0) 기록 {name}", x=0.02, ha="left", fontsize=13.5,
+                 fontweight="bold")
+    for ax, (lab, hop_s, xf, col) in zip(axes, rows):
+        fe = BlockZeroPhaseFE(FS, look_s=0.5, hop_s=hop_s, xfade_s=xf)
+        H = int(round(hop_s * FS))
+        v = np.concatenate([fe.push(y[i:i + H]) for i in range(0, y.size, H)])
+        seg = v[lo:hi]
+        for b in range(H - (lo % H), hi - lo, H):      # 블록 경계
+            ax.axvline(b / FS, color="#e4e4e4", lw=0.8, zorder=1)
+        ax.axhline(0, color="#c8c8c8", lw=1.0, zorder=1)
+        ax.plot(t, seg, color=col, lw=1.5, zorder=3)
+        ax.set_ylabel(lab, rotation=0, ha="right", va="center", fontsize=10.5,
+                      labelpad=10)
+        ax.set_yticks([])
+        for sp in ("top", "right", "left"):
+            ax.spines[sp].set_visible(False)
+        ax.text(.995, .06, f"지연 {fe.latency_samples / FS * 1000:.0f} ms",
+                transform=ax.transAxes, ha="right", fontsize=9.5, color="#6b6b6b")
+    axes[0].set_ylim(-0.30 * r_amp, 0.42 * r_amp)      # T-P 를 크게 — QRS 는 잘린다
+    axes[-1].set_xlabel("s")
+    fig.text(0.02, 0.015,
+             "세로 눈금이 블록 경계다. 위 칸에서 계단이 그 눈금에 맞는 것이 "
+             "이음매다 — QRS 는 세로로 잘려 있다 (T-P 를 크게 보려고).",
+             fontsize=10, color="#1b1b1b")
+    fig.tight_layout(rect=[0.02, 0.035, 1, 0.94])
+    ensure_dir(out.parent); fig.savefig(out, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return out
+
+
 def figure(ref_rows, out: Path):
     """**참조를 바꾸면 순위가 뒤집힌다** 를 한 장으로."""
     import pandas as pd
@@ -290,6 +343,8 @@ def main() -> int:
     sg = st.groupby("who")[["got", "keep"]].agg(["mean", "std"])
 
     fig_p = figure(ref, FIG / "fe_audit_d0.png")
+    seam_p = seam_figure(FIG / "fe_seam_d0.png")
+    print(f"-> {seam_p.relative_to(ROOT)}")
     write_doc(s0, m0, s1, m1, t0, t1, g, d_true, d_off, sg, names, fig_p)
     save_manifest(FIG, cfg={"script": "audit_fe_metrics"},
                   extra={"n_records": len(names)}, sources=[__file__])
@@ -317,7 +372,8 @@ def write_doc(s0, m0, s1, m1, t0, t1, g, d_true, d_off, sg, names, fig_p) -> Non
 
     body = f"""# 16. 채점 기준 감사 — **지표가 그 이름의 것을 재고 있는가** `[측정]`
 
-생성: `scripts/audit_fe_metrics.py` · 그림 `{fig_p.relative_to(ROOT)}`
+생성: `scripts/audit_fe_metrics.py` · 그림 `{fig_p.relative_to(ROOT)}`,
+`results/fig/fe_seam_d0.png`
 
 `docs/13`·`docs/15` 는 세 실시간 front-end 를 숫자로 갈랐고 블록 영위상이
 이겼다. 그 숫자들에 대해 세 가지 의심이 제기됐고, **셋 다 측정이 답할 수

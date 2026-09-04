@@ -1,6 +1,7 @@
 # 16. 채점 기준 감사 — **지표가 그 이름의 것을 재고 있는가** `[측정]`
 
-생성: `scripts/audit_fe_metrics.py` · 그림 `results/fig/fe_audit_d0.png`
+생성: `scripts/audit_fe_metrics.py` · 그림 `results/fig/fe_audit_d0.png`,
+`results/fig/fe_seam_d0.png`
 
 `docs/13`·`docs/15` 는 세 실시간 front-end 를 숫자로 갈랐고 블록 영위상이
 이겼다. 그 숫자들에 대해 세 가지 의심이 제기됐고, **셋 다 측정이 답할 수
