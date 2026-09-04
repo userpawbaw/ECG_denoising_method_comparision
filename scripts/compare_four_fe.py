@@ -19,6 +19,19 @@
     **그 사실을 패널에 적는다**
 
 같은 기록·같은 구간·같은 세로 배율을 네 행이 공유한다.
+
+`--recenter dc` — **직류 하나만** 빼고 그린다 (docs/16 §2)
+------------------------------------------------------
+D0 에서 영위상 계열의 T-P 가 회색선 아래 있는데, 재 보니 그것은 **정보가
+없는 직류**였다(오프라인 −8.6 %R, 중앙값 −0.07). 원인은 선형 고역통과의
+«0» 이 **기록 전체 평균**이고 D0 의 T 파가 43 %R 로 커서 T-P 를 아래로 미는
+것이다. 그 상수 하나 때문에 «중앙값만 회색선에 붙는다» 로 보인다.
+
+그래서 **박동별 T-P 준위의 중앙값을 하나 빼는 열**을 옵션으로 둔다. 상수
+하나이므로 파형도 산포도 안 바뀌고, 네 방식을 같은 자리에서 볼 수 있다.
+
+**박동마다 맞추면 안 된다.** 그것은 중앙값 계열 기저선 보정 **그 자체**이고,
+산포가 정의상 0 이 되어 **비교하려던 양을 지운다** (docs/16 §2).
 """
 from __future__ import annotations
 
@@ -33,9 +46,9 @@ import numpy as np
 from ecgdn.config import FS
 from ecgdn.data.noise import make_noise
 from ecgdn.utils import ensure_dir, rng, save_manifest
-from explore_lookahead_fe import (INJECT_FRAC, _ko_font, drift_per_beat, f_lookahead,
-                                  f_median, f_offline, load, s_depth, tp_off,
-                                  tp_spread, wander_left)
+from explore_lookahead_fe import (INJECT_FRAC, _ko_font, _tp_levels, drift_per_beat,
+                                  f_lookahead, f_median, f_offline, load, s_depth,
+                                  tp_off, tp_spread, wander_left)
 
 ROOT = Path(__file__).resolve().parents[1]
 plt.rcParams.update({"font.family": _ko_font(), "axes.unicode_minus": False,
@@ -50,7 +63,8 @@ ROWS = [
 ]
 
 
-def figure(tag: str, out: Path, seconds: float = 30.0, show_s: float = 6.0):
+def figure(tag: str, out: Path, seconds: float = 30.0, show_s: float = 6.0,
+           recenter: str = "none"):
     x, r, r_amp, name = load(tag, seconds)
     g = rng("fe", "bw")
     n = make_noise("bw_synth", x.size, FS, g)
@@ -65,7 +79,9 @@ def figure(tag: str, out: Path, seconds: float = 30.0, show_s: float = 6.0):
     fig, axes = plt.subplots(len(ROWS), 2, figsize=(14, 9.0), dpi=150,
                              sharex=True, sharey=True)
     axis_ko = "합성 (D0)" if tag == "d0" else "MIT-BIH (D1)"
-    fig.suptitle(f"네 방식만 — 재중심화 없이 본다   ·   {axis_ko} 기록 {name}",
+    head = ("네 방식만 — 직류 1 개만 빼고 본다" if recenter == "dc"
+            else "네 방식만 — 재중심화 없이 본다")
+    fig.suptitle(f"{head}   ·   {axis_ko} 기록 {name}",
                  x=0.02, ha="left", fontsize=14, fontweight="bold")
     axes[0, 0].set_title("원본 입력", fontsize=11.5, loc="left")
     axes[0, 1].set_title(f"기저선 변동 R 의 {INJECT_FRAC*100:.0f} % 주입",
@@ -79,6 +95,10 @@ def figure(tag: str, out: Path, seconds: float = 30.0, show_s: float = 6.0):
                 v = src - np.median(src)
             else:
                 v = fn(src)                      # **그대로.** 0 선이 진짜 0 이다
+                if recenter == "dc":
+                    # **상수 하나만.** 박동별로 맞추면 산포가 정의상 0 이 되어
+                    # 비교하려던 양이 사라진다 (docs/16 §2).
+                    v = v - float(np.median(_tp_levels(v, r)))
             ax.axhline(0, color="#c8c8c8", lw=1.0, zorder=1)
             ax.plot(t, v[lo:hi], color=col, lw=1.15, zorder=2)
             for sp in ("top", "right", "left"):
@@ -104,10 +124,13 @@ def figure(tag: str, out: Path, seconds: float = 30.0, show_s: float = 6.0):
                             transform=axes[k, 0].transAxes, fontsize=9, color=MUTE)
     axes[0, 0].set_ylim(-1.0 * r_amp, 1.5 * r_amp)
     axes[-1, 0].set_xlabel("s"); axes[-1, 1].set_xlabel("s")
-    fig.text(0.02, 0.015,
-             "회색 가로선이 «진짜 0» 이다. front-end 출력은 손대지 않았으므로, "
-             "평활 구간이 그 선에 붙는지가 그대로 보인다.",
-             fontsize=10, color=INK)
+    cap = ("각 행에서 «박동별 T-P 준위의 중앙값» 상수 하나만 뺐다 — 박동별로 맞춘 것이 "
+           "아니다. 그래서 파형도 산포도 그대로이고, 남는 차이가 진짜 차이다."
+           if recenter == "dc" else
+           "회색 가로선이 «진짜 0» 이다. front-end 출력은 손대지 않았으므로, "
+           "평활 구간이 그 선에 붙는지가 그대로 보인다.")
+    fig.text(0.02, 0.015, cap, fontsize=10,
+             color="#c05010" if recenter == "dc" else INK)
     fig.tight_layout(rect=[0.02, 0.035, 1, 0.945])
     ensure_dir(out.parent); fig.savefig(out, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -117,10 +140,16 @@ def figure(tag: str, out: Path, seconds: float = 30.0, show_s: float = 6.0):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--axis", nargs="*", default=["d1", "d0"])
+    ap.add_argument("--recenter", choices=("none", "dc", "both"), default="both",
+                    help="none=손대지 않음, dc=직류 1 개만 뺌, both=둘 다 만듦")
     a = ap.parse_args()
-    made = [figure(t, ROOT / "results" / "fig" / f"four_fe_{t}.png") for t in a.axis]
+    modes = ["none", "dc"] if a.recenter == "both" else [a.recenter]
+    made = [figure(t, ROOT / "results" / "fig" /
+                   f"four_fe_{t}{'_dc' if m == 'dc' else ''}.png", recenter=m)
+            for t in a.axis for m in modes]
     save_manifest(ROOT / "results" / "fig", cfg={"script": "compare_four_fe",
-                                                 "axes": a.axis},
+                                                 "axes": a.axis,
+                                                 "recenter": a.recenter},
                   sources=[__file__])
     for p in made:
         print(f"-> {p.relative_to(ROOT)}")
