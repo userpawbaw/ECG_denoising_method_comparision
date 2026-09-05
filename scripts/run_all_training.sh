@@ -22,12 +22,18 @@ if ! mkdir "$LOCK" 2>/dev/null; then
   echo "another training run holds $LOCK; abort"; exit 1
 fi
 echo $$ > "$LOCK/pid"
-trap 'rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null' EXIT
+trap 'rm -f "$LOCK/pid" "$LOCK/cmd"; rmdir "$LOCK" 2>/dev/null' EXIT
 
 # 기본값 = 실험이 실제로 쓰는 체크포인트 전부.
 # loss ablation(configs/abl_loss.yaml)은 **모든 loss 를 같은 조건에서** 학습해야
 # 성립하므로, l2/l3/l4 를 빠뜨리면 표가 조용히 거짓이 된다 (docs/02 F-9).
 RUNS="${*:-m06_l1 m08_l1 m07_l1 m10_l1 m06_l2 m06_l3 m08_l3 m08_l4 m06_l5 m06_l6 m08_l5 m08_l6 m09_l1 m06_w4096 m09_w4096}"
+
+# **재개 명령을 락 안에 적어 둔다** (O-24) — `RUNS` 가 정해진 **뒤에** 적어야
+# 한다. 이것이 없으면 감시자가 죽은 실행을 되살릴 때 기본값(전체 목록)을
+# 띄우고, 인자로 일부만 돌리던 실행은 **되살아나지 않은 채 엉뚱한 학습이
+# 대신 돈다.**
+printf '%s\0' bash scripts/run_all_training.sh "$SOURCE" $RUNS > "$LOCK/cmd"
 
 # 기본은 **재개 켬**이다. 이 러너를 다시 돌리는 상황은 대부분 중단 복구이고,
 # 이미 목표 epoch 까지 끝난 학습은 train.py 가 알아서 건너뛴다.

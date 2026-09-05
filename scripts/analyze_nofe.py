@@ -44,10 +44,14 @@ OUT = ROOT / "results" / "d1" / "exp_nofe"
 
 # 표에 실을 방법과 읽는 이름. **순서가 곧 표의 순서다.**
 NAMES = {"M00": "아무것도 안 함", "M_FE": "FE 만",
-         "M06": "M06 · resunet1d + L1 (FE 판)", "M06n": "M06n (FE 없는 판)",
-         "M08": "M08 · wavelet_unet + L6 (FE 판)", "M08n": "M08n (FE 없는 판)"}
-# 쌍. «FE 를 뺀 대가» 는 이 쌍 **안에서만** 읽는다.
-PAIRS = [("M06", "M06n"), ("M08", "M08n")]
+         "M06L1": "resunet1d + L1 (FE 판)", "M06L1n": "resunet1d + L1 (nofe)",
+         "M06L6": "resunet1d + L6 (FE 판)", "M06L6n": "resunet1d + L6 (nofe)",
+         "M08L1": "wavelet_unet + L1 (FE 판)", "M08L1n": "wavelet_unet + L1 (nofe)",
+         "M08L6": "wavelet_unet + L6 (FE 판)", "M08L6n": "wavelet_unet + L6 (nofe)"}
+# 쌍. «FE 를 뺀 대가» 는 이 쌍 **안에서만** 읽는다. 2x2 격자 (F-38 후속).
+PAIRS = [("M06L1", "M06L1n"), ("M06L6", "M06L6n"),
+         ("M08L1", "M08L1n"), ("M08L6", "M08L6n")]
+RUNS = {"M06L1": "m06_l1", "M06L6": "m06_l6", "M08L1": "m08_l1", "M08L6": "m08_l6"}
 
 
 def _fe_metrics():

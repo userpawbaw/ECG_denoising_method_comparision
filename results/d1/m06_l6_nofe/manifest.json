@@ -1,0 +1,44 @@
+{
+  "env": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v24-x86_64-with-glibc2.39",
+    "git": "8c6b7bc",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": "0.2.13",
+    "torch": "2.13.0+cu130"
+  },
+  "config": {
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 64,
+    "epochs": 60,
+    "warmup_frac": 0.05,
+    "patience": 12,
+    "grad_clip": 1.0,
+    "seeds": [
+      0,
+      1,
+      2
+    ]
+  },
+  "sources": {
+    "ecgdn/train.py": "2646e6176116991f",
+    "ecgdn/data/dataset.py": "3855d8b22fbc7695",
+    "ecgdn/data/sources.py": "c9d6cc9fd7ed3966",
+    "ecgdn/methods/frontend.py": "b764ed73a82083ba",
+    "ecgdn/models/losses.py": "30f5e5e5ff52196e"
+  },
+  "model": "resunet1d",
+  "n_params": 976489,
+  "exp_id": "m06_l6_nofe",
+  "source": "mitdb",
+  "source_requested": "mitdb",
+  "tag": "d1",
+  "loss": "L6",
+  "pre_denoise": null,
+  "frontend": false,
+  "model_kwargs": {}
+}
