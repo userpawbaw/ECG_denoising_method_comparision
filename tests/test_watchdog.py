@@ -234,3 +234,38 @@ def test_restart_uses_the_command_the_lock_recorded(tmp_path, monkeypatch):
 
 class _FakeProc:
     pid = 12345
+
+
+def test_a_dead_run_is_not_called_settling_for_long(tmp_path, monkeypatch):
+    """**러너도 학습도 없으면 «전환 중» 이 아니라 «죽었다»** (O-25).
+
+    이 분기에 오면 이미 러너가 죽고 학습 프로세스도 없다. 그 상태에서 로그가
+    최근인 것은 «방금 죽었다» 이지 «전환 중» 이 아니다 — 진짜 전환 중이라면
+    러너 셸이 살아 있어 `running` 으로 잡힌다. 예전에는 이 창이 15 분이라
+    **죽은 학습을 15 분 동안 «정상» 으로 보고했다.**
+    """
+    m = _mod()
+    monkeypatch.setattr(m, "LOCK", tmp_path / ".train.lock")
+    monkeypatch.setattr(m, "EXP_LOCK", tmp_path / ".exp.lock")
+    m.LOCK.mkdir()
+    (m.LOCK / "pid").write_text("999999")
+    monkeypatch.setattr(m, "_pids", lambda names: [])
+
+    assert m.SETTLING_S <= 120, "«전환 중» 창이 너무 넓다 — 죽음을 정상으로 읽는다"
+    monkeypatch.setattr(m, "_newest_log_age", lambda: m.SETTLING_S / 2)
+    assert m.assess()["state"] == "settling", "찰나의 전환은 봐줘야 한다"
+    monkeypatch.setattr(m, "_newest_log_age", lambda: m.SETTLING_S * 2)
+    assert m.assess()["state"] == "stalled", (
+        "러너도 학습도 없고 로그도 안 움직이는데 stalled 가 아니다")
+
+
+def test_settling_and_stale_windows_are_separate_constants():
+    """같은 상수를 두 뜻으로 쓰면 한쪽이 반드시 틀린다 (O-25).
+
+    `STALE_LOG_S` 는 «느린 epoch 을 죽음으로 오판하지 않기 위한 여유» 이고
+    `SETTLING_S` 는 «러너가 exec 하기 전 찰나» 다. 두 자릿수 차이가 난다.
+    """
+    m = _mod()
+    assert m.SETTLING_S < m.STALE_LOG_S / 5, (
+        f"두 창이 너무 비슷하다 (settling {m.SETTLING_S}, stale {m.STALE_LOG_S}) — "
+        "재사용하면 «전환 중» 이 죽음을 가린다")
