@@ -1,0 +1,2 @@
+epoch,lr,train_loss,val_loss,val_snr_imp_scaled,val_snr_imp_strict,val_gain_bias,secs
+1,0.000326,0.170688,0.058236,2.884514,1.599984,0.794289,55.210568
