@@ -517,3 +517,72 @@ def test_resume_only_state_is_not_tracked():
     tracked = _tracked()
     bad = [p for p in tracked if p.endswith("last.pt")]
     assert not bad, f"재개 전용 파일이 추적되고 있다: {bad[:5]}"
+
+
+# ------------------------------------------------- L1 명판 · L2 체크리스트
+#
+# 기록은 충분했는데 같은 실수가 다섯 번 반복됐다(O-15 ×2 · O-17 · O-18 · O-21).
+# 원인은 규칙의 품질이 아니라 **행동하는 순간에 규칙이 눈앞에 없다**는 것이었고
+# (O-23: "규칙은 있었고 내가 안 지켰다"), 그래서 항상 읽히는 `CLAUDE.md` 와
+# 작업별 `docs/17_checklists.md` 를 뒀다. 아래 검사는 **그 둘이 죽지 않게** 한다.
+
+PLACARD = ROOT / "CLAUDE.md"
+CHECKLISTS = ROOT / "docs" / "17_checklists.md"
+PLACARD_LIMIT = 60
+
+
+def _record_ids() -> set[str]:
+    """실재하는 F/D/O 번호."""
+    ids: set[str] = set()
+    for name, pat in (("20_findings.md", r"^## (F-\d+)\."),
+                      ("22_incidents.md", r"^## (O-\d+)\."),
+                      ("21_decisions.md", r"^## (D-\d+)\.")):
+        ids |= set(re.findall(pat, (ROOT / "docs" / name).read_text(), re.M))
+    return ids
+
+
+def test_placard_stays_a_placard():
+    """`CLAUDE.md` 는 매 턴 읽히므로 **길이가 곧 비용**이다.
+
+    상한을 넘기려는 충동이 오면 그 내용은 L2(`17_checklists.md`)로 내려야
+    한다 — 명판이 매뉴얼이 되면 아무도 안 읽고, 그러면 O-23 자리로 돌아온다.
+    """
+    n = len(PLACARD.read_text(encoding="utf-8").splitlines())
+    assert n <= PLACARD_LIMIT, (
+        f"CLAUDE.md 가 {n} 줄이다 (상한 {PLACARD_LIMIT}). "
+        "늘리지 말고 docs/17_checklists.md 로 내릴 것")
+
+
+@pytest.mark.parametrize("doc", [PLACARD, CHECKLISTS],
+                         ids=lambda p: p.name)
+def test_rule_docs_cite_records_that_exist(doc: Path):
+    """규칙 A·B — 항목마다 근거를 달되, **그 근거가 실재해야** 한다.
+
+    발췌본이 원본보다 오래 사는 것을 막는다. 사고 기록을 지우거나 번호를
+    바꾸면 여기서 걸린다.
+    """
+    cited = set(re.findall(r"\b([FDO]-\d+)\b", doc.read_text(encoding="utf-8")))
+    missing = sorted(cited - _record_ids())
+    assert not missing, f"{doc.name} 이 없는 기록을 가리킨다: {missing}"
+
+
+def test_placard_triggers_resolve_to_checklist_sections():
+    """명판의 트리거 표가 가리키는 절이 L2 에 실제로 있어야 한다.
+
+    명판은 **목차**로만 쓰이므로, 가리키는 곳이 없으면 목차가 아니라 장식이다.
+    """
+    body = CHECKLISTS.read_text(encoding="utf-8")
+    have = set(re.findall(r"^## (§\d+)", body, re.M))
+    want = set(re.findall(r"\|\s*(§\d+)\s*\|",
+                          PLACARD.read_text(encoding="utf-8")))
+    assert want, "CLAUDE.md 에 트리거 표가 없다"
+    assert not (want - have), f"명판이 없는 절을 가리킨다: {sorted(want - have)}"
+
+
+def test_checklist_code_references_resolve():
+    """체크리스트가 시키는 명령의 대상이 실재해야 한다."""
+    text = CHECKLISTS.read_text(encoding="utf-8") + PLACARD.read_text(encoding="utf-8")
+    paths = set(re.findall(r"`((?:tests|scripts|ecgdn|docs)/[\w./]+?\.(?:py|md|sh))`",
+                           text))
+    missing = sorted(p for p in paths if not (ROOT / p).exists())
+    assert not missing, f"체크리스트가 없는 파일을 가리킨다: {missing}"
