@@ -126,10 +126,11 @@ def mechanism(n_rec: int = 6, snrs=(0.0, 10.0)) -> pd.DataFrame:
     recs = sorted({it["record"] for it in items})[:n_rec]
     items = [it for it in items if it["record"] in recs]
 
-    dl = {"M06": DLDenoiser(ckpt=ROOT / "results/d1/m06_l1/best.pt", name="M06"),
-          "M06n": DLDenoiser(ckpt=ROOT / "results/d1/m06_l1_nofe/best.pt", name="M06n"),
-          "M08": DLDenoiser(ckpt=ROOT / "results/d1/m08_l6/best.pt", name="M08"),
-          "M08n": DLDenoiser(ckpt=ROOT / "results/d1/m08_l6_nofe/best.pt", name="M08n")}
+    # 기전 측정은 **대표 한 쌍**으로만 한다 — 오차의 대역 분포는 쌍마다
+    # 거의 같고(확인함), 여덟 판을 다 돌리면 시간만 두 배가 된다.
+    dl = {"M06L1": DLDenoiser(ckpt=ROOT / "results/d1/m06_l1/best.pt", name="M06L1"),
+          "M06L1n": DLDenoiser(ckpt=ROOT / "results/d1/m06_l1_nofe/best.pt",
+                               name="M06L1n")}
     rows = []
     for it in items:
         x, y, fs = it["x"].astype(float), it["y"].astype(float), it["fs"]
@@ -186,8 +187,8 @@ def main() -> int:
     mech.to_csv(OUT / "mechanism.csv", index=False)
     vals = [c for c in mech.columns if c not in ("record", "snr", "who")]
     piv = (mech.pivot_table(index="who", values=vals, aggfunc="median")
-           .reindex(["참조 FE_off(clean)", "입력 (원본+잡음)"]
-                    + [NAMES[m] for pair in PAIRS for m in pair]))
+           .reindex(["참조 FE_off(clean)", "입력 (원본+잡음)",
+                     NAMES["M06L1"], NAMES["M06L1n"]]))
 
     print("\n=== SNR 개선 (scaled, dB) ===\n", snr.round(2))
     print("\n=== 기전 (중앙값, %R) ===\n", piv.round(1))
@@ -200,7 +201,7 @@ def main() -> int:
            .pivot_table(index="method", columns="snr_in_target", values="hit",
                         aggfunc="mean") * 100)
     pli = pli.reindex([m for m in NAMES if m in pli.index])
-    n_pli_rec = int(d[(d.method == "M06n") & (d.value >= 10.0)].record.nunique())
+    n_pli_rec = int(d[(d.method == "M06L1n") & (d.value >= 10.0)].record.nunique())
     write_doc(snr, prdn, bcc, qrs, ramp, f1, piv, mech, pli, n_pli_rec)
     save_manifest(OUT, cfg={"analysis": "nofe"},
                   extra={"n_mech_items": int(len(mech))},
@@ -217,21 +218,34 @@ def write_doc(snr, prdn, bcc, qrs, ramp, f1, piv, mech, pli, n_pli_rec) -> None:
         return float(piv.loc[who, k])
 
     lo, hi = snr.columns[0], snr.columns[-1]
-    gap = snr.loc["M06"] - snr.loc["M06n"]
+    gap = snr.loc["M06L1"] - snr.loc["M06L1n"]
     ref, inp = "참조 FE_off(clean)", "입력 (원본+잡음)"
-    a, b = NAMES["M06"], NAMES["M06n"]
+    a, b = NAMES["M06L1"], NAMES["M06L1n"]
     # 대역 비중은 %, 오차 파워는 %R^2 — 곱해야 «절대 크기» 가 된다.
     ib = lambda who: w("0.5~40 Hz 신호대역", who) / 100 * w("오차파워 [%R^2]", who)  # noqa: E731
     # f-string 안에서는 중괄호를 못 쓴다 — 표는 밖에서 만든다.
     pli_md = md(pli, fmt="{:.1f}", first="방법 (판정 비율 %)")
     (vfe, efe), (vno, eno) = val_best("m06_l1"), val_best("m06_l1_nofe")
     (v8, e8), (v8n, e8n) = val_best("m08_l6"), val_best("m08_l6_nofe")
-    # 쌍별 격차와 «모델 선택의 효과» — 후자가 이번 실험의 핵심이다
-    gap6 = snr.loc["M06"] - snr.loc["M06n"]
-    gap8 = snr.loc["M08"] - snr.loc["M08n"]
-    mdl_fe = snr.loc["M08"] - snr.loc["M06"]
-    mdl_no = snr.loc["M08n"] - snr.loc["M06n"]
     hi = snr.columns[-1]
+    # **2x2 격자.** 쌍별 격차를 낸 뒤 손실 효과와 모델 효과로 분해한다 —
+    # 그것이 «강한 모델 탓인가 손실 탓인가» 를 가르는 유일한 방법이다.
+    G = {f"{m}{l}": snr.loc[f"{m}{l}"] - snr.loc[f"{m}{l}n"]
+         for m in ("M06", "M08") for l in ("L1", "L6")}
+    gap_md = "\n".join(
+        ["| FE 를 뺀 대가 [dB] | " + " | ".join(f"{c:g}" for c in snr.columns) + " |",
+         "|" + "---|" * (len(snr.columns) + 1)]
+        + [f"| `{k[1:4].lower().replace('06','m06_').replace('08','m08_')}"
+           f"{k[4:].lower()}` | "
+           + " | ".join(f"{G[k][c]:+.2f}" for c in snr.columns) + " |"
+           for k in ("M06L1", "M06L6", "M08L1", "M08L6")])
+    d_loss6 = G["M06L6"][hi] - G["M06L1"][hi]
+    d_loss8 = G["M08L6"][hi] - G["M08L1"][hi]
+    d_mdl1 = G["M08L1"][hi] - G["M06L1"][hi]
+    d_mdl6 = G["M08L6"][hi] - G["M06L6"][hi]
+    fe_v = [snr.loc[m][hi] for m in ("M06L1", "M06L6", "M08L1", "M08L6")]
+    no_v = [snr.loc[m + "n"][hi] for m in ("M06L1", "M06L6", "M08L1", "M08L6")]
+    spread_fe, spread_no = max(fe_v) - min(fe_v), max(no_v) - min(no_v)
 
     body = f"""## 11. FE 없는 판을 학습했다 — **FE 가 이긴다. 다만 내가 예상한 이유는 아니었다** `[측정]`
 
@@ -266,49 +280,52 @@ def write_doc(snr, prdn, bcc, qrs, ramp, f1, piv, mech, pli, n_pli_rec) -> None:
 
 {md(snr)}
 
-**두 쌍 모두, FE 판이 모든 동작점에서 이긴다.**
+**네 쌍 모두, FE 판이 모든 동작점에서 이긴다.**
 
-| FE 를 뺀 대가 [dB] | −5 | 0 | 5 | 10 | 15 | 20 |
-|---|---|---|---|---|---|---|
-| `m06_l1` 쌍 | {gap6[-5.0]:+.2f} | {gap6[0.0]:+.2f} | {gap6[5.0]:+.2f} | {gap6[10.0]:+.2f} | {gap6[15.0]:+.2f} | {gap6[20.0]:+.2f} |
-| `m08_l6` 쌍 | {gap8[-5.0]:+.2f} | {gap8[0.0]:+.2f} | {gap8[5.0]:+.2f} | {gap8[10.0]:+.2f} | {gap8[15.0]:+.2f} | **{gap8[20.0]:+.2f}** |
+{gap_md}
 
 격차가 **입력이 깨끗할수록 벌어진다.** 잡음을 못 지워서가 아니라 **체계적인
 차**라는 뜻이다 — 잡음이 없어져도 남는다.
 
-### **예측이 틀렸다** — 강한 모델이 **더** 손해 본다
+### 원인은 **모델이 아니라 손실**이다
 
-`m08_l6` 을 추가한 이유는 아래 「용량이 나뉜다」 설명을 시험하기 위해서였다.
-그 설명이 맞다면 **더 강한 모델은 덜 손해 봐야 한다.** config 에 그렇게
-예측을 적어 뒀다.
+처음에는 `m06_l1` 과 `m08_l6` 두 쌍만 보고 «강한 모델이 더 손해 본다» 고 읽었다
+(F-38). 그 둘은 **모델도 손실도 동시에 다른 대각선**이라 두 요인이 교란돼
+있었다. 네 칸을 채워 분해하면 ({hi:g} dB):
 
-**반대였다.** 20 dB 에서 `m06` 쌍 {gap6[20.0]:+.2f} 대 `m08` 쌍 **{gap8[20.0]:+.2f} dB**.
-낮은 SNR 에서는 거의 같고(−5 dB 에서 {gap6[-5.0]:+.2f} 대 {gap8[-5.0]:+.2f}),
-**깨끗할수록 강한 모델이 더 크게 잃는다.**
+| | |
+|---|---|
+| **손실 효과** (`L6` − `L1`, 같은 모델) | `m06` **{d_loss6:+.2f}**, `m08` **{d_loss8:+.2f}** — 둘 다 양수 |
+| **모델 효과** (`m08` − `m06`, 같은 손실) | `L1` {d_mdl1:+.2f}, `L6` {d_mdl6:+.2f} — **부호가 갈린다** |
 
-### 왜인가 — **FE 를 빼면 모델 선택이 무의미해진다**
+**손실 쪽이 약 {abs((d_loss6+d_loss8)/2) / max(abs((d_mdl1+d_mdl6)/2), 1e-9):.0f} 배 크고 방향이 일정하다.**
+「강한 모델이 더 손해 본다」는 **틀린 읽기였다** — `m08_l6` 이 크게 잃은 것은
+모델이 강해서가 아니라 **`L6` 이어서**다.
 
-같은 표를 다르게 자르면 답이 나온다.
+### 그리고 **FE 를 빼면 무엇을 골라도 비슷해진다**
 
-| 모델을 바꿔 얻는 것 (`m08` − `m06`) [dB] | −5 | 0 | 5 | 10 | 15 | 20 |
-|---|---|---|---|---|---|---|
-| **FE 판**에서 | {mdl_fe[-5.0]:+.2f} | {mdl_fe[0.0]:+.2f} | {mdl_fe[5.0]:+.2f} | {mdl_fe[10.0]:+.2f} | {mdl_fe[15.0]:+.2f} | **{mdl_fe[20.0]:+.2f}** |
-| **nofe 판**에서 | {mdl_no[-5.0]:+.2f} | {mdl_no[0.0]:+.2f} | {mdl_no[5.0]:+.2f} | {mdl_no[10.0]:+.2f} | {mdl_no[15.0]:+.2f} | **{mdl_no[20.0]:+.2f}** |
+{hi:g} dB 에서 네 판의 절대값을 늘어놓으면:
 
-**모델을 바꿔 얻는 것이 {mdl_fe[20.0]:+.2f} dB 에서 {mdl_no[20.0]:+.2f} dB 로 줄어든다.**
-FE 를 빼면 두 모델이 거의 같아진다 — 병목이 **모델이 아니라 「앞단을 스스로
-근사하는 능력」**으로 옮겨 가고, 그 능력은 둘이 비슷하기 때문이다.
-nofe 판 둘의 절대값도 20 dB 에서 {snr.loc['M06n'][20.0]:.2f} 대 {snr.loc['M08n'][20.0]:.2f} 로 거의 붙는다.
-
-QRS 폭 오차가 이것을 가장 선명하게 보인다 (입력 SNR 20 dB):
-
-| | FE 판 | FE 없는 판 |
+| | 값 [dB] | 폭 |
 |---|---|---|
-| `m06_l1` | {g(qrs,'M06',20.0):.1f} ms | {g(qrs,'M06n',20.0):.1f} ms |
-| `m08_l6` | **{g(qrs,'M08',20.0):.1f} ms** | {g(qrs,'M08n',20.0):.1f} ms |
+| **FE 판** | {fe_v[0]:.2f} · {fe_v[1]:.2f} · {fe_v[2]:.2f} · {fe_v[3]:.2f} | **{spread_fe:.2f} dB** |
+| **nofe 판** | {no_v[0]:.2f} · {no_v[1]:.2f} · {no_v[2]:.2f} · {no_v[3]:.2f} | **{spread_no:.2f} dB** |
 
-`m08_l6` 의 FE 판만 오차가 절반으로 떨어지는데, **nofe 판에서는 그 강점이
-통째로 사라져 `m06` 과 같아진다.**
+모델·손실을 바꿔 얻는 것이 **{spread_fe:.1f} dB 에서 {spread_no:.1f} dB 로 줄어든다.**
+병목이 **설계가 아니라 「앞단을 스스로 근사하는 능력」**으로 옮겨 가고, 그
+능력은 네 판이 비슷하다. **모델과 무관한 오차 바닥**이 있다는 뜻이다.
+
+QRS 폭 오차가 이것을 가장 선명하게 보인다 ({hi:g} dB):
+
+| | FE 판 | FE 없는 판 | 잃은 것 |
+|---|---|---|---|
+| `m06_l1` | {g(qrs,'M06L1',hi):.1f} ms | {g(qrs,'M06L1n',hi):.1f} ms | {g(qrs,'M06L1n',hi)-g(qrs,'M06L1',hi):+.1f} |
+| **`m06_l6`** | **{g(qrs,'M06L6',hi):.1f} ms** | {g(qrs,'M06L6n',hi):.1f} ms | **{g(qrs,'M06L6n',hi)-g(qrs,'M06L6',hi):+.1f}** |
+| `m08_l1` | {g(qrs,'M08L1',hi):.1f} ms | {g(qrs,'M08L1n',hi):.1f} ms | {g(qrs,'M08L1n',hi)-g(qrs,'M08L1',hi):+.1f} |
+| **`m08_l6`** | **{g(qrs,'M08L6',hi):.1f} ms** | {g(qrs,'M08L6n',hi):.1f} ms | **{g(qrs,'M08L6n',hi)-g(qrs,'M08L6',hi):+.1f}** |
+
+**`L6` 의 FE 판만 오차가 절반 아래**인데, nofe 로 가면 `L1` 수준으로 무너진다.
+`L1` 판은 애초에 그 강점이 없어 **잃을 것도 적다.**
 
 ### `L6` 이 왜 특히 손해 보는가 `[코드]`
 
@@ -330,10 +347,14 @@ QRS 폭 오차가 이것을 가장 선명하게 보인다 (입력 SNR 20 dB):
 
 | | PRD_N (낮을수록) | 박동 상관 | QRS 폭 오차 [ms] | R 진폭 오차 [%] |
 |---|---|---|---|---|
-| M06 (FE 판) | {g(prdn,'M06'):.1f} | {g(bcc,'M06'):.3f} | {g(qrs,'M06'):.1f} | {g(ramp,'M06'):.1f} |
-| M06n (FE 없는 판) | {g(prdn,'M06n'):.1f} | {g(bcc,'M06n'):.3f} | {g(qrs,'M06n'):.1f} | {g(ramp,'M06n'):.1f} |
-| M08 (FE 판) | {g(prdn,'M08'):.1f} | {g(bcc,'M08'):.3f} | {g(qrs,'M08'):.1f} | {g(ramp,'M08'):.1f} |
-| M08n (FE 없는 판) | {g(prdn,'M08n'):.1f} | {g(bcc,'M08n'):.3f} | {g(qrs,'M08n'):.1f} | {g(ramp,'M08n'):.1f} |
+| `m06_l1` FE 판 | {g(prdn,'M06L1'):.1f} | {g(bcc,'M06L1'):.3f} | {g(qrs,'M06L1'):.1f} | {g(ramp,'M06L1'):.1f} |
+| `m06_l1` nofe | {g(prdn,'M06L1n'):.1f} | {g(bcc,'M06L1n'):.3f} | {g(qrs,'M06L1n'):.1f} | {g(ramp,'M06L1n'):.1f} |
+| `m06_l6` FE 판 | {g(prdn,'M06L6'):.1f} | {g(bcc,'M06L6'):.3f} | {g(qrs,'M06L6'):.1f} | {g(ramp,'M06L6'):.1f} |
+| `m06_l6` nofe | {g(prdn,'M06L6n'):.1f} | {g(bcc,'M06L6n'):.3f} | {g(qrs,'M06L6n'):.1f} | {g(ramp,'M06L6n'):.1f} |
+| `m08_l1` FE 판 | {g(prdn,'M08L1'):.1f} | {g(bcc,'M08L1'):.3f} | {g(qrs,'M08L1'):.1f} | {g(ramp,'M08L1'):.1f} |
+| `m08_l1` nofe | {g(prdn,'M08L1n'):.1f} | {g(bcc,'M08L1n'):.3f} | {g(qrs,'M08L1n'):.1f} | {g(ramp,'M08L1n'):.1f} |
+| `m08_l6` FE 판 | {g(prdn,'M08L6'):.1f} | {g(bcc,'M08L6'):.3f} | {g(qrs,'M08L6'):.1f} | {g(ramp,'M08L6'):.1f} |
+| `m08_l6` nofe | {g(prdn,'M08L6n'):.1f} | {g(bcc,'M08L6n'):.3f} | {g(qrs,'M08L6n'):.1f} | {g(ramp,'M08L6n'):.1f} |
 
 ### **§7 에서 세운 가설은 틀렸다** — 기저선이 아니다
 
@@ -391,8 +412,8 @@ nofe 판의 오차 파워가 **{w('오차파워 [%R^2]',b)/w('오차파워 [%R^2
 
 {pli_md}
 
-**nofe 판은 구간의 {pli.loc['M06n'].min():.0f}~{pli.loc['M06n'].max():.0f} % 에서 «PLI 있음» 판정에 걸린다** —
-FE 판은 {pli.loc['M06'].max():.1f} %, FE 만 걸어도 {pli.loc['M_FE'].max():.0f} % 다.
+**nofe 판은 구간의 {pli.loc['M06L1n'].min():.0f}~{pli.loc['M06L1n'].max():.0f} % 에서 «PLI 있음» 판정에 걸린다** —
+FE 판은 {pli.loc['M06L1'].max():.1f} %, FE 만 걸어도 {pli.loc['M_FE'].max():.0f} % 다.
 22 기록 중 {n_pli_rec} 기록에서 나온다.
 
 다만 **모든 구간이 그런 것은 아니다.** 중앙값으로 보면 nofe 판도 배경의
