@@ -34,6 +34,8 @@ import numpy as np
 from ecgdn.utils import ensure_dir, save_manifest
 
 OUT = Path("results/slides")
+# `_bootstrap` 이 작업 디렉터리를 저장소 루트로 옮기므로 상대경로가 곧 루트다.
+ROOT = Path(".")
 
 # ---------------------------------------------------------------- 스타일
 # dataviz 팔레트(light). 색은 **방법에 고정**한다 — 그림마다 바뀌면 안 된다.
@@ -422,10 +424,13 @@ def s5_crossover():
                    edgecolor=SURFACE, linewidth=1.6)
         ax.scatter(xs[~sig], ys[~sig], s=95, facecolor=SURFACE, marker=mk,
                    zorder=4, edgecolor=col, linewidth=1.8)
-        # 직접 라벨은 두 곡선이 가장 벌어지는 오른쪽 끝에 둔다.
-        ax.annotate(lab, (xs[-1], ys[-1]), color=col, fontsize=11,
-                    fontweight="bold", ha="right",
-                    xytext=(-8, 10 if tag == "d0" else -18),
+        # 직접 라벨은 **곡선 중간**에 둔다. 처음에는 오른쪽 끝에 뒀는데, 거기가
+        # 0 교차 점선과 그 «N dB» 라벨이 모이는 자리라 글자가 겹쳤다. 중간은
+        # 두 곡선이 2 dB 이상 벌어져 있어 붙일 자리가 넉넉하다.
+        k = len(xs) // 2
+        ax.annotate(lab, (xs[k], ys[k]), color=col, fontsize=11,
+                    fontweight="bold", ha="center",
+                    xytext=(0, 12 if tag == "d0" else -20),
                     textcoords="offset points")
         # 0 을 지나는 지점 (인접 두 점 선형보간)
         for i in range(len(xs) - 1):
@@ -799,6 +804,151 @@ INDEX = [
 ]
 
 
+# ------------------------------------------------- S11 FE 없는 학습 2x2 격자
+def s11_nofe_grid(TXT):
+    """**말할 것 하나**: 격차를 만드는 것은 모델이 아니라 **손실**이고,
+    FE 를 빼면 **선택 자체가 무의미해진다.**
+
+    왼쪽 — 2x2 를 점 넷으로. 같은 손실끼리 이으면 **두 선이 나란히 위아래**로
+    놓인다(손실이 가른다). 모델 축으로는 거의 안 움직인다.
+    오른쪽 — 20 dB 에서 여덟 판을 두 띠로. **띠 폭 자체가 결론이다**
+    (FE 판 3.6 dB 대 nofe 판 1.0 dB).
+    """
+    import pandas as pd
+
+    f = ROOT / "results/d1/exp_nofe/metrics.parquet"
+    if not f.exists():
+        print("  S11 건너뜀 (exp_nofe 없음)"); return
+    df = pd.read_parquet(f)
+    snr = (df[df.metric == "snr_imp_scaled"]
+           .pivot_table(index="method", columns="snr_in_target", values="value"))
+    hi = snr.columns[-1]
+    cells = [("M06", "L1"), ("M06", "L6"), ("M08", "L1"), ("M08", "L6")]
+    gap = {(m, l): snr.loc[f"{m}{l}"] - snr.loc[f"{m}{l}n"] for m, l in cells}
+
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13.2, 5.4), dpi=175)
+    fig.suptitle("front-end 를 빼면 무엇이 지배하는가 — D1, 입력 SNR "
+                 f"{hi:g} dB", x=0.02, ha="left", fontsize=13.5, fontweight="bold")
+
+    # --- 왼쪽: 손실이 가르고 모델은 거의 안 가른다
+    xs = [0, 1]
+    for li, loss in enumerate(("L1", "L6")):
+        ys = [gap[("M06", loss)][hi], gap[("M08", loss)][hi]]
+        a1.plot(xs, ys, "-o", color=LOSS[loss], lw=2.6, markersize=11,
+                markeredgecolor=SURFACE, markeredgewidth=1.5, zorder=3,
+                label=f"손실 {loss}")
+        for x, y in zip(xs, ys):
+            a1.annotate(f"{y:+.2f}", (x, y), color=LOSS[loss], fontsize=10.5,
+                        fontweight="bold", ha="center",
+                        xytext=(0, 13 if loss == "L6" else -20),
+                        textcoords="offset points")
+    a1.margins(y=0.26)          # 위아래로 붙인 라벨이 잘리지 않게
+    a1.set_xticks(xs)
+    a1.set_xticklabels(["M06\nresunet1d", "M08\nwavelet_unet"], fontsize=10.5)
+    a1.set_xlim(-0.35, 1.35)
+    a1.set_ylabel("front-end 를 뺀 대가 [dB]   (클수록 손해)", fontsize=10.5)
+    a1.set_title("두 선이 나란하다 — 가르는 것은 손실이다", fontsize=11.5,
+                 loc="left")
+    a1.legend(fontsize=10, frameon=False, loc="center left")
+    for sp in ("top", "right"):
+        a1.spines[sp].set_visible(False)
+    a1.grid(axis="y", color="#e8e8e8", lw=0.9)
+    a1.set_axisbelow(True)
+
+    # --- 오른쪽: 띠 폭이 결론
+    fe = [snr.loc[f"{m}{l}"][hi] for m, l in cells]
+    no = [snr.loc[f"{m}{l}n"][hi] for m, l in cells]
+    for i, (vals, lab, col) in enumerate(
+            ((fe, "front-end 판", "#184f95"), (no, "front-end 없는 판", "#c05010"))):
+        lo, high = min(vals), max(vals)
+        a2.plot([lo, high], [i, i], color=col, lw=9, alpha=0.22,
+                solid_capstyle="round", zorder=1)
+        a2.scatter(vals, [i] * len(vals), s=110, color=col, zorder=3,
+                   edgecolor=SURFACE, linewidth=1.5)
+        a2.annotate(f"폭 {high - lo:.2f} dB", ((lo + high) / 2, i), color=col,
+                    fontsize=12, fontweight="bold", ha="center",
+                    xytext=(0, 22), textcoords="offset points")
+        a2.annotate(lab, (lo, i), color=col, fontsize=11, ha="right",
+                    va="center", xytext=(-14, 0), textcoords="offset points")
+    a2.set_ylim(-0.7, 1.7)
+    a2.set_yticks([])
+    a2.set_xlabel("SNR 개선 [dB]", fontsize=10.5)
+    a2.set_title("FE 를 빼면 무엇을 골라도 비슷해진다", fontsize=11.5,
+                 loc="left")
+    for sp in ("top", "right", "left"):
+        a2.spines[sp].set_visible(False)
+    a2.grid(axis="x", color="#e8e8e8", lw=0.9)
+    a2.set_axisbelow(True)
+
+    fig.text(0.02, 0.015,
+             "왼쪽 네 점 = 모델 2 x 손실 2. 오른쪽 여덟 점 = 그 넷의 FE 판과 "
+             "nofe 판. 병목이 설계가 아니라 «앞단을 스스로 근사하는 능력» 으로 "
+             "옮겨 간다.", fontsize=10, color=INK2)
+    fig.tight_layout(rect=[0.02, 0.045, 1, 0.94])
+    fig.savefig(OUT / "S11_nofe_grid.png", dpi=175); plt.close(fig)
+    print("  S11_nofe_grid.png")
+
+
+# ------------------------------------------- S12 실시간 front-end 트레이드오프
+def s12_fe_tradeoff(TXT):
+    """**말할 것 하나**: 평평함과 ST 충실도는 **같은 방향이 아니다.**
+
+    좌하단이 «둘 다 좋음» 인데 **그 자리가 비어 있는 것**이 요지다. 점 크기로
+    지연을 실어, 「빠른 것은 왜곡이 크다」까지 한 장에 담는다.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "audit_fe_metrics", ROOT / "scripts" / "audit_fe_metrics.py")
+    m = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(m)
+        rows = m.audit_reference(n_rec=8)[0]
+    except Exception as e:                       # pragma: no cover
+        print(f"  S12 건너뜀 ({type(e).__name__}: {e})"); return
+    import pandas as pd
+    g = pd.DataFrame(rows).groupby("who")[["spread", "st_err"]].mean()
+
+    # 지연 [ms] — docs/13 · 30 의 실시간 브리지 설정 기준
+    LAT = {"오프라인 영위상": None, "인과 o1 0.5 Hz": 0,
+           "블록 영위상 0.5 s": 548, "중앙값 200+600 ms": 424}
+    COL = {"오프라인 영위상": "#b8b6ae", "인과 o1 0.5 Hz": "#eb6834",
+           "블록 영위상 0.5 s": "#2a78d6", "중앙값 200+600 ms": "#1baf7a"}
+
+    fig, ax = plt.subplots(figsize=(10.6, 6.4), dpi=175)
+    for who, row in g.iterrows():
+        lat = LAT.get(who)
+        size = 220 if lat is None else 150 + lat * 0.85
+        ax.scatter(row["spread"], abs(row["st_err"]), s=size,
+                   color=COL.get(who, "#666"), zorder=3,
+                   edgecolor=SURFACE, linewidth=2,
+                   alpha=0.55 if lat is None else 0.95)
+        tag = "도달 못 함" if lat is None else f"지연 {lat} ms"
+        ax.annotate(f"{who}\n{tag}", (row["spread"], abs(row["st_err"])),
+                    fontsize=10.5, color=COL.get(who, "#666"),
+                    fontweight="bold", ha="left", va="center",
+                    xytext=(18, 0), textcoords="offset points")
+    ax.set_xlabel("박동별 T-P 준위 산포 [%R]   (작을수록 평평)", fontsize=11)
+    ax.set_ylabel("ST 준위 오차 [%R]   (작을수록 충실)", fontsize=11)
+    ax.set_title("실시간 front-end — 평평함과 ST 충실도는 같은 방향이 아니다\n"
+                 "합성축 참값 기준 8 기록 · 점 크기 = 추가 지연",
+                 fontsize=12.5, loc="left")
+    # 오른쪽 끝 점의 라벨이 밖으로 나가지 않게 가로 여백을 준다
+    ax.set_xlim(0, g["spread"].max() * 1.42); ax.set_ylim(-0.2, None)
+    ax.annotate("둘 다 좋은 자리 — 비어 있다", (0.5, 0.08),
+                color=INK2, fontsize=11, style="italic")
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.grid(color="#ececec", lw=0.9); ax.set_axisbelow(True)
+    fig.text(0.02, 0.015,
+             "인과 방식은 어느 축으로도 3 위다 — 그것만은 안 바뀐다. "
+             "1·2 위는 «무엇을 지킬 것인가» 에 따라 갈린다.",
+             fontsize=10, color=INK2)
+    fig.tight_layout(rect=[0.02, 0.04, 1, 1])
+    fig.savefig(OUT / "S12_fe_tradeoff.png", dpi=175); plt.close(fig)
+    print("  S12_fe_tradeoff.png")
+
+
 def write_index():
     md = ["# 93. 발표용 그림 색인",
           "",
@@ -938,7 +1088,7 @@ def main() -> int:
                     help="파형 그림의 입력 SNR (기본 -5 dB — 차이가 보이는 구간)")
     a = ap.parse_args()
     want = set(a.only) if a.only else {"S1", "S2", "S3", "S4", "S5", "S6",
-                                       "S7", "S8", "S10"}
+                                       "S7", "S8", "S9", "S10", "S11", "S12"}
 
     NAME, TXT = slide_style()
     ensure_dir(OUT)
@@ -969,6 +1119,10 @@ def main() -> int:
             s3_qrs(cache, src, a.snr)
         if "S4" in want:
             s4_noise(cache, src, a.snr)
+    if "S11" in want:
+        s11_nofe_grid(TXT)
+    if "S12" in want:
+        s12_fe_tradeoff(TXT)
     if "S5" in want:
         s5_crossover()
     if "S6" in want:
