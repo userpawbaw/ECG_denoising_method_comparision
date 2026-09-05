@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import ast
 import os
 import re
 import sys
@@ -586,3 +587,86 @@ def test_checklist_code_references_resolve():
                            text))
     missing = sorted(p for p in paths if not (ROOT / p).exists())
     assert not missing, f"체크리스트가 없는 파일을 가리킨다: {missing}"
+
+
+# --------------------------------------------------------------------------
+# 발표 그림이 보고서보다 강한 주장을 하지 않게 — 그림·보고서 정합성
+# S13 · S14 를 만들면서 드러난 것: 「계열이 일곱 건」 이라고 세는 문장이 F-33 ·
+# F-35 가 합류한 뒤에도 그대로였다 (O-26). 세는 문장은 항목이 늘 때마다 낡는다.
+REPORT = ROOT / "docs" / "91_report.md"
+MAKE_SLIDES = ROOT / "scripts" / "make_slides.py"
+
+# 계열의 크기를 적은 세 문장. 목록이 늘면 여기도 같이 늘어야 한다.
+KO_COUNT = {6: "여섯", 7: "일곱", 8: "여덟", 9: "아홉", 10: "열", 11: "열한"}
+# 목록이 실린 두 자리 — 앞 조각에서 F 번호를 뽑는다.
+FAMILY_ANCHORS = ("은 성격이 같다", "는 전부 같은 모양이다")
+
+
+def _slides_const(name: str):
+    """`make_slides.py` 를 import 하지 않고 상수만 읽는다 (matplotlib 불필요)."""
+    tree = ast.parse(MAKE_SLIDES.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"make_slides.py 에 {name} 이 없다")
+
+
+def _family_lists() -> list[set[str]]:
+    text = REPORT.read_text(encoding="utf-8")
+    out = []
+    for anchor in FAMILY_ANCHORS:
+        i = text.index(anchor)
+        head = text[text.rindex("\n\n", 0, i):i]
+        out.append(set(re.findall(r"\bF-\d+\b", head)))
+    return out
+
+
+def test_measurement_trap_family_is_one_list():
+    """6 장 머리말 · 8 장 요약 · `S14` 가 **같은 아홉 건**을 가리켜야 한다.
+
+    셋이 갈라지면 그림이 보고서보다 강하거나 약한 주장을 하게 된다.
+    """
+    ch6, ch8 = _family_lists()
+    fig = {row[0] for row in _slides_const("TRAPS")}
+    assert ch6 == ch8, f"6 장과 8 장의 목록이 다르다: {ch6 ^ ch8}"
+    assert ch6 == fig, f"보고서와 S14 의 목록이 다르다: {ch6 ^ fig}"
+
+
+def test_measurement_trap_count_words_match_the_list():
+    """「일곱 건」 같은 **세는 말**이 목록 길이와 맞아야 한다 (O-26).
+
+    F-33 · F-35 가 5.11 에서 합류했는데 이 문장들이 「일곱」 인 채로 남았다.
+    항목을 늘리면서 세는 말을 안 고치는 것이 이 검사가 막는 재발이다.
+    """
+    n = len(_family_lists()[0])
+    word = KO_COUNT[n]
+    text = REPORT.read_text(encoding="utf-8")
+    for phrase in (f"{word} 다 ", f"{word} 건 모두", f"앞의 {word} 건은"):
+        assert phrase in text, f"보고서에 '{phrase}' 가 없다 (계열은 {n} 건)"
+
+
+def test_s13_numbers_match_report_5_7():
+    """S13 의 수치는 **보고서 5.7 표**에서 온 것이어야 한다 (F-19 · F-26).
+
+    초판 값은 F-9 로 체크포인트가 무효가 돼 재생성할 수 없다. 이 저장소에서
+    손으로 옮겨 적는 유일한 수치이므로, 옮긴 것이 표와 어긋나면 여기서 걸린다.
+    """
+    body = REPORT.read_text(encoding="utf-8")
+    tbl = body[body.index("## 5.7 "):]
+    tbl = tbl[:tbl.index("\n\n**결론이")]
+    rows = [ln for ln in tbl.splitlines() if ln.startswith("|")]
+
+    def find(*needles: str) -> str:
+        hit = [r for r in rows if all(n in r for n in needles)]
+        assert len(hit) == 1, f"5.7 표에서 {needles} 행을 못 찾았다: {len(hit)} 개"
+        return hit[0]
+
+    for _lab, m0, v0, m1, v1, _kind in _slides_const("FLIP_57"):
+        find(m0, f"{v0:.2f}", m1, f"{v1:.2f}")
+    for lab, v0, v1 in _slides_const("FLIP_57_FLOOR"):
+        find(lab.split()[0], "왜곡 하한", f"{v0:.2f}", f"{v1:.2f}")
+    who, before, after = _slides_const("FLIP_57_STAT")
+    a, b = who.split(" vs ")
+    find(a, b, "통계", "0.101", "0.99")
+    assert "p = 0.101" in before and "9e-6" in after

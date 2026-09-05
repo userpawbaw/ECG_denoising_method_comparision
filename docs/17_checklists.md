@@ -48,10 +48,12 @@
 - [ ] 같은 스크립트가 **이미 도는지** 본다 — 둘 이상이면 결과가 섞이거나 서로를 덮는다 (O-7 · O-20)
 - [ ] 끝났고 다음 계획이 없으면 watchdog 을 **대기로 되돌린다** (`99_status` §의 표)
 
-## §3 그림을 만들 때 `test_figure_text 계열 (3 회)`
+## §3 그림을 만들 때 `test_figure_text 계열 (3 회) · O-26`
 
 - [ ] **저장 전에** `pytest tests/test_figure_text.py`. 가드는 이미 있었고 정확했다 — **안 돌려서** 세 번째가 났다
 - [ ] 그리고 **눈으로 본다.** 테스트가 못 잡는 것: 라벨 잘림, 라벨 겹침, 패널 간 축 불일치(`sharey`), 축 밖으로 나간 주석
+- [ ] 명단·개수를 싣는 그림이면 **원본에서 뽑아 적고 대조한다.** 기억으로 적으면 원본과 갈린다 (O-26)
+- [ ] 그림이 보고서보다 **강한 주장을 하지 않는가.** 참조·조건이 다른 값을 나란히 놓으면 그 사실을 그림 안에 적는다
 - [ ] 발표용이면 `docs/93_slides.md` 색인이 스크립트에서 다시 생성됐나
 
 > (자동) 마크다운 `**` · U+2212 · 한글 폰트 선택 · `unicode_minus` · 로그축
@@ -99,6 +101,9 @@
 | 인수인계 절이 영구 목적지를 적었는가 | `check_handoff_sections_name_a_destination` | L5/L6 기각 후보표 |
 | 보고서 본문이 재생성 산출물과 맞는가 | `check_report_matches_generated_docs` | O-16 |
 | 감시자가 러너를 학습으로 오인하지 않는가 | `tests/test_watchdog.py` | O-17 · O-24 |
+| 계열 명단이 보고서·그림에서 같은가 | `test_measurement_trap_family_is_one_list` | O-26 |
+| 「일곱 건」 같은 세는 말이 목록 길이와 맞는가 | `test_measurement_trap_count_words_match_the_list` | O-26 |
+| 손으로 옮긴 수치가 보고서 표와 맞는가 | `test_s13_numbers_match_report_5_7` | O-26 · F-19 |
 
 ## 이 목록이 못 막는 것
 

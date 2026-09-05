@@ -801,6 +801,24 @@ INDEX = [
      "구조가 뚜렷한 잡음(전원선 +6.3, 기저선 변동 +4.6 평균)에서 크게 벌고 "
      "광대역 백색잡음(+0.3)에서 가장 적게 번다 — 잡음이 신호와 분리 가능해야 "
      "'건드리지 않는다' 가 선택지가 되기 때문이다."),
+    ("S11_nofe_grid.png",
+     "**front-end 를 아예 빼면.** 2x2 격자(모델 x 손실)로 재면 격차를 만드는 "
+     "것은 **모델이 아니라 손실**이다(L1 5.05 dB vs L6 1.75 dB). 그리고 FE 를 "
+     "빼면 여덟 판이 0.97 dB 안에 몰려 **무엇을 골라도 비슷해진다** — "
+     "FE 판의 3.61 dB 와 견주면 띠 폭 자체가 결론이다."),
+    ("S12_fe_tradeoff.png",
+     "**실시간 front-end 는 무엇을 지킬 것인가의 문제다.** 평평함(가로)과 "
+     "ST 충실도(세로)가 **같은 방향이 아니고**, 좌하단의 '둘 다 좋음' 자리가 "
+     "비어 있다. 점 크기가 추가 지연이다 — 인과 방식만 어느 축으로도 3 위다."),
+    ("S13_frontend_flip.png",
+     "**F-10 의 결과 한 장.** 바꾼 것은 '딥러닝에도 같은 front-end 를 준다' "
+     "하나인데 결론이 둘 뒤집혔다 — 15 dB 승자가 M04(7.79)에서 M08(8.71)로, "
+     "M06 대 M01 이 n.s.(p=0.101)에서 유의(p=9e-6)로. 왜곡 하한 두 행은 "
+     "**참조 정의가 달라 방향만** 읽는다."),
+    ("S14_measurement_traps.png",
+     "**6 장 머리말 한 장.** 측정 틀이 틀렸던 아홉 건과 각각을 잡아낸 것. "
+     "아홉 중 다섯이 '참조를 무엇으로 둘 것인가' 이고, 아홉 다 p 값이 "
+     "유의했다 — 통계는 전제가 틀렸다는 것을 알려주지 않는다."),
 ]
 
 
@@ -949,6 +967,244 @@ def s12_fe_tradeoff(TXT):
     print("  S12_fe_tradeoff.png")
 
 
+# ------------------------------------------- S13 front-end 를 고치자 뒤집힌 것
+# 보고서 5.7 의 표를 그대로 옮긴 것이다. 초판(F-10 이전)의 값은 **재생성할 수
+# 없다** — F-9 로 당시 체크포인트가 전부 무효가 됐다. 이 저장소에서 파일에서
+# 못 읽고 손으로 옮기는 유일한 수치이므로, 옮겨 적은 것이 보고서와 어긋나지
+# 않게 `tests/test_repo_integrity.py` 가 5.7 표와 대조한다 (F-19 · F-26).
+FLIP_57 = [
+    # (라벨, 초판 방법, 초판 값, 현재 방법, 현재 값, 무엇이 바뀌었나)
+    ("15 dB 입력", "M04", 7.79, "M08", 8.71, "flip"),
+    ("-5 dB 입력", "M07", 18.54, "M06", 17.25, "same"),
+]
+FLIP_57_FLOOR = [
+    ("M08 왜곡 하한", 23.19, 27.04),
+    ("M06 왜곡 하한", 22.33, 24.64),
+]
+FLIP_57_STAT = ("M06 vs M01", "n.s.  (p = 0.101)", "유의  (p = 9e-6, r = 0.99)")
+
+FLIP_C = {"flip": "#184f95", "same": "#9a9892"}
+
+
+def s13_frontend_flip(TXT):
+    """**말할 것 하나**: 바뀐 것은 «딥러닝에도 같은 front-end 를 준 것» 하나인데
+    결론이 둘 뒤집혔다.
+
+    왜곡 하한 두 행은 **참조 정의가 달라 같은 자로 잰 것이 아니다.** 그림
+    안에 그 사실을 적고 방향만 읽게 한다 — 안 적으면 그림이 보고서보다 강한
+    주장을 하게 된다 (5.3 · O-16).
+    """
+    fig = plt.figure(figsize=(12.6, 7.4), dpi=175)
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.25, 1.0],
+                          left=0.075, right=0.985, top=0.80, bottom=0.30,
+                          wspace=0.42)
+    a1, a2 = fig.add_subplot(gs[0]), fig.add_subplot(gs[1])
+
+    # -- 왼쪽: 최고 성능 [dB]. 같은 양(SNR 개선)이라 한 축에 놓을 수 있다.
+    for lab, m0, v0, m1, v1, kind in FLIP_57:
+        col = FLIP_C[kind]
+        lw = 3.4 if kind == "flip" else 1.6
+        al = 1.0 if kind == "flip" else 0.65
+        a1.plot([0, 1], [v0, v1], color=col, lw=lw, alpha=al,
+                marker="o", ms=9, zorder=3, clip_on=False)
+        a1.annotate(f"{m0}  {v0:.2f}", (0, v0), xytext=(-10, 0),
+                    textcoords="offset points", ha="right", va="center",
+                    fontsize=10.5, color=col, alpha=al)
+        a1.annotate(f"{m1}  {v1:.2f}", (1, v1), xytext=(10, 0),
+                    textcoords="offset points", ha="left", va="center",
+                    fontsize=10.5, color=col, alpha=al,
+                    fontweight="bold" if kind == "flip" else "normal")
+        # 행 이름과 «무엇이 바뀌었나» 를 한 줄로 붙인다 — 따로 두면 겹친다.
+        note = ("승자가 DSP 에서 딥러닝으로 바뀐다" if kind == "flip"
+                else "둘 다 딥러닝, 여기서는 안 바뀐다")
+        a1.annotate(f"{lab} — {note}", (0.5, (v0 + v1) / 2),
+                    xytext=(0, 13 if kind == "same" else -22),
+                    textcoords="offset points", ha="center",
+                    va="bottom" if kind == "same" else "top",
+                    fontsize=10.5, color=col, alpha=al,
+                    fontweight="bold" if kind == "flip" else "normal")
+    a1.set_ylabel("최고 성능 [dB]  (SNR 개선)", fontsize=11)
+    a1.set_title("성능 — 같은 자로 잰 값", fontsize=11.5, loc="left")
+
+    # -- 오른쪽: 왜곡 하한. 참조가 바뀌었으므로 **방향만** 읽는다.
+    for lab, v0, v1 in FLIP_57_FLOOR:
+        a2.plot([0, 1], [v0, v1], color="#9a9892", lw=2.0, ls="--",
+                marker="o", ms=8, zorder=3, clip_on=False)
+        for x, v, ha, dx in ((0, v0, "right", -10), (1, v1, "left", 10)):
+            a2.annotate(f"{v:.2f}", (x, v), xytext=(dx, 0),
+                        textcoords="offset points", ha=ha, va="center",
+                        fontsize=10.5, color=INK2)
+        # 행 이름은 선 위에 얹는다 — 오른쪽 끝에 두면 축 밖으로 나간다.
+        a2.annotate(lab, (0.5, (v0 + v1) / 2), xytext=(0, 12),
+                    textcoords="offset points", ha="center", va="bottom",
+                    fontsize=10.5, color=INK2)
+    a2.set_ylabel("왜곡 하한 [dB]  (EXP-C)", fontsize=11)
+    a2.set_title("왜곡 하한 — 자가 바뀌었다", fontsize=11.5, loc="left")
+    a2.annotate("참조를 raw 에서 FE(clean) 으로 바꾼 뒤의 값이다.\n"
+                "초판 열과 같은 자로 잰 것이 아니므로 방향만 읽을 것 (5.3 · O-16).",
+                (0.5, 0.03), xycoords="axes fraction", ha="center", va="bottom",
+                fontsize=9.5, color=INK2, style="italic",
+                bbox=dict(boxstyle="round,pad=0.45", fc="#f4f2ec", ec="#ddd9cf"))
+
+    for ax, pad in ((a1, 0.30), (a2, 0.22)):
+        ax.set_xlim(-pad, 1 + pad)
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["초판\n(딥러닝만 FE 없음)", "현재\n(전 방법 동일 FE)"],
+                           fontsize=10.5)
+        ax.margins(y=0.30)
+        ax.grid(axis="y", color="#ececec", lw=0.9); ax.set_axisbelow(True)
+        ax.grid(axis="x", visible=False)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+
+    # -- 아래 띠: 통계 판정의 뒤집힘. 단위가 달라 축에 못 올린다.
+    who, before, after = FLIP_57_STAT
+    fig.text(0.075, 0.185, "통계 판정도 뒤집혔다", fontsize=11.5,
+             color=FLIP_C["flip"], fontweight="bold")
+    fig.text(0.075, 0.115,
+             f"{who}      {before}      →      {after}",
+             fontsize=12, color=INK)
+    fig.text(0.075, 0.058,
+             "이제 22 개 기록 전부에서 이긴다. 초판의 «딥러닝은 유의하지 않다» 는 "
+             "방법의 성질이 아니라 판의 결함이었다.",
+             fontsize=10, color=INK2)
+
+    fig.suptitle("front-end 하나를 고치자 결론 둘이 뒤집혔다", x=0.075, y=0.955,
+                 ha="left", fontsize=15.5, fontweight="bold")
+    fig.text(0.075, 0.885,
+             "바뀐 것은 «딥러닝에도 같은 front-end 를 준다» 하나다 — "
+             "나머지 조건은 모두 같다 (보고서 5.7 · F-10).",
+             fontsize=11, color=INK2)
+    fig.savefig(OUT / "S13_frontend_flip.png", dpi=175); plt.close(fig)
+    print("  S13_frontend_flip.png")
+
+
+# ------------------------------------------------- S14 측정 틀이 틀렸던 아홉 건
+# 색은 dataviz 슬롯 팔레트를 그대로 쓴다. 이 그림에는 **방법이 하나도
+# 등장하지 않으므로** C 의 «색은 방법에 고정» 규약과 충돌하지 않는다.
+TRAP_C = {
+    "참조 정의": "#2a78d6",
+    "조건 불일치": "#eb6834",
+    "지표 분해능": "#1baf7a",
+    "가정의 축 이전": "#eda100",
+}
+# (F 번호, 유형, 무엇이 «그럴듯한 표» 를 만들었나, 무엇이 잡았나)
+# 줄바꿈은 손으로 넣는다 — 칸 폭에 맞춰 두 줄로 끊어야 아홉 행이 16:9 에 든다.
+TRAPS = [
+    ("F-8", "조건 불일치",
+     "record 로 split 했는데 morphology 커널은 train/test 가 공유 —\n"
+     "딥러닝 +26 dB 대 DSP +3 dB 로 나왔다",
+     "«26 dB 가 가능한가» 라는 크기 감각. 커널을 흔드니\n"
+     "+16.5 → +4~6 dB 로 주저앉았다"),
+    ("F-10", "조건 불일치",
+     "«전 방법 동일 front-end» 가 문서에만 있었고 딥러닝만 raw 를\n"
+     "받고 있었다 — 딥러닝이 진 조건의 상당 부분이 그것이었다",
+     "front-end 단독 열(M_FE)을 표에 넣자 이득의 출처가 읽혔다 —\n"
+     "bw·pli 에서 SWT 의 기여는 정확히 0 dB"),
+    ("F-11", "참조 정의",
+     "oracle 을 «문제의 상한» 으로 인용할 뻔했다 —\n"
+     "B01 · B02 · M_FE 가 소수점까지 같은 34.13 dB",
+     "세 값이 같다는 것 자체가 단서였다. oracle 도 같은\n"
+     "front-end 를 지난다 — 그것은 전처리의 상한이다"),
+    ("F-12", "참조 정의",
+     "MIT-BIH 원본을 정답으로 두니 front-end 가 지운 성분이\n"
+     "전부 오차 — SWT 튜닝이 최선에서 -0.49 dB 를 냈다",
+     "D0 53.2 dB 대 D1 9.3 dB 의 격차. 참조를 FE(원본) 으로\n"
+     "바꾸자 같은 튜닝이 +12.47 dB 가 됐다"),
+    ("F-15", "참조 정의",
+     "M_FE 의 왜곡 하한 147 dB — «front-end 는 신호를 전혀\n"
+     "손상시키지 않는다» 가 결론이 될 뻔했다",
+     "크기 감각. 147 dB 는 성능이 아니라 SNR(FE(x), FE(x)) = ∞ 가\n"
+     "float64 에서 잘린 값이었다"),
+    ("F-16", "지표 분해능",
+     "«D1 에서 L2 · L3 가 QRS 를 더 잘 보존한다»\n"
+     "(25.995 → 22.267 ms) 를 실을 뻔했다",
+     "floor 를 축마다 쟀다 — D0 0.640 ms, D1 28.07 ms 로 44 배.\n"
+     "격차가 분해능 아래라 «최선» 표시를 걷었다"),
+    ("F-17", "가정의 축 이전",
+     "«실데이터에서는 참 파라미터를 줘도 5.91 dB» —\n"
+     "모형 가정이 무너진다는 결론이 될 뻔했다",
+     "천장이어야 할 값이 천장이 아니었다 — 적합 커널 11.23 dB 가\n"
+     "주입 커널 5.91 을 앞섰다. 주입 커널은 D1 과 무관했다"),
+    ("F-33", "참조 정의",
+     "pipeline_db 로는 인과 모드가 1 위(M06 +0.89) —\n"
+     "참조 FE_rt(clean) 이 모드마다 함께 움직였다",
+     "파형 지표가 정반대를 말했다. 고정 참조로 재니 인과 -5.22 dB,\n"
+     "블록 영위상 -3.08 로 순위가 뒤집힌다"),
+    ("F-35", "참조 정의",
+     "고정한 참조 FE_off(clean) 이 후보 하나가 수렴하도록\n"
+     "정의된 목표였다 — 8 기록 전부 블록 영위상 승, 6.05 dB",
+     "세 방식이 공유하는 부분만 참값으로 삼으니 순위가 뒤집힌다 —\n"
+     "중앙값이 0.78 dB 우세, 8 중 4 승"),
+]
+
+
+def s14_measurement_traps(TXT):
+    """**말할 것 하나**: 이 과제의 발견 중 가장 큰 계열은 방법이 아니라
+    **측정**이었고, 아홉 건 모두 «그럴듯한 결과표» 를 만들어냈다.
+
+    6 장 머리말이 이 계열을 글로 지목하는데 아홉 건이 2 000 줄에 흩어져 있어
+    계열로 안 읽힌다. 한 장이면 읽힌다.
+    """
+    fig = plt.figure(figsize=(14.0, 8.4), dpi=170)
+    ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off()
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+
+    XS, XA, XB = 0.145, 0.185, 0.545      # 척추 · A 칸 · B 칸
+    top, bot = 0.795, 0.105
+    ys = [top - i * (top - bot) / (len(TRAPS) - 1) for i in range(len(TRAPS))]
+
+    ax.plot([XS, XS], [bot - 0.030, top + 0.030], color="#ddd9cf", lw=2,
+            zorder=1)
+    for i, (fid, kind, made, caught) in enumerate(TRAPS):
+        y, col = ys[i], TRAP_C[kind]
+        if i:
+            ax.axhline((ys[i - 1] + y) / 2, xmin=0.012, xmax=0.988,
+                       color="#eeece6", lw=0.8, zorder=0)
+        ax.plot([XS], [y], marker="o", ms=11, color=col,
+                markeredgecolor=SURFACE, markeredgewidth=2, zorder=3)
+        ax.text(XS - 0.026, y + 0.014, fid, ha="right", va="center",
+                fontsize=13, color=col, fontweight="bold")
+        ax.text(XS - 0.026, y - 0.020, kind, ha="right", va="center",
+                fontsize=9, color=INK2)
+        ax.text(XA, y, made, ha="left", va="center", fontsize=9.6, color=INK,
+                linespacing=1.6)
+        ax.annotate("", xy=(XB - 0.014, y), xytext=(XB - 0.048, y),
+                    arrowprops=dict(arrowstyle="-|>", color=col, lw=1.7,
+                                    shrinkA=0, shrinkB=0))
+        ax.text(XB, y, caught, ha="left", va="center", fontsize=9.6,
+                color=INK2, linespacing=1.6)
+
+    ax.text(XA, 0.862, "무엇이 «그럴듯한 표» 를 만들었나", ha="left",
+            va="center", fontsize=11, color=INK2, fontweight="bold")
+    ax.text(XB, 0.862, "무엇이 잡았나", ha="left", va="center", fontsize=11,
+            color=INK2, fontweight="bold")
+
+    for j, (kind, col) in enumerate(TRAP_C.items()):
+        x = 0.560 + j * 0.112
+        ax.plot([x], [0.968], marker="o", ms=8, color=col)
+        ax.text(x + 0.012, 0.968, kind, ha="left", va="center", fontsize=9.5,
+                color=INK2)
+
+    ax.text(0.012, 0.972, "측정 틀이 틀렸던 아홉 건", ha="left", va="center",
+            fontsize=16.5, fontweight="bold", color=INK)
+    ax.text(0.012, 0.922,
+            "이 과제의 발견 중 가장 큰 계열은 방법이 아니라 측정이다. "
+            "아홉 중 다섯이 «참조를 무엇으로 둘 것인가» 다.",
+            ha="left", va="center", fontsize=11, color=INK2)
+
+    ax.text(0.012, 0.046,
+            "아홉 건 모두 p 값이 유의했고 effect size 도 컸다 — "
+            "통계는 «전제가 틀렸다» 를 알려주지 않는다.",
+            ha="left", va="center", fontsize=10.5, color=INK)
+    ax.text(0.012, 0.017,
+            "잡아낸 것은 언제나 «이 숫자가 이렇게 클 수 있는가» 라는 크기 "
+            "감각이었다 — 26 dB · 242 % · 147 dB · 44 배, 그리고 천장이 아닌 천장.",
+            ha="left", va="center", fontsize=10.5, color=INK2)
+    fig.savefig(OUT / "S14_measurement_traps.png", dpi=170); plt.close(fig)
+    print("  S14_measurement_traps.png")
+
+
 def write_index():
     md = ["# 93. 발표용 그림 색인",
           "",
@@ -1088,7 +1344,8 @@ def main() -> int:
                     help="파형 그림의 입력 SNR (기본 -5 dB — 차이가 보이는 구간)")
     a = ap.parse_args()
     want = set(a.only) if a.only else {"S1", "S2", "S3", "S4", "S5", "S6",
-                                       "S7", "S8", "S9", "S10", "S11", "S12"}
+                                       "S7", "S8", "S9", "S10", "S11", "S12",
+                                       "S13", "S14"}
 
     NAME, TXT = slide_style()
     ensure_dir(OUT)
@@ -1123,6 +1380,10 @@ def main() -> int:
         s11_nofe_grid(TXT)
     if "S12" in want:
         s12_fe_tradeoff(TXT)
+    if "S13" in want:
+        s13_frontend_flip(TXT)
+    if "S14" in want:
+        s14_measurement_traps(TXT)
     if "S5" in want:
         s5_crossover()
     if "S6" in want:
