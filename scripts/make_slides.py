@@ -698,6 +698,7 @@ def s9_structure_vs_loss(TXT):
         ("L6   +clean 보존",          "손실", "abl_loss",   "M06-L1",    "M06-L6"),
     ]
     fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.4), sharey=True)
+    seen: list[tuple[str, str, float, bool]] = []   # 부제를 여기서 계산한다
     for ax, tag in zip(axes, ("d0", "d1")):
         ys, xs, ps, cs = [], [], [], []
         for i, (lab, kind, exp, base, cand) in enumerate(ROWS):
@@ -717,6 +718,9 @@ def s9_structure_vs_loss(TXT):
                 xs.append(float(r.iloc[0]["delta_mean"])); ps.append(float(r.iloc[0]["p_holm"]))
             cs.append(KIND[kind])
         ax.axvline(0, color=INK2, lw=1.2, zorder=2)
+        for (lab, kind, *_), x, pv in zip(ROWS, xs, ps):
+            if np.isfinite(x):
+                seen.append((lab.split()[0], kind, x, pv < 0.05))
         for y, x, pv, c in zip(ys, xs, ps, cs):
             if not np.isfinite(x):
                 continue
@@ -745,8 +749,18 @@ def s9_structure_vs_loss(TXT):
         Line2D([], [], marker="o", ls="", ms=9, color=INK2, label="* = p < 0.05 (Holm)"),
     ], loc="upper right", fontsize=9.5, framealpha=0.92,
         borderpad=0.6, labelspacing=0.4)
+    # **부제는 점에서 계산한다.** 초판은 「유의한 구조 변경은 M07 하나」라고 손으로
+    # 적혀 있었는데, D0 에서는 M10 도 유의하다 — S10 과 같은 실수다 (O-27).
+    sg = [(n, x) for n, k, x, sig in seen if k == "구조" and sig]
+    sl = [(n, x) for n, k, x, sig in seen if k == "손실" and sig]
+    n_l = sum(1 for _, k, _, _ in seen if k == "손실")
+    names = " · ".join(sorted({n for n, _ in sg})) or "없다"
+    way = ("전부 나쁜 쪽이다" if sg and all(x < 0 for _, x in sg)
+           else "방향이 갈린다")
+    lway = ("전부 좋은 쪽" if sl and all(x > 0 for _, x in sl) else "방향이 갈린다")
     fig.suptitle("구조를 네 번 바꿔도 안 됐고, 손실은 됐다  (M06 기준, TEST n=22)\n"
-                 "유의한 구조 변경은 M07 하나인데 그것은 나쁜 쪽이다",
+                 f"유의한 구조 변경은 {names} 뿐이고 {way}. "
+                 f"손실은 {len(sl)}/{n_l} 칸이 유의하고 {lway}이다",
                  fontsize=12.5)
     fig.tight_layout(rect=(0, 0, 1, 0.86))
     fig.savefig(OUT / "S9_structure_vs_loss.png", dpi=175); plt.close(fig)
@@ -796,11 +810,10 @@ INDEX = [
      "된다. 이득이 우연이 아니라 **의도한 기제를 통해** 왔다는 근거다."),
     ("S10_loss_by_noise.png",
      "**S7·S8 의 범위.** L6 의 이득이 어디까지 가는가 — 잡음 7 종 × 입력 SNR "
-     "3 단계(EXP-G). **결론의 축은 잡음 종류가 아니라 입력 SNR 이다**: "
-     "20 dB 에서는 손해가 한 칸도 없고, 손해 다섯 칸은 전부 0 dB 다. "
-     "구조가 뚜렷한 잡음(전원선 +6.3, 기저선 변동 +4.6 평균)에서 크게 벌고 "
-     "광대역 백색잡음(+0.3)에서 가장 적게 번다 — 잡음이 신호와 분리 가능해야 "
-     "'건드리지 않는다' 가 선택지가 되기 때문이다."),
+     "7 단계(EXP-G), 두 축. **결론의 축은 잡음 종류가 아니라 입력 SNR 이다** — "
+     "왼쪽(저 SNR)이 붉고 오른쪽으로 갈수록 파래진다. 칸 수와 판정은 "
+     "**그림의 부제가 격자에서 직접 계산**하고, 해석은 보고서 5.8.10 에 있다 "
+     "(같은 산문을 두 곳에 두면 한쪽이 낡는다 — O-27)."),
     ("S11_nofe_grid.png",
      "**front-end 를 아예 빼면.** 2x2 격자(모델 x 손실)로 재면 격차를 만드는 "
      "것은 **모델이 아니라 손실**이다(L1 5.05 dB vs L6 1.75 dB). 그리고 FE 를 "
@@ -1271,6 +1284,7 @@ def s10_loss_by_noise(TXT):
 
     fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.6))
     got = False
+    grids: dict[str, tuple] = {}
     for ax, tag in zip(axes, ("d0", "d1")):
         f = Path("results") / tag / "exp_g" / "metrics.parquet"
         if not f.exists():
@@ -1294,6 +1308,7 @@ def s10_loss_by_noise(TXT):
             # 보정은 **한 축·한 SNR 안의 잡음 7 종**에 건다 (11_loss_by_noise 와 동일)
             S[:, j] = holm(np.asarray(ps)) < 0.05
         got = True
+        grids[tag] = (D, S, snrs)
         ax.imshow(D, cmap=cmap, norm=norm, aspect="auto", zorder=0)
         ax.grid(False)      # rcParams 의 격자가 칸 위에 흰 줄로 얹힌다
         for i in range(len(CONDS)):
@@ -1325,9 +1340,19 @@ def s10_loss_by_noise(TXT):
     fig.text(0.5, 0.035, "* 와 굵은 숫자 = Holm 보정 후 유의  ·  "
              "파랑 = L6 이 이김, 빨강 = L6 이 짐  ·  값은 M06L6 - M06 [dB]",
              ha="center", fontsize=9.5, color=INK2)
+    # **부제는 격자에서 계산한다.** 초판은 이 문장을 손으로 적었는데, EXP-G 를
+    # 3 단계에서 7 단계로 넓힌 뒤에도 「손해 다섯 칸은 전부 0 dB」 이 남아 있었다
+    # (O-27 — O-11 · O-12 와 같은 계열). 산출물을 설명하는 산문은 산출물에서 나와야 한다.
+    n_gain = sum(int(((D > 0) & S).sum()) for D, S, _ in grids.values())
+    n_loss = sum(int(((D < 0) & S).sum()) for D, S, _ in grids.values())
+    n_cell = sum(int(D.size) for D, _, _ in grids.values())
+    lose_at = sorted({sn for D, _, sns in grids.values()
+                      for i, sn in enumerate(sns) if (D[:, i] < 0).any()})
+    span = (f"손해는 전부 {max(lose_at):g} dB 이하에 있다" if lose_at
+            else "손해 칸이 하나도 없다")
     fig.suptitle("L6 의 이득은 잡음 종류가 아니라 입력 SNR 이 가른다  "
                  "(M06, TEST, 기록 단위 n=44)\n"
-                 "20 dB 에서는 손해가 한 칸도 없다. 손해 다섯 칸은 전부 0 dB 이고, "
+                 f"{n_cell} 칸 · 유의 이득 {n_gain} · 유의 손해 {n_loss} — {span}. "
                  "구조가 뚜렷한 잡음일수록 크게 번다", fontsize=12.5)
     fig.tight_layout(rect=(0, 0.07, 1, 0.86))
     fig.savefig(OUT / "S10_loss_by_noise.png", dpi=175); plt.close(fig)
@@ -1392,6 +1417,7 @@ def main() -> int:
         s7_loss_gap(TXT)
     if "S8" in want:
         s8_clean_preservation(TXT)
+    if "S9" in want:
         s9_structure_vs_loss(TXT)
     if "S10" in want:
         s10_loss_by_noise(TXT)

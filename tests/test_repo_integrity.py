@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 import re
 import sys
@@ -670,3 +671,91 @@ def test_s13_numbers_match_report_5_7():
     a, b = who.split(" vs ")
     find(a, b, "통계", "0.101", "0.99")
     assert "p = 0.101" in before and "9e-6" in after
+
+
+# --------------------------------------------------------------------------
+# 그림이 자기 데이터보다 오래되지 않았는가 (O-27 · O-11 · O-16)
+# EXP-G 를 3 단계에서 7 단계로 넓히고 `S10` 을 다시 그리지 않아, 커밋된 그림이
+# 한 달 가까이 옛 격자를 말하고 있었다. 지표 parquet 과 슬라이드 PNG 이 **둘 다
+# tracked** 라 git 이력으로 「어느 쪽이 더 새것인가」를 잴 수 있다.
+FIGURE_DATA = {
+    "S5_crossover.png": ["results/d0/exp_a/metrics.parquet",
+                         "results/d1/exp_a/metrics.parquet"],
+    "S6_safety.png": ["docs/07_safety_probe_d0.md",
+                      "docs/07_safety_probe_d1.md"],
+    "S7_loss_gap.png": ["results/d0/abl_loss/metrics.parquet",
+                        "results/d1/abl_loss/metrics.parquet"],
+    "S8_clean.png": ["results/d0/exp_c/metrics.parquet",
+                     "results/d1/exp_c/metrics.parquet"],
+    "S9_structure_vs_loss.png": ["results/d0/exp_a/metrics.parquet",
+                                 "results/d1/exp_a/metrics.parquet",
+                                 "results/d0/abl_window/metrics.parquet",
+                                 "results/d1/abl_window/metrics.parquet",
+                                 "results/d0/abl_loss/metrics.parquet",
+                                 "results/d1/abl_loss/metrics.parquet"],
+    "S10_loss_by_noise.png": ["results/d0/exp_g/metrics.parquet",
+                              "results/d1/exp_g/metrics.parquet"],
+    "S11_nofe_grid.png": ["results/d1/exp_nofe/metrics.parquet"],
+}
+SLIDES = ROOT / "results" / "slides"
+
+
+def _last_commit(rel: str) -> int | None:
+    """그 경로를 마지막으로 건드린 커밋 시각. tracked 가 아니면 None."""
+    import subprocess
+    try:
+        out = subprocess.run(["git", "log", "-1", "--format=%ct", "--", rel],
+                             cwd=ROOT, capture_output=True, text=True,
+                             timeout=30)
+    except (OSError, subprocess.SubprocessError):       # pragma: no cover
+        return None
+    v = out.stdout.strip()
+    return int(v) if out.returncode == 0 and v else None
+
+
+MANIFEST = SLIDES / "manifest.json"
+
+
+def test_slides_manifest_records_a_full_run():
+    """커밋된 슬라이드 묶음이 **전체 재생성**에서 나온 것이어야 한다.
+
+    `--only S10` 같은 부분 실행도 manifest 를 덮어쓰므로, 그 상태로 커밋하면
+    아래 시각 검사가 「전부 다시 그렸다」를 잘못 보증하게 된다.
+    """
+    cfg = json.loads(MANIFEST.read_text(encoding="utf-8")).get("config", {})
+    assert not cfg.get("only"), (
+        f"manifest 가 부분 실행이다 (only={cfg.get('only')}) — "
+        "`python3 scripts/make_slides.py` 를 인자 없이 돌린 뒤 커밋할 것")
+
+
+def test_slides_are_not_older_than_their_data():
+    """슬라이드 묶음이 **자기 데이터보다 오래되면** 안 된다 (O-27).
+
+    낱장 PNG 로 재면 「다시 그렸는데 그림이 안 바뀐」 경우에 git 이 아무것도
+    기록하지 않아 영원히 실패한다. 그래서 매 실행마다 새로 쓰이는
+    `manifest.json` 을 「마지막으로 전부 다시 그린 시각」의 대리로 쓴다.
+    """
+    t_man = _last_commit("results/slides/manifest.json")
+    if t_man is None:
+        pytest.skip("슬라이드 manifest 가 아직 tracked 가 아니다")
+    stale = []
+    for paths in FIGURE_DATA.values():
+        for src in set(paths):
+            assert (ROOT / src).exists(), f"없는 근거를 가리킨다: {src}"
+            t_src = _last_commit(src)
+            if t_src is not None and t_man < t_src:
+                stale.append(src)
+    assert not stale, (
+        f"슬라이드가 {sorted(set(stale))} 보다 오래됐다 — 데이터를 고치고 "
+        "다시 안 그렸다 (O-27). `python3 scripts/make_slides.py` 로 재생성할 것")
+
+
+def test_figure_data_table_covers_every_source():
+    """새 데이터원을 쓰는 그림이 위 표에서 조용히 빠지지 않게 한다."""
+    src = MAKE_SLIDES.read_text(encoding="utf-8")
+    used = set(re.findall(r'"((?:exp|abl)_\w+)"', src))
+    declared = {part for paths in FIGURE_DATA.values() for p in paths
+                for part in p.split("/")}
+    missing = sorted(used - declared)
+    assert not missing, (
+        f"make_slides.py 가 쓰는데 FIGURE_DATA 에 없는 실험: {missing}")
