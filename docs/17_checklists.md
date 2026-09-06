@@ -107,6 +107,7 @@
 | 손으로 옮긴 수치가 보고서 표와 맞는가 | `test_s13_numbers_match_report_5_7` | O-26 · F-19 |
 | 슬라이드가 자기 데이터보다 오래되지 않았나 | `test_slides_are_not_older_than_their_data` | O-27 |
 | 슬라이드 묶음이 전체 재생성에서 나왔나 | `test_slides_manifest_records_a_full_run` | O-27 |
+| 보고서가 모든 문서를 한 번은 가리키나 | `test_report_names_every_doc` | D-22 |
 
 ## 이 목록이 못 막는 것
 

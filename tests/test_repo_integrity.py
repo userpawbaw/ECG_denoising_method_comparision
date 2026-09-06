@@ -759,3 +759,25 @@ def test_figure_data_table_covers_every_source():
     missing = sorted(used - declared)
     assert not missing, (
         f"make_slides.py 가 쓰는데 FIGURE_DATA 에 없는 실험: {missing}")
+
+
+# --------------------------------------------------------------------------
+# 보고서가 유일한 진입점인가 (D-22)
+# 문서가 40 개인데 보고서가 이름을 부르는 것은 20 개뿐이었다. 나머지는 존재를
+# 알 방법이 없어 «파편화» 로 느껴진다. 여기서 빠지면 링크를 달거나, 일부러
+# 안 다는 것이면 아래 목록에 이유와 함께 적는다.
+REPORT_EXEMPT: dict[str, str] = {
+    # "파일명.md": "왜 보고서가 안 가리키는가",
+}
+
+
+def test_report_names_every_doc():
+    """`docs/*.md` 가 전부 보고서에서 한 번은 이름 불려야 한다 (D-22)."""
+    body = REPORT.read_text(encoding="utf-8")
+    missing = sorted(
+        d.name for d in (ROOT / "docs").glob("*.md")
+        if d.name != REPORT.name and d.name not in REPORT_EXEMPT
+        and d.name not in body and d.stem not in body)
+    assert not missing, (
+        f"보고서가 안 가리키는 문서: {missing} — §0 지도나 해당 절의 "
+        "「자세히」 줄에 넣을 것. 일부러 빼는 것이면 REPORT_EXEMPT 에 이유와 함께.")
