@@ -1,0 +1,34 @@
+exp_id: m06_l1_data4x_eq
+seed: 0
+
+model:
+  name: resunet1d
+  kwargs: {}
+
+loss: L1
+
+data:
+  source: auto            # auto = MIT-BIH 가 있으면 그것, 없으면 합성
+  dur_s: 300.0            # 합성 소스일 때 기록 길이
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 1024
+  hop: 512
+  snr_range: [-5.0, 20.0]
+  max_per_record: 640     # D-23: 160 -> 640. 가용 window 의 18 % -> 73 %
+  nstdb_root: data/raw/nstdb
+  frontend: true          # 공통 front-end 를 딥러닝에도 동일 적용
+                          # (끄면 DL 만 기저선 제거를 처음부터 학습해야 해 불공정)
+
+train:
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  batch_size: 64
+  epochs: 15
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0
+
+# D-23 — 총 step 예산을 기존과 같게 맞춘 판 (45x60 = 180x15 = 2,700). 데이터 다양성 하나만 다르다.
+# 주 결과표에 넣지 않는다: 다른 방법은 전부 160 으로 학습됐다 (공정성 규약 4.2).
