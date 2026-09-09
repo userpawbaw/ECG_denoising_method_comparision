@@ -35,7 +35,8 @@ from scipy import stats
 ROOT = Path(__file__).resolve().parent.parent
 
 # 이 저장소(CPU · fp32)에서 나온 값. 캘리브레이션의 기준이다.
-LOCAL_CPU = {("m06_l1", 0): 3.437, ("m06_l1", 1): 4.864, ("m06_l1", 2): 4.493}
+LOCAL_CPU = {("m06_l1", 0): 3.437, ("m06_l1", 1): 4.864, ("m06_l1", 2): 4.493,
+             ("m09_l1", 0): 3.440, ("m09_l1", 1): 4.288, ("m09_l1", 2): 4.169}
 
 METRICS = [("best_metric", "best val (seed 별 잡음 뽑기)"),
            ("fixed_snr_imp_scaled", "고정 평가 (공통 잡음 뽑기)")]
@@ -119,14 +120,14 @@ def main() -> int:
               f"(이 저장소 CPU 는 약 66 s — {how})")
 
     # ---------------------------------------------------------------- 1. 캘리브레이션
-    cal = [(s, by_arm["m06_l1"][s]["best_metric"], v)
+    cal = [(f"{a} s{s}", by_arm[a][s]["best_metric"], v)
            for (a, s), v in sorted(LOCAL_CPU.items())
-           if a == "m06_l1" and s in by_arm.get("m06_l1", {})]
+           if s in by_arm.get(a, {})]
     if cal:
         section("1. 캘리브레이션 — 이 환경이 CPU 결과를 재현하는가")
-        print(f"  {'seed':>4}  {'외부':>8}  {'CPU(fp32)':>10}  {'차이':>8}")
-        for s, ext, cpu in cal:
-            print(f"  {s:>4}  {ext:>8.3f}  {cpu:>10.3f}  {ext-cpu:>+8.3f}")
+        print(f"  {'판':<12}  {'외부':>8}  {'CPU(fp32)':>10}  {'차이':>8}")
+        for nm, ext, cpu in cal:
+            print(f"  {nm:<12}  {ext:>8.3f}  {cpu:>10.3f}  {ext-cpu:>+8.3f}")
         d = np.array([e - c for _, e, c in cal])
         print(f"\n  평균 차이 {d.mean():+.3f} dB, 최대 |차이| {np.abs(d).max():.3f} dB")
         if np.abs(d).max() < 0.05:
