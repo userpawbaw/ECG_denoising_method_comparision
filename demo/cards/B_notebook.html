@@ -44,10 +44,10 @@
   figcaption b{color:var(--ink);font-size:12.5px}
   .plot{position:relative}
   canvas{width:100%;display:block;border:1px solid var(--rule)}
-  #wave{height:236px;background-image:
+  #wave{height:300px;background-image:
     linear-gradient(var(--grid) 1px,transparent 1px),
     linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:10px 10px}
-  #spec{height:236px;background:#fff}
+  #spec{height:300px;background:#fff}
   .hint{position:absolute;pointer-events:none;background:#1a1a18;color:#fff;
     font:11px/1.4 ui-monospace,monospace;padding:5px 7px;border-radius:3px;
     white-space:pre;opacity:0;transition:opacity .1s}
@@ -71,6 +71,13 @@
   </header>
 
   <div class="pick" id="pick"><span>주입 잡음</span></div>
+  <div class="pick" id="lens">
+    <span>보이는 길이</span>
+    <button data-z="6" aria-pressed="true">6 s</button>
+    <button data-z="2" aria-pressed="false">2 s</button>
+    <button data-z="1" aria-pressed="false">한 박동</button>
+    <button id="resid" aria-pressed="false">잔차 보기</button>
+  </div>
 
   <div class="cols">
     <figure>
@@ -96,10 +103,13 @@
 <script src="../card_bank.js"></script>
 <script type="module">
 import {B, SCENE, trace, psd, SHOW, LABEL, HZ, fit, mapper, line, bandOf, animate,
-        logdist, bandDb} from "./card_core.js";
+        logdist, bandDb, robustRange, drawLane, residual} from "./card_core.js";
 
 const RGB = {M01:"#2a78d6", M04:"#eb6834", M08:"#1baf7a"};
 let cond = "pli", fade = 1, hoverF = null;
+// 시간축은 **레인**이다 — 겹쳐 그리면 R-peak 만 보인다(33 문서). 세 안이
+// `card_core.js` 의 `robustRange`·`drawLane` 을 공유하고 칠하는 방식만 다르다.
+let zoom = 6, scroll = 0, showResid = false;
 
 const pick = document.getElementById("pick");
 B.conds.forEach(c => {
@@ -113,21 +123,61 @@ B.conds.forEach(c => {
   pick.appendChild(b);
 });
 
-const PS = {l:38, r:10, t:10, b:26};
+const zbtn = [...document.querySelectorAll("#lens [data-z]")];
+zbtn.forEach(b => b.onclick = () => {
+  zoom = +b.dataset.z;
+  scroll = zoom === 1 ? 0.42 : 0;        // 한 박동 자리는 대개 여기에 걸린다
+  zbtn.forEach(n => n.setAttribute("aria-pressed", String(n === b)));
+  draw();
+});
+const rbtn = document.getElementById("resid");
+rbtn.onclick = () => { showResid = !showResid;
+  rbtn.setAttribute("aria-pressed", String(showResid)); draw(); };
+
+const PS = {l:38, r:30, t:10, b:30};
 const fx = (f, w) => PS.l + (f / 100) * (w - PS.l - PS.r);
 
 function draw() {
   { const {g, w, h} = fit(document.getElementById("wave"));
+    const keys = ["input", ...SHOW];
+    const full = Object.fromEntries(["clean", ...keys].map(k => [k, trace(cond, k)]));
+    const n = full.clean.length;
+    const len = Math.max(64, Math.round(zoom * B.fs));
+    const off = Math.min(n - len, Math.max(0, Math.round(scroll * (n - len))));
+    const cut = a => a.subarray(off, off + len);
+    const ref = cut(full.clean);
+    const rows = keys.map(k => ({k, v: cut(full[k])}));
+    // 세로 범위는 **레인 전체가 공유**한다 — 레인마다 다르면 비교가 아니다.
+    const range = robustRange([ref, ...rows.map(r => r.v)]);
+    const LH = (h - 4) / rows.length, pad = 5;
     g.globalAlpha = 0.35 + 0.65 * fade;
-    const keys = ["input", "clean", ...SHOW];
-    const a = Object.fromEntries(keys.map(k => [k, trace(cond, k)]));
-    let m = 0; for (const k of keys) for (const v of a[k]) m = Math.max(m, Math.abs(v));
-    const M = mapper(w, h, a.clean.length, -m * 1.06, m * 1.06, {l:4,r:4,t:6,b:6});
-    line(g, M.x, M.y, a.input, "#d8d5cc", 1);
-    line(g, M.x, M.y, a.clean, "#b8b6ae", 2.4);
-    for (const k of SHOW) line(g, M.x, M.y, a[k], RGB[k], 1.4);
+    rows.forEach((r, i) => {
+      const box = {x: 44, y: 2 + i * LH, w: w - 50, h: LH - pad};
+      if (i) {                                   // 레인 경계 — 모눈보다 진하게
+        g.save(); g.strokeStyle = "#e2ded3"; g.lineWidth = 1; g.beginPath();
+        g.moveTo(4, box.y - pad / 2); g.lineTo(w - 4, box.y - pad / 2);
+        g.stroke(); g.restore();
+      }
+      const col = r.k === "input" ? "#7f7c73" : RGB[r.k];
+      // 모눈은 CSS 배경이 이미 그린다 — `grid` 옵션을 겹치지 않는다.
+      drawLane(g, box, ref, r.v, col, {
+        range, width: r.k === "input" ? 1 : 1.5,
+        refColor: "#c9c6bc", refWidth: 2.2, tilde: "#8a877e",
+      });
+      if (showResid && r.k !== "input") {         // 잔차 = 출력 − 참값
+        const rb = {x: box.x, y: box.y + box.h * 0.60, w: box.w, h: box.h * 0.38};
+        drawLane(g, rb, null, residual(ref, r.v), "#b03030", {
+          range: [range[0] * 0.5, range[1] * 0.5], width: 1, alpha: 0.85,
+          tilde: "#b03030"});
+      }
+      g.fillStyle = r.k === "input" ? "#6c6a63" : RGB[r.k];
+      g.font = "600 10.5px ui-monospace,monospace";
+      g.fillText(r.k === "input" ? "입력" : r.k, 6, box.y + 12);
+    });
     g.globalAlpha = 1;
-    document.getElementById("w-meta").textContent = `${(B.n / B.fs).toFixed(0)} s`;
+    document.getElementById("w-meta").textContent =
+      `${zoom === 1 ? "한 박동" : zoom + " s"} · 회색 = 참값`
+      + (showResid ? " · 붉은 선 = 잔차" : "");
   }
   { const {g, w, h} = fit(document.getElementById("spec"));
     const a = Object.fromEntries(["input","clean",...SHOW].map(k => [k, psd(cond, k)]));
@@ -138,13 +188,17 @@ function draw() {
     g.fillRect(fx(b0, w), PS.t, Math.max(3, fx(Math.min(b1,100), w) - fx(b0, w)), h - PS.t - PS.b);
     g.strokeStyle = "#efece4"; g.lineWidth = 1;
     g.fillStyle = "#6c6a63"; g.font = "10px ui-monospace,monospace";
+    g.textAlign = "center";
     for (const f of [0,20,40,60,80,100]) {
       g.beginPath(); g.moveTo(fx(f,w), PS.t); g.lineTo(fx(f,w), h-PS.b); g.stroke();
-      g.fillText(String(f), fx(f,w)-5, h-9); }
+      g.fillText(String(f), fx(f,w), h-17); }
+    g.fillText("주파수 [Hz]", (PS.l + w - PS.r) / 2, h - 4);
+    g.textAlign = "left";
     for (const d of [0,-20,-40,-60]) {
       g.beginPath(); g.moveTo(PS.l, M.y(d)); g.lineTo(w-PS.r, M.y(d)); g.stroke();
       g.fillText(String(d), 10, M.y(d)+3); }
-    g.fillText("Hz", w-PS.r-40, h-9);
+    g.save(); g.beginPath();
+    g.rect(PS.l, PS.t, w - PS.l - PS.r, h - PS.t - PS.b); g.clip();
     g.globalAlpha = 0.35 + 0.65 * fade;
     const X = i => fx(HZ[i], w);
     line(g, X, M.y, a.input, "#d8d5cc", 1.3);
@@ -161,6 +215,7 @@ function draw() {
       g.beginPath(); g.moveTo(px, PS.t); g.lineTo(px, h-PS.b); g.stroke();
       g.setLineDash([]);
     }
+    g.restore();
     document.getElementById("s-meta").textContent = `잡음 대역 ${b0}–${Math.min(b1,125)} Hz`;
   }
 }

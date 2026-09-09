@@ -781,3 +781,23 @@ def test_report_names_every_doc():
     assert not missing, (
         f"보고서가 안 가리키는 문서: {missing} — §0 지도나 해당 절의 "
         "「자세히」 줄에 넣을 것. 일부러 빼는 것이면 REPORT_EXEMPT 에 이유와 함께.")
+
+
+# --------------------------------------------------------------------------
+# 시연 카드 세 안이 레인 렌더러를 실제로 공유하는가 (docs/33)
+# 33 문서는 「`robustRange()` · `drawLane()` 을 세 안이 공유한다」고 적었는데
+# 오래도록 `A_monitor` 만 썼다. B·C 는 다섯 계열을 한 축에 겹쳐 그려서 화면에
+# R-peak 만 보이는, 그 문서가 «실패» 라고 적어 둔 바로 그 상태였다.
+CARD_DIR = ROOT / "demo" / "cards"
+LANE_API = ("robustRange", "drawLane")
+
+
+@pytest.mark.parametrize("card", sorted(p.name for p in CARD_DIR.glob("*.html")))
+def test_demo_cards_share_the_lane_renderer(card: str):
+    """세 안이 `card_core.js` 의 레인 렌더러를 **함께** 쓴다."""
+    src = (CARD_DIR / card).read_text(encoding="utf-8")
+    assert "card_core.js" in src, f"{card} 이 공유 코드를 안 쓴다"
+    missing = [f for f in LANE_API if f not in src]
+    assert not missing, (
+        f"{card} 이 {missing} 를 안 쓴다 — 겹쳐 그리면 R-peak 만 보인다 "
+        "(docs/33_card_design_samples.md «파형 패널을 다시 만들었다»)")

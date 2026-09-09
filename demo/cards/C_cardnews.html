@@ -30,14 +30,15 @@
   h1 mark{background:none;color:var(--hi)}
   .lede{color:var(--mute);margin:12px 0 0;font-size:14.5px;max-width:56ch;min-height:3em}
   .hero{display:flex;align-items:baseline;gap:14px;margin:20px 0 4px}
-  .hero b{font:800 62px/1 ui-monospace,monospace;letter-spacing:-.04em}
+  .hero>b{font:800 62px/1 ui-monospace,monospace;letter-spacing:-.04em}
+  .hero span b{font-weight:700;color:var(--fg)}
   .hero span{font-size:14px;color:var(--mute);max-width:26ch}
   .panes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
   @media(max-width:860px){.panes{grid-template-columns:1fr}h1{font-size:29px}}
   .pane{background:var(--card);border-radius:12px;padding:12px 14px 10px}
   .pane h2{margin:0 0 8px;font-size:12px;letter-spacing:.06em;color:var(--mute);
     font-weight:600;text-transform:uppercase}
-  canvas{width:100%;height:210px;display:block}
+  canvas{width:100%;height:252px;display:block}
   .keys{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;
     color:var(--mute)}
   .keys i{display:inline-block;width:20px;height:3px;border-radius:2px;
@@ -80,7 +81,7 @@
 <script src="../card_bank.js"></script>
 <script type="module">
 import {B, SCENE, trace, psd, SHOW, LABEL, HZ, fit, mapper, line, bandOf, animate,
-        logdist, bandDb} from "./card_core.js";
+        logdist, bandDb, robustRange, drawLane} from "./card_core.js";
 
 const RGB = {M01:"#3987e5", M04:"#d95926", M08:"#199e70"};
 let cond = "pli", step = 0, reveal = 1;
@@ -88,9 +89,9 @@ let cond = "pli", step = 0, reveal = 1;
 // 단계마다 **보이는 선이 다르다.** 한 번에 다 그리면 눈이 갈 곳을 못 찾는다.
 const STEPS = [
   {show: [],            title: '입력에 <mark id="w"></mark> 가 섞여 있다',
-   lede: "회색이 참값, 옅은 회색이 잡음 섞인 입력이다. 오른쪽 스펙트럼에서 잡음이 사는 자리가 노란 띠다."},
+   lede: "레인 하나에 입력만 그렸다. 참값(짙은 회색)이 그 아래 깔려 있는데 잡음에 완전히 묻혀 보이지 않는다 — 시간축만으로는 무엇이 지워졌는지 물을 수가 없다. 오른쪽에서 잡음이 사는 자리가 노란 띠다."},
   {show: ["M01"],       title: 'M01 이 그 대역을 <mark>지웠다</mark>',
-   lede: "대역통과 + notch. 시간축이 깨끗해지고, 스펙트럼에서 잡음 봉우리가 주저앉는다."},
+   lede: "레인이 하나 늘었다. 대역통과 + notch 를 지나자 아래 깔린 참값이 드러난다 — 시간축이 깨끗해지고 스펙트럼에서 잡음 봉우리가 주저앉는다."},
   {show: ["M01","M04","M08"], title: '그런데 <mark>다른 것도</mark> 함께 데려갔다',
    lede: "M04·M08 과 나란히 놓으면 보인다 — M01 만 40 Hz 뒤로 통째로 내려앉는다. SNR 은 그 손실을 «잡음을 잘 지웠다» 로 센다."},
 ];
@@ -106,8 +107,8 @@ B.conds.forEach(c => {
   chips.appendChild(b);
 });
 document.getElementById("keys").innerHTML =
-  `<span><i style="background:var(--clean)"></i>참값</span>` +
-  `<span><i style="background:var(--input)"></i>입력</span>` +
+  `<span><i style="background:#6a6862"></i>참값</span>` +
+  `<span><i style="background:#a8a49a"></i>입력</span>` +
   SHOW.map(m => `<span><i style="background:${RGB[m]}"></i>${LABEL[m]}</span>`).join("");
 
 function go(k) {
@@ -138,17 +139,33 @@ function go(k) {
 document.getElementById("next").onclick = () => go((step + 1) % 3);
 document.getElementById("reset").onclick = () => go(0);
 
-const PS = {l:34, r:10, t:8, b:24};
+const PS = {l:34, r:30, t:8, b:30};
 function draw() {
   const on = STEPS[step].show;
   { const {g, w, h} = fit(document.getElementById("wave"));
+    // **레인.** 겹쳐 그리면 R-peak 만 보인다(33 문서). 여기서는 단계가 오를수록
+    // 레인이 **늘어난다** — 1 개(입력) → 2 개 → 4 개. 한 번에 다 그리면 눈이
+    // 갈 곳을 못 찾는다는 것이 이 안의 주제의식이고, 레인이 그것을 그대로 한다.
     const a = Object.fromEntries(["input","clean",...SHOW].map(k => [k, trace(cond,k)]));
-    let m = 0; for (const k in a) for (const v of a[k]) m = Math.max(m, Math.abs(v));
-    const M = mapper(w, h, a.clean.length, -m*1.06, m*1.06, {l:4,r:4,t:6,b:6});
-    line(g, M.x, M.y, a.input, "#33322e", 1);
-    line(g, M.x, M.y, a.clean, "#5a5852", 2.2);
-    on.forEach((k,i) => line(g, M.x, M.y, a[k], RGB[k], 1.8,
-      Math.min(1, Math.max(0, reveal * on.length - i))));
+    const ref = a.clean, keys = ["input", ...on];
+    // 범위는 **단계와 무관하게** 전 계열로 잡는다 — 단계마다 바뀌면 같은
+    // 파형이 단계마다 다른 크기로 보인다.
+    const range = robustRange([ref, a.input, ...SHOW.map(k => a[k])]);
+    const LH = (h - 4) / keys.length, pad = 5;
+    keys.forEach((k, i) => {
+      const box = {x: 40, y: 2 + i * LH, w: w - 46, h: LH - pad};
+      const al = k === "input" ? 1
+        : Math.min(1, Math.max(0, reveal * on.length - (i - 1)));
+      drawLane(g, box, ref, a[k], k === "input" ? "#a8a49a" : RGB[k], {
+        range, width: k === "input" ? 1.2 : 1.9, alpha: al,
+        refColor: "#6a6862", refWidth: 2.2, tilde: "#8b8880",
+      });
+      g.save(); g.globalAlpha = al;
+      g.fillStyle = k === "input" ? "#a8a49a" : RGB[k];
+      g.font = "700 11px ui-monospace,monospace";
+      g.fillText(k === "input" ? "입력" : k, 5, box.y + 13);
+      g.restore();
+    });
   }
   { const {g, w, h} = fit(document.getElementById("spec"));
     const a = Object.fromEntries(["input","clean",...SHOW].map(k => [k, psd(cond,k)]));
@@ -159,12 +176,17 @@ function draw() {
     g.fillRect(fx(b0), PS.t, Math.max(4, fx(Math.min(b1,100))-fx(b0)), h-PS.t-PS.b);
     g.strokeStyle = "rgba(255,255,255,.06)"; g.fillStyle = "#9a988f";
     g.font = "10px ui-monospace,monospace";
+    g.textAlign = "center";
     for (const f of [0,20,40,60,80,100]) {
       g.beginPath(); g.moveTo(fx(f),PS.t); g.lineTo(fx(f),h-PS.b); g.stroke();
-      g.fillText(String(f), fx(f)-5, h-8); }
+      g.fillText(String(f), fx(f), h-17); }
+    g.fillText("주파수 [Hz]", (PS.l + w - PS.r) / 2, h - 4);
+    g.textAlign = "left";
     for (const d of [0,-20,-40,-60]) {
       g.beginPath(); g.moveTo(PS.l,M.y(d)); g.lineTo(w-PS.r,M.y(d)); g.stroke();
       g.fillText(String(d), 8, M.y(d)+3); }
+    g.save(); g.beginPath();
+    g.rect(PS.l, PS.t, w - PS.l - PS.r, h - PS.t - PS.b); g.clip();
     const X = i => fx(HZ[i]);
     line(g, X, M.y, a.input, "#33322e", 1.4);
     line(g, X, M.y, a.clean, "#5a5852", 2.2);
@@ -175,6 +197,7 @@ function draw() {
       g.globalAlpha = al; g.fillStyle = RGB[k];
       g.fillText(k, w-PS.r-2, M.y(a[k][a[k].length-1])-4); g.globalAlpha = 1;
     });
+    g.restore();
     g.textAlign = "left";
   }
 }
