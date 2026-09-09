@@ -23,7 +23,7 @@
 | | `11_loss_by_noise`\* · `12_causal_fe`\* · `13_lookahead_fe`\* · `14_median_vs_zerophase`\* · `15_reference_and_training` · `16_fe_metric_audit` | EXP-G, 실시간 front-end 후보 네 판, 참조 정의 검토, 채점 기준 감사 |
 | **산출물·운영** | `90_results_d0`\* · `90_results_d1`\* · `92_axis_gap`\* | **모든 방법 × 모든 지표**의 자동 생성 결과표 (본문은 여기서 골라 싣는다) |
 | | `30_realtime_demo` · `31_demo_design_review` · `32_metric_cards`\* · `33_card_design_samples` · `93_slides`\* · `34_visual_plan` | 시연 화면 · 지표 카드 · 발표 그림 — 8 장에 정리 |
-| | `08_acquisition` · `09_data_upload` · `99_status` | 실측 수집 절차 · PhysioNet 데이터 공유 · **현재 상태와 인수인계** |
+| | `08_acquisition` · `09_data_upload` · `35_external_compute` · `99_status` | 실측 수집 절차 · PhysioNet 데이터 공유 · **외부 GPU 에서 산포를 재는 판의 실행 안내**(F-40 · 5.10.7) · **현재 상태와 인수인계** |
 
 **모르는 용어를 만나면 `docs/18_glossary.md`** 를 먼저 본다 — 지표 정의, 약어,
 그리고 「이 프로젝트에서만 다르게 쓰는 말」이 한곳에 있다.
@@ -3137,6 +3137,12 @@ MIT-BIH 는 R-peak 가 사람이 주석한 참값이라 검출기 산포가 줄�
    10 dB 위로는 손해가 한 칸도 없고 20 dB 평균 +4.27 dB 다. 결론의 축은 잡음 종류가 아니라
    **입력 SNR** 이었다. 그래서 5 번(재고정 재실행)의 근거가 더 분명해졌다 —
    **장비 신호의 SNR 대역을 알면 `L6` 을 쓸지 말지가 그대로 정해진다.**
+7. **외부 GPU 로 「못 잼」을 되찾기** (5.10.7 · F-40 · D-24). 이 CPU 는 팔당
+   138 판(≈230 시간)을 못 낸다. GPU 가 한 판을 몇 분으로 줄이면 5.9·5.10 의
+   네 번의 기각이 **「효과 없음」인지 「못 잼」인지 확정된다.** 실행 안내는
+   `docs/35_external_compute.md`, 러너는 `scripts/run_seed_sweep.py` 다.
+   **캘리브레이션(seed 0~2 재현) 이 먼저**다 — 재현되지 않으면 외부 값과
+   이 저장소 값은 한 표에 못 올린다.
 
 ---
 

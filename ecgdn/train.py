@@ -63,13 +63,20 @@ class Trainer:
     def __init__(self, model: torch.nn.Module, loss_fn, train_ds, val_ds,
                  cfg: TrainCfg = TrainCfg(), out_dir: str | Path = "results/run",
                  device: str | None = None, num_workers: int = 0,
-                 model_name: str = "model", extra_manifest: dict | None = None):
+                 model_name: str = "model", extra_manifest: dict | None = None,
+                 amp: bool | None = None):
         self.model = model
         self.loss_fn = loss_fn
         self.train_ds, self.val_ds = train_ds, val_ds
         self.cfg = cfg
         self.out = ensure_dir(out_dir)
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        # AMP 는 **숫자의 계보를 가른다** — fp16 로 학습한 값과 fp32 값은 같은 표에
+        # 올릴 수 없다(F-9 와 같은 종류의 문제다). 기본값은 종래 동작(GPU면 켬)이지만,
+        # CPU 결과와 대조해야 할 때 끌 수 있어야 하므로 인자로 뺐고 manifest 에 남긴다.
+        self.amp = bool(self.device.type == "cuda") if amp is None else bool(amp)
+        if self.amp and self.device.type != "cuda":
+            self.amp = False                       # CPU autocast 는 쓰지 않는다
         self.num_workers = num_workers
         self.model_name = model_name
         self.state = TrainState()
@@ -77,10 +84,11 @@ class Trainer:
 
         self.opt = torch.optim.AdamW(self.model.parameters(), lr=cfg.lr,
                                      weight_decay=cfg.weight_decay)
-        self.scaler = torch.amp.GradScaler(self.device.type, enabled=(self.device.type == "cuda"))
+        self.scaler = torch.amp.GradScaler(self.device.type, enabled=self.amp)
         save_manifest(self.out, cfg=asdict(cfg),
                       extra={"model": model_name,
                              "n_params": sum(p.numel() for p in model.parameters()),
+                             "device": self.device.type, "amp": self.amp,
                              **(extra_manifest or {})},
                       # F-9 가 정확히 이 지점에서 일어났다 — 데이터 파이프라인을
                       # 고치면 그 전에 학습한 체크포인트가 전부 무효가 되는데,
@@ -182,8 +190,7 @@ class Trainer:
                     g["lr"] = lr
                 y, x = y.to(self.device), x.to(self.device)
                 self.opt.zero_grad(set_to_none=True)
-                with torch.amp.autocast(self.device.type,
-                                        enabled=(self.device.type == "cuda")):
+                with torch.amp.autocast(self.device.type, enabled=self.amp):
                     xhat, s, s_hat = self._forward(y)
                     loss, _ = self.loss_fn(xhat, x, s_hat, s,
                                            **self._loss_extra(y, x))
