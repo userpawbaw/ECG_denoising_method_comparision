@@ -36,7 +36,10 @@ echo "[d23] 큐 ${#QUEUE[@]} 판 시작 $(date -u +%FT%TZ)" | tee -a "$SUM"
 for item in "${QUEUE[@]}"; do
   STAGE="${item%% *}"; CFG="${item#* }"
   echo "[d23] --- $STAGE · $CFG  $(date -u +%FT%TZ)" | tee -a "$SUM"
-  if bash scripts/run_one_training.sh mitdb "$CFG" >>"$SUM" 2>&1; then
+  # 락에 **큐 재개 명령**을 적게 한다 — 감시자가 판 하나만 되살리면 나머지가
+  # 사라진다. 실제로 그렇게 잃었다 (O-28).
+  if RESUME_CMD="bash scripts/run_d23_queue.sh" \
+       bash scripts/run_one_training.sh mitdb "$CFG" >>"$SUM" 2>&1; then
     echo "[d23] ok   $CFG" | tee -a "$SUM"
   else
     # 실패해도 **큐를 멈추지 않는다** — 한 판이 죽었다고 나머지를 잃으면

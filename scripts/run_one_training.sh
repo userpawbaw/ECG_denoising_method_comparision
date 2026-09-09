@@ -30,7 +30,13 @@ echo $$ > "$LOCK/pid"
 # **재개 명령을 락 안에 적어 둔다.** 감시자가 이 실행을 되살릴 때 무엇을
 # 띄워야 하는지는 여기밖에 없다 — 러너 전체를 대신 띄우면 목록에 없는 이
 # 설정은 학습되지 않고, 목록에 있는 다른 학습이 대신 돈다.
-printf '%s\0' bash scripts/run_one_training.sh "$SOURCE" "$CFG" "$@" > "$LOCK/cmd"
+# 큐가 부를 때는 **큐를 재개해야 한다** — 판 하나만 되살리면 나머지 일곱이
+# 사라진다. 큐가 `RESUME_CMD` 로 자기 명령을 넘긴다 (O-28).
+if [ -n "${RESUME_CMD:-}" ]; then
+  printf '%s\0' $RESUME_CMD > "$LOCK/cmd"
+else
+  printf '%s\0' bash scripts/run_one_training.sh "$SOURCE" "$CFG" "$@" > "$LOCK/cmd"
+fi
 trap 'rm -f "$LOCK/pid" "$LOCK/cmd"; rmdir "$LOCK" 2>/dev/null' EXIT
 
 LOG="results/logs/train_${SOURCE}_$CFG.log"
