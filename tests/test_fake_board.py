@@ -13,8 +13,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ecgdn.realtime.fake_board import (BOOT_BANNER, SERIAL_TX_BUFFER_SIZE,
-                                       FakeBoard)
+from ecgdn.realtime.fake_board import (BOOT_BANNER, BOOTLOADER_S,
+                                       SERIAL_TX_BUFFER_SIZE, FakeBoard,
+                                       UsbPipe)
 from ecgdn.realtime.serial_link import (LEADOFF, SYNC, AsciiParser,
                                         BinaryParser)
 
@@ -220,3 +221,69 @@ def test_changing_fs_mid_stream_resets_the_sequence_number():
     ch = p.feed(run(b, 1.0))
     assert ch.gap_unknown or ch.n_lost > 0, \
         "seq 가 0 으로 돌아갔는데 PC 쪽에서 아무 일도 안 생겼다"
+
+# ------------------------------------------------- DTR 리셋 (열면 처음부터)
+def test_the_bootloader_is_silent_and_then_the_banner_comes():
+    """리셋 뒤 부트로더가 도는 동안 보드는 **한 바이트도 안 보낸다.**
+
+    브리지가 포트를 연 뒤 2 초를 기다리는 이유가 이것이다.
+    """
+    b = FakeBoard(np.full(2000, 700), fs=250, mode="ascii", boot_s=BOOTLOADER_S)
+    quiet = run(b, BOOTLOADER_S - 0.1, step=0.01)
+    assert quiet == b"", f"부트로더가 도는 중에 {len(quiet)} B 가 나갔다"
+    after = run(b, BOOTLOADER_S + 0.5, step=0.01, start=BOOTLOADER_S - 0.1)
+    assert after.startswith(BOOT_BANNER), "부트로더가 끝났는데 배너가 없다"
+    assert b"# ecgstream" in after
+
+
+def test_a_command_sent_during_the_bootloader_is_eaten():
+    """**성급하게 보낸 명령은 사라진다** — 부트로더가 먹고 스케치는 못 본다.
+
+    이것이 없으면 「왜 2 초를 기다리나」가 주석으로만 남고, 대기를 줄이는
+    변경이 테스트를 통과해 버린다.
+    """
+    b = FakeBoard(np.full(2000, 700), fs=500, mode="ascii", boot_s=BOOTLOADER_S)
+    run(b, 0.3, step=0.01)
+    b.feed_command(b"2b")                       # 부트로더가 도는 중
+    assert b.fs == 500 and b.mode == "ascii", "부트로더 중의 명령이 먹혔어야 한다"
+    run(b, BOOTLOADER_S + 0.2, step=0.01, start=0.3)
+    b.feed_command(b"2b")                       # 스케치가 도는 중
+    assert b.fs == 250 and b.mode == "bin", "스케치가 명령을 못 받았다"
+
+
+def test_reset_puts_the_board_back_to_its_power_on_state():
+    b = FakeBoard(np.full(2000, 700), fs=500, mode="ascii", boot_s=0.0)
+    run(b, 2.0)
+    b.feed_command(b"2b")
+    assert (b.fs, b.mode) == (250, "bin")
+    b.reset(0.0)
+    assert (b.fs, b.mode) == (500, "ascii"), "리셋했는데 명령이 살아 있다"
+    assert b.seq == 0 and b.k == 0 and b.dropped == 0
+
+
+# --------------------------------------------- USB 는 바이트를 뭉쳐서 배달한다
+def test_usb_delivers_in_packets_not_byte_by_byte():
+    pipe = UsbPipe(poll_ms=1.0, packet=64)
+    pipe.push(b"x" * 500)
+    assert pipe.pop(0.0) == b"x" * 64, "한 폴링에 한 패킷보다 많이 나갔다"
+    assert len(pipe.pop(0.0005)) == 0, "폴링 간격 전에 또 나갔다"
+    assert len(pipe.pop(0.0011)) == 64
+
+
+def test_a_host_hiccup_holds_everything_then_lets_it_go_at_once():
+    """호스트가 잠깐 안 가져가면 그동안 쌓인 것이 **한 덩어리로** 나간다."""
+    pipe = UsbPipe(poll_ms=1.0, packet=64, hiccup_every_s=1.0, hiccup_ms=200.0)
+    pipe.pop(0.5)                                # 정상 구간에서 시계를 맞춘다
+    pipe.push(b"y" * 4000)
+    assert pipe.pop(1.05) == b"", "멈춤 구간인데 내보냈다"
+    burst = pipe.pop(1.30)                       # 멈춤이 끝난 직후
+    assert len(burst) > 1000, f"뭉쳐 있던 것이 안 나왔다 ({len(burst)} B)"
+
+
+def test_the_host_buffer_can_overflow_and_says_so():
+    """호스트가 오래 안 가져가면 **아무도 세지 않는 자리**에서 바이트가 사라진다."""
+    pipe = UsbPipe(poll_ms=1.0, packet=64, buffer_bytes=1000)
+    pipe.push(b"z" * 1500)
+    assert pipe.overflow == 500
+    assert pipe.pending == 1000
+

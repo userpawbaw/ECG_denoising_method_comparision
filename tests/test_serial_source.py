@@ -14,6 +14,7 @@ tty 한 쌍을 열고 한쪽에 `FakeBoard` 를 붙여 그 길을 통째로 태�
 """
 from __future__ import annotations
 
+import errno
 import importlib.util
 import os
 import sys
@@ -24,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ecgdn.realtime.fake_board import FakeBoard
+from ecgdn.realtime.fake_board import BOOTLOADER_S, FakeBoard, UsbPipe
 from ecgdn.realtime.serial_link import BinaryParser
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -49,26 +50,51 @@ def _load(name: str):
 
 
 class VirtualBoard:
-    """가상 아두이노를 스레드로 돌린다. `port` 가 브리지에 줄 이름이다."""
+    """가상 아두이노를 스레드로 돌린다. `port` 가 브리지에 줄 이름이다.
+
+    `scripts/fake_arduino.py` 의 몸통과 같은 규칙으로 돈다 — **slave 를 놓아**
+    누가 포트를 여는지 보고(EIO 가 풀리는 순간), 열릴 때마다 보드를 리셋한다.
+    그것이 실제 Uno 에서 DTR 이 하는 일의 자리다.
+    """
 
     def __init__(self, **kw):
         self.fa = _load("fake_arduino")
         self.master, self.slave, self.port = self.fa.open_virtual_port()
         kw.setdefault("fs", 500)
-        self.board = FakeBoard(np.full(4000, 700), **kw)
+        self._kw = kw
+        self.board = self._new()
+        self.pipe = UsbPipe(poll_ms=1.0, packet=64)
+        self.resets = 0
+        self._attached = False
         self._stop = threading.Event()
         self._th = threading.Thread(target=self._run, daemon=True)
         self._th.start()
 
+    def _new(self) -> FakeBoard:
+        return FakeBoard(np.full(4000, 700), **self._kw)
+
     def _run(self):
         while not self._stop.is_set():
+            now = time.perf_counter()
+            cmd = b""
+            live = True
             try:
                 cmd = os.read(self.master, 256)
-            except (BlockingIOError, OSError):
-                cmd = b""
+            except BlockingIOError:
+                pass
+            except OSError as e:
+                if e.errno == errno.EIO:
+                    live = False
+            if live and not self._attached:
+                self.resets += 1
+                self.board = self._new()
+                self.board.reset(now)
+                self.pipe = UsbPipe(poll_ms=1.0, packet=64)
+            self._attached = live
             if cmd:
                 self.board.feed_command(cmd)
-            data = self.board.poll(time.perf_counter())
+            self.pipe.push(self.board.poll(now))
+            data = self.pipe.pop(now) if live else b""
             if data:
                 try:
                     os.write(self.master, data)
@@ -221,3 +247,87 @@ def test_an_old_sketch_keeps_its_own_fs_and_the_bridge_can_see_it():
             src.close()
     finally:
         b.close()
+
+# ------------------------------------------- 포트를 열면 보드가 리셋된다
+def test_opening_the_port_resets_the_board():
+    """**DTR 리셋의 자리.** PTY 에는 modem line 이 없지만 결과는 같다.
+
+    `TIOCMGET` 이 ENOTTY 라 DTR 자체는 못 건드린다 — 대신 slave 를 놓아 두면
+    누가 포트를 여는 순간이 보이고, 실제 Uno 는 바로 그 자리에서 리셋된다.
+    """
+    b = VirtualBoard(mode="ascii", boot_s=0.0)
+    m = _load("serial_bridge")
+    try:
+        assert b.resets == 0, "아무도 안 열었는데 리셋됐다"
+        src = m.SerialSource(b.port, 115200, 250, True, settle_s=0.3)
+        src.close()
+        time.sleep(0.3)
+        assert b.resets == 1, f"열었는데 리셋이 {b.resets} 회다"
+        src = m.SerialSource(b.port, 115200, 250, True, settle_s=0.3)
+        src.close()
+        time.sleep(0.3)
+        assert b.resets == 2, "두 번째로 열었는데 리셋이 안 됐다"
+    finally:
+        b.close()
+
+
+def test_not_waiting_for_the_bootloader_loses_the_commands():
+    """**포트를 연 뒤 2 초를 기다리는 이유.** 성급하면 명령이 부트로더에 먹힌다.
+
+    그러면 보드는 기본값(500 Hz · ASCII)으로 남고, 브리지는 BINARY 를 기대하므로
+    **화면이 통째로 빈다** — 깨진 바이트만 올라간다.
+    """
+    m = _load("serial_bridge")
+    for settle, want_bin in ((0.3, False), (2.0, True)):
+        b = VirtualBoard(mode="ascii", boot_s=BOOTLOADER_S)
+        try:
+            src = m.SerialSource(b.port, 115200, 250, True, settle_s=settle)
+            try:
+                raw = b""
+                t0 = time.perf_counter()
+                while time.perf_counter() - t0 < 2.5:
+                    raw += src.read()
+                ch = BinaryParser().feed(raw)
+                if want_bin:
+                    assert b.board.mode == "bin", "충분히 기다렸는데 명령이 안 닿았다"
+                    assert len(ch) > 100 and ch.n_bad == 0
+                else:
+                    assert b.board.mode == "ascii", \
+                        "부트로더 중에 보낸 명령이 스케치에 닿았다"
+                    assert len(ch) == 0, "ASCII 를 BINARY 로 읽었는데 샘플이 나왔다"
+                    assert ch.n_bad > 100, "깨진 바이트조차 안 세어졌다"
+            finally:
+                src.close()
+        finally:
+            b.close()
+
+
+# ----------------------------------------- USB 뭉침에도 시간축이 안 밀린다
+def test_bursty_usb_delivery_does_not_shift_the_time_axis():
+    """**도착이 뭉쳐도 파형은 정확해야 한다** — 6.2 (3) 의 「시간축의 주인은 보드」.
+
+    고르게 오면 벽시계로 세는 잘못된 구현도 똑같이 잘 돈다. 뭉쳐야 갈린다.
+    """
+    b = VirtualBoard(mode="bin", boot_s=0.0)
+    b.pipe = UsbPipe(poll_ms=1.0, packet=64, hiccup_every_s=0.5, hiccup_ms=300.0)
+    m = _load("serial_bridge")
+    try:
+        src = m.SerialSource(b.port, 115200, 250, True, settle_s=0.3)
+        try:
+            p = BinaryParser()
+            n = lost = bad = 0
+            t0 = time.perf_counter()
+            while time.perf_counter() - t0 < 4.0:
+                ch = p.feed(src.read())
+                n += len(ch)
+                lost += ch.n_lost
+                bad += ch.n_bad
+            el = time.perf_counter() - t0
+            assert lost == 0, f"뭉쳐 왔다고 샘플을 잃었다 ({lost} 개)"
+            assert bad == 0, f"뭉쳐 왔다고 프레임이 깨졌다 ({bad} B)"
+            assert abs(n / el - 250) < 25, f"실측 {n/el:.0f} Hz — 시간축이 밀렸다"
+        finally:
+            src.close()
+    finally:
+        b.close()
+

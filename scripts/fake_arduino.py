@@ -27,10 +27,26 @@
 무엇을 확인할 수 있게 되는가
 ---------------------------
 1. **명령 규약** — 브리지가 보내는 `'2'`·`'b'` 를 펌웨어가 읽는 순서 그대로 받는다.
-2. **부팅 잡음** — 포트를 열면 보드가 리셋되고 `# logger ready` 를 흘린다.
-   그것을 버리지 않으면 첫 몇 초가 쓰레기다.
-3. **송신 버퍼 포화** — baud·fs·형식이 정하는 진짜 드롭. 확률이 아니다.
-4. **포트가 배타 자원이라는 것** — 두 번째 프로세스는 못 붙는다.
+2. **DTR 리셋** — 포트를 열면 보드가 처음부터 시작한다. 부트로더가 조용한
+   1.6 초와 그 뒤의 `# logger ready` 까지(아래 «리셋을 어떻게 흉내내나»).
+3. **USB 도착 뭉침** — 바이트는 폴링 간격 단위의 덩어리로 온다(`UsbPipe`).
+4. **송신 버퍼 포화** — baud·fs·형식이 정하는 진짜 드롭. 확률이 아니다.
+5. **포트가 배타 자원이라는 것** — 두 번째 프로세스는 못 붙는다.
+
+리셋을 어떻게 흉내내나 — **DTR 자체는 못 한다**
+----------------------------------------------
+PTY 에는 modem control line 이 없다. `TIOCMGET` 이 **ENOTTY** 를 내고,
+pyserial 에서 `ser.dtr = False` 를 하면 예외가 난다 `[측정]`. 그래서 「DTR 이
+토글된다」는 사건 자체는 흉내낼 수 없다.
+
+**대신 그 결과를 흉내낸다.** PTY master 는 slave 를 아무도 안 열고 있으면
+`read` 가 **EIO** 를 내고, 누군가 열면 정상으로 바뀐다. 그 전환이 곧 「포트가
+열렸다」이고, 실제 Uno 에서 리셋을 일으키는 사건과 같은 자리다. 그래서 이
+스크립트는 slave 를 **붙들지 않고 놓는다**(`--hold-open` 으로 예전처럼 붙들 수
+있다) — 그러면 브리지가 열 때마다 보드가 처음부터 시작한다.
+
+여전히 **실보드에서만 볼 수 있는 것**: DTR 을 꺼서 리셋을 막는 경로
+(`ser.dtr = False`), 그리고 드라이버·권한(dialout) 문제.
 
 `hardware/arduino_ecg_logger/arduino_ecg_logger.ino` 와의 일치는
 `tests/test_fake_board.py` 가 고정한다.
@@ -38,16 +54,21 @@
 import _bootstrap  # noqa: F401
 
 import argparse
+import errno
 import os
 import sys
 import time
 from pathlib import Path
 
-from ecgdn.realtime.fake_board import FakeBoard, synth_counts
+from ecgdn.realtime.fake_board import BOOTLOADER_S, FakeBoard, UsbPipe, synth_counts
 
 
-def open_virtual_port() -> tuple[int, int, str]:
-    """PTY 한 쌍을 연다. 돌려주는 이름이 «가상 아두이노가 꽂힌 포트» 다."""
+def open_virtual_port(hold_open: bool = False) -> tuple[int, int, str]:
+    """PTY 한 쌍을 연다. 돌려주는 이름이 «가상 아두이노가 꽂힌 포트» 다.
+
+    `hold_open=False` 면 slave 를 놓는다 — 그래야 **누가 포트를 여는지 보인다**
+    (master 의 EIO 가 풀리는 순간). 그것이 DTR 리셋의 자리다.
+    """
     import pty
     import tty
 
@@ -58,11 +79,18 @@ def open_virtual_port() -> tuple[int, int, str]:
     tty.setraw(master)
     tty.setraw(slave)
     os.set_blocking(master, False)
+    if not hold_open:
+        os.close(slave)
+        slave = -1
     return master, slave, name
 
 
 def attach_port(port: str, baud: int) -> tuple[int, int, str]:
-    """이미 있는 포트(com0com·socat 이 만든 쪽)에 붙는다."""
+    """이미 있는 포트(com0com·socat 이 만든 쪽)에 붙는다.
+
+    이쪽은 **열림 감지가 안 된다** — 상대가 열든 말든 우리 fd 는 멀쩡하다.
+    그래서 `--attach` 에서는 리셋 흉내가 꺼진다.
+    """
     import serial
 
     ser = serial.Serial(port, baud, timeout=0)
@@ -74,7 +102,7 @@ def main() -> int:
     ap.add_argument("--fs", type=int, default=500, choices=[250, 500, 1000],
                     help="켜질 때의 fs. 펌웨어 기본은 500 이고 PC 가 명령으로 바꾼다")
     ap.add_argument("--baud", type=int, default=115200,
-                    help="스케치의 SERIAL_BAUD. **드롭이 여기서 정해진다**")
+                    help="스케치의 SERIAL_BAUD. **송신 버퍼 드롭이 여기서 정해진다**")
     ap.add_argument("--mode", default="ascii", choices=["ascii", "bin"],
                     help="켜질 때의 형식. 펌웨어 기본은 ascii 다")
     ap.add_argument("--drift-ppm", type=float, default=3000.0,
@@ -89,6 +117,20 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--firmware", default="current", choices=["current", "old"],
                     help="old 면 fs·형식 명령을 무시한다 — 구 스케치가 꽂힌 판")
+    # ---- DTR 리셋 흉내
+    ap.add_argument("--boot-s", type=float, default=BOOTLOADER_S,
+                    help="리셋 뒤 부트로더가 **조용한** 시간 [s]. 0 이면 즉시 시작")
+    ap.add_argument("--hold-open", action="store_true",
+                    help="slave 를 붙들어 열림 감지를 끈다 (리셋 흉내도 꺼진다)")
+    # ---- USB 도착 뭉침
+    ap.add_argument("--usb-poll-ms", type=float, default=1.0,
+                    help="호스트 폴링 간격 [ms]. full-speed USB 는 1 ms 프레임이다")
+    ap.add_argument("--usb-packet", type=int, default=64,
+                    help="bulk 최대 패킷 [B]")
+    ap.add_argument("--hiccup-every", type=float, default=0.0,
+                    help="N 초마다 호스트가 잠깐 안 가져간다 [s] — 뭉침의 극단")
+    ap.add_argument("--hiccup-ms", type=float, default=40.0,
+                    help="그 «안 가져가는» 시간 [ms]")
     ap.add_argument("--attach", help="PTY 대신 이 포트에 붙는다 (com0com·socat)")
     ap.add_argument("--port-file", help="포트 이름을 이 파일에 적는다")
     ap.add_argument("--quiet", action="store_true")
@@ -96,19 +138,37 @@ def main() -> int:
 
     counts = synth_counts(args.signal_s, args.fs, seed=args.seed,
                           snr_db=args.snr_db)
-    board = FakeBoard(counts, fs=args.fs, baud=args.baud, mode=args.mode,
-                      drift_ppm=args.drift_ppm,
-                      leadoff_every_s=args.leadoff_every,
-                      leadoff_len_s=args.leadoff_len,
-                      accept_commands=(args.firmware == "current"))
+
+    def new_board(boot_s: float) -> FakeBoard:
+        return FakeBoard(counts, fs=args.fs, baud=args.baud, mode=args.mode,
+                         drift_ppm=args.drift_ppm,
+                         leadoff_every_s=args.leadoff_every,
+                         leadoff_len_s=args.leadoff_len,
+                         accept_commands=(args.firmware == "current"),
+                         boot_s=boot_s)
 
     if args.attach:
         fd, slave, name = attach_port(args.attach, args.baud)
+        can_detect = False
     else:
-        fd, slave, name = open_virtual_port()
+        fd, slave, name = open_virtual_port(hold_open=args.hold_open)
+        can_detect = slave < 0
+    # 열림을 못 보는 구성에서는 켜자마자 도는 보드가 맞다 (부트로더도 이미 끝난 것).
+    board = new_board(args.boot_s if can_detect else 0.0)
+    pipe = UsbPipe(poll_ms=args.usb_poll_ms, packet=args.usb_packet,
+                   hiccup_every_s=args.hiccup_every, hiccup_ms=args.hiccup_ms)
+
     if args.port_file:
         Path(args.port_file).write_text(name + "\n")
     print(f"가상 아두이노: {name}  (fs {args.fs} Hz · {args.baud} baud · {args.mode})")
+    if can_detect:
+        print(f"  포트를 열면 보드가 리셋된다 — 부트로더 {args.boot_s:.1f} s 는 조용하다")
+    else:
+        why = "--attach" if args.attach else "--hold-open"
+        print(f"  [{why}] 열림을 못 보므로 **리셋 흉내가 꺼진다.** 보드는 계속 돈다")
+    if args.hiccup_every > 0:
+        print(f"  USB: {args.usb_poll_ms:g} ms 폴링 · {args.usb_packet} B 패킷 · "
+              f"{args.hiccup_every:g} s 마다 {args.hiccup_ms:g} ms 멈춤")
     print(f"  브리지에 이렇게 붙인다:\n"
           f"    python3 scripts/serial_bridge.py --port {name} "
           f"--board-fs 250 --methods M_FE,M04 --serve")
@@ -117,22 +177,50 @@ def main() -> int:
     t0 = time.perf_counter()
     t_log = t0
     n_out = 0
+    n_reset = 0
+    attached = not can_detect            # 지금 누가 포트를 열고 있는가
     try:
         while True:
             now = time.perf_counter()
             if args.dur and now - t0 > args.dur:
                 break
+            # ---- 명령을 읽으면서 «누가 열고 있는가» 를 함께 본다.
+            # PTY master 는 slave 를 아무도 안 열었을 때만 EIO 를 낸다.
+            cmd = b""
+            live = True
             try:
                 cmd = os.read(fd, 256)
             except BlockingIOError:
-                cmd = b""
-            except OSError:
-                cmd = b""
+                pass
+            except OSError as e:
+                if e.errno == errno.EIO and can_detect:
+                    live = False
+                elif e.errno not in (errno.EAGAIN, errno.EIO):
+                    raise
+            if can_detect and live and not attached:
+                # **DTR 리셋.** 실제 Uno 가 이 자리에서 처음부터 시작한다.
+                n_reset += 1
+                board = new_board(args.boot_s)
+                board.reset(now)
+                pipe = UsbPipe(poll_ms=args.usb_poll_ms, packet=args.usb_packet,
+                               hiccup_every_s=args.hiccup_every,
+                               hiccup_ms=args.hiccup_ms)
+                if not args.quiet:
+                    print(f"\n  포트가 열렸다 -> 보드 리셋 #{n_reset} "
+                          f"(부트로더 {args.boot_s:.1f} s 는 조용하다)", flush=True)
+            elif can_detect and attached and not live and not args.quiet:
+                print("\n  포트가 닫혔다 — 다음에 열면 다시 리셋된다", flush=True)
+            attached = live
+
             if cmd:
                 board.feed_command(cmd)
                 if not args.quiet:
                     print(f"\n  <- 명령 {cmd!r} · fs {board.fs} · {board.mode}")
-            data = board.poll(now)
+
+            # ---- 보드가 UART 로 낸 것을 **USB 관에 넣고**, 호스트가 가져갈
+            # 만큼만 꺼낸다. 바이트는 한 개씩이 아니라 덩어리로 도착한다.
+            pipe.push(board.poll(now))
+            data = pipe.pop(now) if attached else b""
             if data:
                 try:
                     n_out += os.write(fd, data)
@@ -140,16 +228,20 @@ def main() -> int:
                     # PC 가 안 읽어 OS 버퍼가 찼다. **보드는 기다려 주지 않는다** —
                     # 실제 보드에서도 이 자리는 잃는 자리다.
                     pass
-                except OSError:
-                    break
+                except OSError as e:
+                    if e.errno != errno.EIO:
+                        raise
+                    attached = False       # 그 사이 닫혔다
             if not args.quiet and now - t_log >= 1.0:
                 t_log = now
-                print(f"\r  {now - t0:6.1f}s  보낸 샘플 {board.n_sent:8d}  "
+                state = "연결됨" if attached else "**아무도 안 열었다**"
+                print(f"\r  {now - t0:6.1f}s  {state}  보낸 샘플 {board.n_sent:8d}  "
                       f"버퍼드롭 {board.dropped:6d}  "
                       f"({100 * board.dropped / max(board.k, 1):5.2f} %)  "
+                      f"USB 대기 {pipe.pending:5d} B  "
                       f"{n_out / max(now - t0, 1e-9) / 1024:5.2f} kB/s",
                       end="", flush=True)
-            time.sleep(0.002)
+            time.sleep(0.001)
     except KeyboardInterrupt:
         pass
     finally:
@@ -162,7 +254,10 @@ def main() -> int:
     print(f"\n보드가 뜬 샘플 {board.k} · 선으로 나간 것 {board.n_sent} · "
           f"버퍼가 없어 버린 것 {board.dropped} "
           f"({100 * board.dropped / max(board.k, 1):.2f} %) · "
+          f"리셋 {n_reset} 회 · "
           f"실측 {board.k / el:.1f} Hz (설정 {board.fs} Hz)")
+    if pipe.overflow:
+        print(f"[warn] 호스트가 안 가져가 USB 관에서 {pipe.overflow} B 를 잃었다")
     return 0
 
 
