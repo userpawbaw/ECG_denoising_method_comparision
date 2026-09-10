@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import time
 from pathlib import Path
@@ -183,3 +184,34 @@ def test_aligner_still_aligns_after_trimming():
     idx2, out2 = al.take()
     assert idx2 == 25, f"이어지는 구간은 25 에서 시작해야 한다 (얻은 값 {idx2})"
     assert out2["a"] == list(range(25, 31)) and out2["b"] == list(range(25, 31))
+
+# ------------------------------------------- 화면으로 미는 길 (SSE)
+def test_publish_refuses_an_already_serialised_payload():
+    """**두 번 직렬화하면 브라우저가 문자열을 받는다** (F-43).
+
+    `JSON.parse` 는 성공하고 결과가 문자열이라 `m.reset` 이 undefined 가 된다.
+    화면에서는 «아무 일도 안 일어남» 으로만 보여서 눈으로는 못 잡는다.
+    """
+    m = _mod()
+    hub = m.Hub()
+    with pytest.raises(TypeError):
+        hub.publish(json.dumps({"reset": True}))
+
+
+def test_the_reset_notice_arrives_as_an_object_not_a_string():
+    m = _mod()
+    hub = m.Hub()
+    q = hub.register()
+    hub.publish({"reset": True, "fe": "median", "fe_label": "중앙값",
+                 "fe_lat_ms": 448})
+    got = json.loads(q.get_nowait())          # 브라우저의 JSON.parse
+    assert isinstance(got, dict), "선에 실린 것이 «JSON 을 담은 JSON» 이다"
+    assert got["reset"] is True
+    assert got["fe_label"] == "중앙값"
+
+
+def test_no_call_site_serialises_before_publishing():
+    """가드가 있어도 **호출부에 남아 있으면 시연 중에 터진다** — 미리 잡는다."""
+    src = (ROOT / "scripts" / "serial_bridge.py").read_text()
+    assert "hub.publish(json.dumps(" not in src, \
+        "publish 앞에서 json.dumps 를 부르고 있다 (F-43)"

@@ -86,19 +86,42 @@ def build_stream_method(mid: str, axis: str = "d1"):
 
 
 # ------------------------------------------------------------------- 입력원
+class LinkLost(RuntimeError):
+    """선이 끊겼다 — 케이블·보드 쪽 문제. **조용히 멈추면 안 된다**(O-30)."""
+
+
 class SerialSource:
     """실제 보드. 읽기만 하는 스레드로 돈다."""
 
-    def __init__(self, port: str, baud: int, board_fs: int, binary: bool):
+    def __init__(self, port: str, baud: int, board_fs: int, binary: bool,
+                 settle_s: float = 2.0):
         try:
             import serial
         except ImportError:                                  # pragma: no cover
             raise SystemExit("pyserial 이 필요하다:  pip install pyserial")
-        self.ser = serial.Serial(port, baud, timeout=0.05)
+        self._exc = serial.SerialException
+        try:
+            # **`exclusive=True` 가 있어야 포트가 배타 자원이 된다.** 없으면
+            # 두 번째 프로그램이 **에러 없이** 같은 포트를 열고 바이트를 나눠
+            # 가진다 — 양쪽 화면이 손실 50 % 로 보이고, 그것이 전극 문제처럼
+            # 읽힌다. 가상 포트로 재현해 확인했다 (O-30).
+            self.ser = serial.Serial(port, baud, timeout=0.05, exclusive=True)
+        except serial.SerialException as e:
+            raise SystemExit(
+                f"포트를 열 수 없다: {port}\n  {e}\n"
+                "  - 아두이노 IDE 의 시리얼 모니터/플로터를 닫을 것 "
+                "(포트는 한 번에 한 프로그램만 연다)\n"
+                "  - 앞서 띄운 브리지가 아직 살아 있는지: ps -ef | grep serial_bridge\n"
+                "  - 포트 이름이 맞는지: ls /dev/ttyACM* /dev/ttyUSB*\n"
+                "  - 리눅스 권한: sudo usermod -aG dialout $USER 후 재로그인")
         # 포트를 열면 DTR 이 토글돼 **보드가 리셋된다.** 부팅 + 첫 헤더가
         # 나올 때까지 기다렸다 버린다. 이것을 안 하면 첫 2 초가 쓰레기다.
-        time.sleep(2.0)
+        # (`settle_s` 는 테스트에서만 줄인다 — 가상 보드는 부팅이 없다.)
+        time.sleep(settle_s)
         self.ser.reset_input_buffer()
+        # **fs 를 먼저, 형식을 나중에.** 순서를 뒤집으면 `set_fs()` 가 보드의
+        # `seq` 를 0 으로 돌리는데 그때는 이미 바이너리 프레임이 흐르는 중이라,
+        # PC 는 그 점프를 «셀 수 없는 손실» 로 읽고 처리기를 리셋한다.
         cmd = {250: b"2", 500: b"5", 1000: b"1"}[board_fs]
         self.ser.write(cmd)
         self.ser.write(b"b" if binary else b"a")
@@ -106,7 +129,13 @@ class SerialSource:
         self.ser.reset_input_buffer()
 
     def read(self) -> bytes:
-        return self.ser.read(4096) or b""
+        try:
+            return self.ser.read(4096) or b""
+        except (OSError, self._exc) as e:
+            # 케이블이 빠졌거나 보드가 죽었다. 예외를 여기서 삼키면 읽기
+            # 스레드만 죽고 본체는 그것을 모른 채 돈다 — 화면이 «연결됨» 인
+            # 채로 파형만 멈춘다. 시연에서 가장 알아채기 어려운 실패다.
+            raise LinkLost(str(e)) from e
 
     def close(self) -> None:
         self.ser.close()
@@ -260,6 +289,12 @@ class Hub:
                 self.qs.remove(q)
 
     def publish(self, payload: dict) -> None:
+        # **직렬화는 여기서 한 번만 한다.** 이미 문자열인 것을 받아 한 번 더
+        # 감싸면 브라우저는 «JSON 을 담은 JSON» 을 받고, 그 실패는 화면에서
+        # «아무 일도 안 일어남» 으로만 보인다 — 그래서 형을 여기서 막는다 (F-43).
+        if not isinstance(payload, dict):
+            raise TypeError("publish 는 dict 를 받는다 (이미 직렬화된 문자열이 "
+                            f"아니라) — 받은 것: {type(payload).__name__}")
         data = json.dumps(payload, separators=(",", ":"))
         with self.lock:
             targets = list(self.qs)
@@ -473,21 +508,34 @@ def main() -> int:
     stop = threading.Event()
     qdrop = [0]
 
+    link_err: list[str] = []
+    n_bytes = [0]                     # 선에서 온 **바이트** (샘플이 아니다)
+
     def reader():
-        while not stop.is_set():
-            data = source.read()
-            if not data:
-                continue
-            try:
-                q.put_nowait(data)
-            except queue.Full:
-                # 처리가 못 따라온다. **오래된 것을 버리고 센다** — 조용히
-                # 밀리면 화면이 점점 과거를 보이게 된다.
+        # **선이 끊기면 여기서 끝내고 알린다.** 예외를 스레드 안에서 삼키면
+        # 읽기만 죽고 본체는 그대로 돌아 «화면은 연결됨, 파형만 정지» 가 된다.
+        try:
+            while not stop.is_set():
+                data = source.read()
+                if not data:
+                    continue
+                n_bytes[0] += len(data)
                 try:
-                    q.get_nowait()
-                    qdrop[0] += 1
-                except queue.Empty:
-                    pass
+                    q.put_nowait(data)
+                except queue.Full:
+                    # 처리가 못 따라온다. **오래된 것을 버리고 센다** — 조용히
+                    # 밀리면 화면이 점점 과거를 보이게 된다.
+                    try:
+                        q.get_nowait()
+                        qdrop[0] += 1
+                    except queue.Empty:
+                        pass
+        except LinkLost as e:
+            link_err.append(str(e))
+        except Exception as e:                               # pragma: no cover
+            link_err.append(f"{type(e).__name__}: {e}")
+        finally:
+            stop.set()
 
     th = threading.Thread(target=reader, daemon=True)
     th.start()
@@ -506,10 +554,33 @@ def main() -> int:
     n_board = 0                       # 보드가 보낸 샘플 (손실률의 분모)
     rtf_cpu = rtf_wall = rtf_core = 0.0   # warm-up 이후의 정상 상태
     core = 0.0
+    fs_checked = False                # 보드의 실측 fs 를 한 번 대조한다
+    t_nodata = 0.0                    # «아무것도 안 나온다» 진단을 낸 시각
     try:
         while not stop.is_set():
             if args.dur and time.perf_counter() - t_start > args.dur:
                 break
+            # **아무것도 안 나올 때가 가장 알아채기 어렵다.** 화면은 비어 있고
+            # 터미널의 진행 줄은 첫 payload 가 나와야 찍히므로, 스케치가 안
+            # 올라갔거나 형식이 어긋나면 **20 초 동안 아무 말도 없다.**
+            # 그래서 여기서 먼저 말한다 (O-30).
+            now0 = time.perf_counter()
+            if n_board == 0 and now0 - t_start > 5.0 and now0 - t_nodata > 10.0:
+                t_nodata = now0
+                if n_bytes[0] == 0:
+                    print("\n[진단] 선은 열렸는데 **바이트가 하나도 안 온다.**\n"
+                          "  - 스케치가 보드에 올라가 있는가 (IDE 시리얼 플로터로 먼저 확인)\n"
+                          "  - 다른 프로그램이 같은 포트를 함께 열고 있지 않은가\n"
+                          "  - 포트 이름이 맞는가", flush=True)
+                else:
+                    fmt = "ASCII" if args.ascii else "BINARY"
+                    other = "--ascii 를 붙여" if not args.ascii else "--ascii 를 떼고"
+                    print(f"\n[진단] 바이트는 {n_bytes[0]} B 왔는데 **샘플이 하나도 "
+                          f"안 맞는다** (깨짐 {stat['bad']}).\n"
+                          f"  지금 {fmt} 로 읽는 중이다 — 보드가 다른 형식으로 "
+                          f"말하고 있을 수 있다. {other} 다시 띄워 볼 것.\n"
+                          f"  baud 가 다를 때도 같은 증상이 난다 "
+                          f"(스케치의 SERIAL_BAUD 와 --baud {args.baud}).", flush=True)
             try:
                 data = q.get(timeout=0.5)
             except queue.Empty:
@@ -529,10 +600,14 @@ def main() -> int:
                 al = Aligner(names)
                 raw, rawok, raw_base, n_in, n_input = [], [], 0, 0, 0
                 fe_lat_ms = fe.latency_samples / FS * 1000.0
-                hub.publish(json.dumps({"reset": True, "fe": want,
-                                        "fe_label": FE_MODES[want]["label"],
-                                        "fe_lat_ms": round(fe_lat_ms, 0)},
-                                       ensure_ascii=False))
+                # **`Hub.publish` 가 직렬화한다.** 여기서 한 번 더 `json.dumps`
+                # 하면 선에 실리는 것이 «JSON 문자열을 담은 JSON» 이 되고,
+                # 브라우저의 `JSON.parse` 는 문자열을 돌려준다 — `m.reset` 이
+                # undefined 라 화면이 안 비워지고, 두 front-end 의 파형이 한
+                # 화면에 섞인다. 6.3 이 막겠다고 적어 둔 바로 그 일이다 (F-43).
+                hub.publish({"reset": True, "fe": want,
+                             "fe_label": FE_MODES[want]["label"],
+                             "fe_lat_ms": round(fe_lat_ms, 0)})
                 if not args.quiet:
                     print(f"\n  front-end -> {want} ({FE_MODES[want]['label']}, "
                           f"+{fe_lat_ms:.0f} ms) · 화면을 다시 채운다")
@@ -601,6 +676,20 @@ def main() -> int:
                          "fe": switch.mode,
                          "rtf": round(cpu / max(el, 1e-9), 3)},
             }
+            # **보드가 정말 그 fs 로 주고 있는가.** `--board-fs` 는 보드에게
+            # 보내는 «명령» 일 뿐이라, 펌웨어가 그 명령을 모르면(구 버전) 보드는
+            # 원래 fs 를 계속 준다. 그러면 에러 없이 **시간축만 틀린다** —
+            # R-peak 간격이 배로 벌어지고 심박수가 절반으로 보인다 (F-42).
+            el_all = now - t_start
+            if not fs_checked and el_all > 10.0 and n_board > 0:
+                fs_checked = True
+                meas = n_board / el_all
+                if abs(meas - args.board_fs) / args.board_fs > 0.05:
+                    print(f"\n[warn] 보드의 실측 샘플률이 {meas:.1f} Hz 다 — "
+                          f"--board-fs {args.board_fs} 와 5 % 넘게 다르다. "
+                          f"시간축이 {args.board_fs / max(meas, 1e-9):.2f} 배 틀린다. "
+                          "스케치가 fs 명령('2'/'5'/'1')을 아는 판인지 확인할 것.",
+                          flush=True)
             if idx > (warm_s + 2.0) * FS:      # warm-up 과 첫 적재는 뺀다
                 rtf_cpu += cpu
                 rtf_core += core
@@ -635,10 +724,21 @@ def main() -> int:
     finally:
         stop.set()
         source.close()
+    if link_err:
+        # 화면에도 한 번 알리고 나간다 — 브라우저는 SSE 가 끊기면 «다시 붙는
+        # 중» 만 보여 주므로, 왜 끊겼는지는 이 한 줄이 아니면 알 수 없다.
+        hub.publish({"link_lost": link_err[0]})
+        time.sleep(0.3)
+        print(f"\n[선 끊김] {link_err[0]}\n"
+              "  케이블이 빠졌거나 보드가 리셋됐다. 다시 꽂고 브리지를 다시 띄운다.\n"
+              "  같은 포트를 다른 프로그램이 함께 열고 있어도 이 증상이 난다.",
+              flush=True)
     dur = max(n_in / FS, 1e-9)
     # **손실·lead-off 는 보드 기준 샘플 수다.** 데시메이션을 하면 처리 쪽
     # 샘플 수와 단위가 달라지므로 분모를 섞으면 안 된다.
-    print(f"\n처리 {n_in} 샘플 ({dur:.1f} s @ {FS:g} Hz) · 보드 {n_board} 샘플 · "
+    el_all = max(time.perf_counter() - t_start, 1e-9)
+    print(f"\n보드 실측 {n_board / el_all:.1f} Hz (설정 {args.board_fs} Hz)")
+    print(f"처리 {n_in} 샘플 ({dur:.1f} s @ {FS:g} Hz) · 보드 {n_board} 샘플 · "
           f"손실 {stat['lost']} ({100*stat['lost']/max(n_board,1):.2f} %) · "
           f"lead-off {stat['leadoff']} ({100*stat['leadoff']/max(n_board,1):.1f} %) · "
           f"재동기 {stat['resync']} · 큐드롭 {qdrop[0]}")

@@ -389,6 +389,15 @@ fetch('/fe').then(r => r.json()).then(d => {
 }).catch(() => {});
 es.onmessage = ev => {
   const m = JSON.parse(ev.data);
+  /* 선이 끊겼다. SSE 만 보면 «다시 붙는 중» 으로만 보여서 **왜** 끊겼는지
+   * 알 수 없다 — 브리지가 나가기 전에 이유를 한 번 보내 준다 (O-30). */
+  if (m.link_lost){
+    el('conn').innerHTML = '<i class="dot"></i>선 끊김';
+    const nt = el('fenote');
+    nt.hidden = false;
+    nt.textContent = '보드와의 선이 끊겼다 — ' + m.link_lost;
+    return;
+  }
   // front-end 를 바꾸면 브리지가 처리기 버퍼를 비운다 — 화면도 비워야 한다.
   // 안 비우면 **이전 필터로 만든 파형과 새 필터의 파형이 한 화면에 섞인다.**
   if (m.reset){
