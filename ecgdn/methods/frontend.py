@@ -11,6 +11,7 @@ zero-phase(filtfilt) 를 쓰는 이유: 위상 왜곡이 없어 R-peak timing �
 """
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 import numpy as np
@@ -22,6 +23,39 @@ from ..registry import register_method
 from .base import BaseDenoiser
 
 __all__ = ["FrontEnd", "apply_frontend"]
+
+
+# ------------------------------------------------------- 필터 설계 메모이제이션
+#
+# **왜 있나**: `_run` 이 호출마다 `butter`·`iirnotch` 를 다시 설계했다. 설계는
+# 인자만으로 정해지는 순수 함수인데, 학습 한 epoch 이 window 2,880 개 × FE 2 회를
+# 부르므로 같은 계수를 5,760 번 다시 만들고 있었다. 실측: 설계가 FE 한 호출
+# 4.06 ms 중 **1.51 ms(37 %)** 다.
+#
+# **비트 단위로 같은 값을 돌려준다** — 캐시가 결과를 바꾸면 그 순간 이전
+# 체크포인트가 전부 무효가 된다(F-9). `tests/test_pipeline_cache.py` 가 고정한다.
+# 캐시본을 그대로 주지 않고 **복사본**을 준다. `sosfiltfilt` 가 쓰기 가능한 버퍼를
+# 요구해서 읽기 전용으로 잠글 수 없고, 잠그지 않은 원본을 그대로 주면 호출자가
+# 제자리에서 고칠 때 캐시가 오염된다. (4×6 배열 복사는 설계 0.72 ms 대비 무시할 수준.)
+
+
+@functools.lru_cache(maxsize=256)
+def _butter_sos_cached(order: int, wn: float, btype: str) -> np.ndarray:
+    return sps.butter(order, wn, btype=btype, output="sos")
+
+
+@functools.lru_cache(maxsize=256)
+def _notch_sos_cached(f0: float, q: float, fs: float) -> np.ndarray:
+    b, a = sps.iirnotch(f0, q, fs)
+    return sps.tf2sos(b, a)
+
+
+def _butter_sos(order: int, wn: float, btype: str) -> np.ndarray:
+    return _butter_sos_cached(order, wn, btype).copy()
+
+
+def _notch_sos(f0: float, q: float, fs: float) -> np.ndarray:
+    return _notch_sos_cached(f0, q, fs).copy()
 
 def _safe_filtfilt(sos: np.ndarray, x: np.ndarray, ring_s: float, fs: float) -> np.ndarray:
     """충분한 padlen 을 강제한 zero-phase 필터.
@@ -50,11 +84,11 @@ class FrontEnd(BaseDenoiser):
         nyq = fs / 2.0
 
         if c.hp_hz and c.hp_hz > 0:
-            sos = sps.butter(c.order, c.hp_hz / nyq, btype="highpass", output="sos")
+            sos = _butter_sos(c.order, c.hp_hz / nyq, "highpass")
             # 링잉 시간 ~ order / cutoff. 여유 있게 잡는다.
             x = _safe_filtfilt(sos, x, ring_s=8.0 * c.order / c.hp_hz, fs=fs)
         if c.lp_hz and c.lp_hz < nyq * 0.98:
-            sos = sps.butter(c.order, c.lp_hz / nyq, btype="lowpass", output="sos")
+            sos = _butter_sos(c.order, c.lp_hz / nyq, "lowpass")
             x = _safe_filtfilt(sos, x, ring_s=8.0 * c.order / c.lp_hz, fs=fs)
 
         for f0 in c.notch_hz:
@@ -62,8 +96,7 @@ class FrontEnd(BaseDenoiser):
                 continue
             if c.auto_notch and pli_ratio(x, fs, f0) < c.pli_ratio_thresh:
                 continue                       # PLI 가 없으면 걸지 않는다
-            b, a = sps.iirnotch(f0, c.notch_q, fs)
-            sos = sps.tf2sos(b, a)
+            sos = _notch_sos(f0, c.notch_q, fs)
             # notch 의 링잉 시간 ~ Q / (pi * f0)
             x = _safe_filtfilt(sos, x, ring_s=8.0 * c.notch_q / (np.pi * f0), fs=fs)
         return x

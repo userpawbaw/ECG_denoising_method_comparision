@@ -66,6 +66,7 @@ class ECGDenoiseDataset:
                  salt: Any = 0, max_per_record: int | None = None,
                  normalize: bool = True, pre_denoise: str | None = None,
                  frontend: bool = True, fe_margin_s: float = EVAL_GUARD_S,
+                 cache_ref: bool = True,
                  ref_frontend: bool | None = None):
         self.source = source or get_source("auto")
         self.split = split
@@ -91,6 +92,9 @@ class ECGDenoiseDataset:
         self.fe_margin_s = float(fe_margin_s)
         self._fe = None
         self.index = _index_windows(self.source, split, self.win, self.hop, max_per_record)
+        # 참조 창 캐시. **잡음·epoch 과 무관한 것만** 담는다 — 아래 `_ref_window` 참조.
+        self.cache_ref = bool(cache_ref)
+        self._ref_cache: dict[int, np.ndarray] = {}
 
     def _fe_fn(self):
         """front-end 객체. **입력·참조 어느 한쪽이라도 쓰면** 만든다.
@@ -123,6 +127,26 @@ class ECGDenoiseDataset:
     def set_epoch(self, epoch: int) -> None:
         """epoch 마다 다른 잡음을 뽑되, epoch 을 고정하면 재현 가능하도록."""
         self.salt = ("epoch", epoch)
+        # 참조 캐시는 **비우지 않는다** — 참조는 잡음과 무관하다(`_ref_window`).
+
+    def _ref_window(self, i: int, seg: np.ndarray, fs: float, m: int) -> np.ndarray:
+        """참조 창 = FE(clean seg) 의 가운데. `(record, start)` 만으로 정해진다.
+
+        **잡음에도 epoch 에도 의존하지 않는다.** 그런데 종래에는 window 를 꺼낼
+        때마다 다시 계산했다 — 학습 한 판이 이것을 수만 번 반복한다. 실측:
+        `__getitem__` 14.64 ms 중 FE 두 호출이 13 ms 였고, 그 중 하나가 이것이다.
+
+        **비트 단위로 같은 값이어야 한다** — 달라지면 그 순간 이전 체크포인트가
+        전부 무효가 된다(F-9). `tests/test_pipeline_cache.py` 가 고정한다.
+        """
+        c = self._ref_cache.get(i) if self.cache_ref else None
+        if c is None:
+            fe = self._fe_fn()
+            x_seg = fe(seg, fs) if (fe is not None and self.ref_frontend) else seg
+            c = np.ascontiguousarray(x_seg[m:m + self.win])
+            if self.cache_ref:
+                self._ref_cache[i] = c
+        return c
 
     def raw_item(self, i: int) -> dict[str, Any]:
         wi = self.index[i]
@@ -159,9 +183,8 @@ class ECGDenoiseDataset:
 
         # 가운데 창만 사용. target 은 **참조와 같은 대역** 이어야 한다 (위 규약).
         # y 와 동일하게 margin 을 포함한 채 필터링한 뒤 가운데만 잘라낸다.
-        x_seg = fe(seg, rec.fs) if (fe is not None and self.ref_frontend) else seg
         y = y_seg[m:m + self.win]
-        x = x_seg[m:m + self.win]
+        x = self._ref_window(i, seg, rec.fs, m)
 
         scale = robust_scale(y) if self.normalize else 1.0
         return dict(y=(y / scale).astype(np.float32),
