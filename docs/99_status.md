@@ -417,7 +417,32 @@ bash scripts/run_d23_queue.sh      # ← Bash 도구의 run_in_background 로
 판이 이어진다. 끝난 판은 `train.py --resume` 이 스스로 건너뛴다.
 고아 락은 **학습 프로세스가 없음을 확인한 뒤에만** 치운다.
 
-**감시**: D-23 큐가 끝나 watchdog Routine 은 **대기로 되돌렸다**(2026-09-09 19:41).
+**감시**: D-24 구조 sweep(seed 4~7)이 도는 동안 watchdog Routine 을 다시 켰다
+(2026-09-10 12:37). 끝나면 대기로 되돌린다.
+
+### 지금 도는 것 — D-24 구조 sweep (seed 4~7)
+
+**두 환경이 seed 를 나눠 갖는다.** Colab T4 가 0~3, 이 컨테이너가 4~7 이다.
+합치면 5 arm × 8 seed = 40 판이고, 고정 평가 기준으로 0.25 dB 를 가르기에
+충분하다(F-41: 팔당 10 판).
+
+> **한 seed 의 모든 arm 은 반드시 같은 환경에서 돌아야 한다.** 갈라지면 짝지은
+> 차분이 하드웨어 흩어짐(sd 0.184)을 먹는다. 그래서 seed 로 나눴지 arm 으로
+> 나누지 않았다. 분석기가 섞임을 감지해 경고한다.
+
+```bash
+띄우기   bash scripts/run_sweep_locked.sh structure 4-7    # 락을 잡는다
+         (Bash 도구의 run_in_background:true 로 — setsid nohup 은 죽는다, O-28)
+확인     python3 scripts/watchdog.py        # running · 학습프로세스 비어 있지 않을 것
+재개     같은 명령을 다시 실행. summary.json 이 있는 판은 건너뛴다
+분석     python3 scripts/analyze_seed_sweep.py results/ext/structure
+```
+
+**끊겨도 그때까지의 seed 로 분석된다** — seed 우선 순서라 seed 블록이 통째로
+완성된다(arm 우선이면 짝이 하나도 안 맞는다).
+
+Colab 폴더가 오면 `results/ext/structure/` 에 그대로 풀어 합친다 — run_id 가
+`<arm>__s<seed>` 라 seed 가 다르면 충돌하지 않는다.
 큐가 끝나면 **대기로 되돌린다**(§2 마지막 줄).
 
 **커밋**: 학습이 도는 동안 `log.csv` 가 매 epoch 자라 stop hook 이 매번 뜬다.
@@ -657,7 +682,7 @@ Routine 은 **깨울 일이 있을 때만 켠다.**
 ```
 
 이름 뒤의 **"— 대기 중"** 이 목록에서 상태를 바로 보이게 하는 표식이다.
-**지금은 대기 상태다** — D-23 큐 8 판이 끝났고(2026-09-09 19:38, 실패 0) 예정된 무인 작업이 없다.
+**지금은 켜 둔 상태다** — D-24 구조 sweep 20 판이 돈다(2026-09-10 12:37 시작).
 
 > 켜 두면 매시간 세션이 깨어나 "이상 없음" 만 확인한다. 판정 자체는 1.83 ms
 > 지만 **비싼 것은 에이전트를 깨우는 쪽**이다(D-16). 그래서 기본이 대기다.

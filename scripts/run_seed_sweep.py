@@ -263,6 +263,9 @@ def main() -> int:
                     help="기본 off — CPU(fp32) 결과와 같은 계보로 두기 위해서다")
     ap.add_argument("--epochs", type=int, default=None, help="빠른 확인용 축소")
     ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--threads", type=int, default=None,
+                    help="torch 스레드 수. 이 저장소의 학습은 4 로 돌았다 — "
+                         "맞춰 두면 부동소수점 축약 순서까지 같아진다")
     ap.add_argument("--keep-ckpt", action="store_true",
                     help="best.pt/last.pt 를 남긴다 (업로드가 커진다)")
     ap.add_argument("--dry-run", action="store_true", help="무엇을 돌릴지만 출력")
@@ -289,7 +292,11 @@ def main() -> int:
               f"(data/raw 확인)", file=sys.stderr)
         return 2
 
-    todo = [(a, s) for a in arms for s in seeds]
+    # **seed 우선**으로 돈다 (arm 우선이 아니라). 짝지은 분석은 «한 seed 의 모든
+    # arm» 이 있어야 성립하는데, arm 우선이면 중간에 끊겼을 때 arm 몇 개만 전 seed
+    # 를 갖고 나머지는 하나도 없다 — 짝이 하나도 안 맞는다. seed 우선이면 끊긴
+    # 지점까지의 seed 가 통째로 완성돼 그대로 분석에 들어간다.
+    todo = [(a, s) for s in seeds for a in arms]
     done = sum(1 for a, s in todo if (out_root / f"{a}__s{s}" / "summary.json").exists())
     print(f"[sweep] arms={arms} seeds={seeds} → {len(todo)} 판 "
           f"(완료 {done}, 남은 {len(todo)-done})")
@@ -302,6 +309,8 @@ def main() -> int:
         return 0
 
     amp = {"on": True, "off": False}[args.amp]
+    if args.threads:
+        torch.set_num_threads(args.threads)
     t_start = time.perf_counter()
     n_ran = 0
     for i, (arm, seed) in enumerate(todo, 1):

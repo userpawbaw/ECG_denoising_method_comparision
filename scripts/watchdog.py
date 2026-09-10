@@ -71,7 +71,17 @@ SETTLING_S = 60
 # 로그에 '재시작' 만 쌓이고 원인은 가려진다.
 MAX_RESTARTS = 3
 # 락을 잡는 러너들. **일회성 러너를 빠뜨리면 그 실행은 감시 밖이다**(O-24).
-RUNNER_NAMES = ("run_all_training.sh", "run_one_training.sh")
+# `run_d23_queue.sh` · `run_sweep_locked.sh` 도 락을 잡는다 — 여기 없으면
+# 락은 보이는데 러너는 안 보여 `settling` → `stalled` 로 흘러 멀쩡한 학습이
+# 재시작된다. **락을 잡는 스크립트를 새로 만들 때마다 이 줄에 추가한다.**
+# `tests/test_watchdog_sees_every_runner.py` 가 빠뜨림을 잡는다.
+RUNNER_NAMES = ("run_all_training.sh", "run_one_training.sh",
+                "run_d23_queue.sh", "run_sweep_locked.sh")
+
+# 학습 프로세스로 셀 것. `train.py` 만 보면 sweep 러너가 학습 중인데도
+# «학습 프로세스 없음» 이 되어, 러너가 죽었을 때 `orphan_trainer` 대신
+# `stalled` 로 판정된다 (O-24 와 같은 종류의 빠뜨림).
+TRAINER_NAMES = ("train.py", "run_seed_sweep.py")
 
 
 def _argv(pid: int) -> list[str]:
@@ -134,7 +144,7 @@ def assess() -> dict:
 
     lock_cmd = _lock_cmd()
     runner_alive = lock_pid is not None and _is(lock_pid, RUNNER_NAMES)
-    trainers = _pids(("train.py",))
+    trainers = _pids(TRAINER_NAMES)
     log_age = _newest_log_age()
 
     if not LOCK.exists():

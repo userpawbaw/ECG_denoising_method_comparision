@@ -109,6 +109,24 @@ def main() -> int:
 
     env = {k[4:]: rows[0][k] for k in rows[0] if k.startswith("env_")}
     section("환경")
+    # 표가 한 환경에서 나왔다고 가정하면 안 된다 — Colab 과 로컬이 seed 를 나눠
+    # 갖는 식으로 섞일 수 있다. 섞였으면 **어느 판이 어디서 나왔는지** 보여 준다.
+    mixed = {k: sorted({str(r.get(f"env_{k}", "")) for r in rows})
+             for k in ("device", "gpu", "amp", "torch")}
+    mixed = {k: v for k, v in mixed.items() if len(v) > 1}
+    if mixed:
+        print("  ⚠ 여러 환경이 섞여 있다:")
+        for k, v in mixed.items():
+            print(f"      env_{k}: {' · '.join(x or '(없음)' for x in v)}")
+        by_env: dict[str, list[str]] = defaultdict(list)
+        for r in rows:
+            by_env[f"{r.get('env_device','?')}/{r.get('env_gpu','') or 'cpu'}"].append(
+                f"{r['arm']}@s{r['seed']}")
+        for k, v in sorted(by_env.items()):
+            print(f"      {k:<16} {len(v)} 판  ({', '.join(sorted(v)[:4])}"
+                  f"{' …' if len(v) > 4 else ''})")
+        print("    → **한 seed 의 모든 arm 이 같은 환경**이면 짝지은 비교는 유효하다")
+        print("      (하드웨어 차이가 차분에서 지워진다). 갈라져 있으면 그 seed 는 빼라.")
     for k in ("device", "amp", "gpu", "torch", "cuda", "git_commit"):
         if env.get(k):
             print(f"  {k:<12} {env[k]}")
