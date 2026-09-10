@@ -1,0 +1,4 @@
+run_id,arm,seed,n_params,loss,best_metric,best_epoch,n_epochs,wall_s,sec_per_epoch,source,fixed_snr_imp_scaled,env_device,env_amp,env_gpu,env_torch,env_cuda,env_git_commit
+m06_l1__s0,m06_l1,0,976489,L1,3.644,34,46,2160,46.4,mitdb,4.308,cuda,False,Tesla T4,2.11.0+cu128,12.8,ae4ddf1e115d9ff60210722bc33535557d352a7f
+m06_l1__s1,m06_l1,1,976489,L1,4.725,37,49,2196,46.4,mitdb,3.932,cuda,False,Tesla T4,2.11.0+cu128,12.8,ae4ddf1e115d9ff60210722bc33535557d352a7f
+m06_l1__s2,m06_l1,2,976489,L1,4.418,27,39,1806,46.4,mitdb,4.015,cuda,False,Tesla T4,2.11.0+cu128,12.8,ae4ddf1e115d9ff60210722bc33535557d352a7f

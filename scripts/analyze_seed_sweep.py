@@ -129,12 +129,27 @@ def main() -> int:
         for nm, ext, cpu in cal:
             print(f"  {nm:<12}  {ext:>8.3f}  {cpu:>10.3f}  {ext-cpu:>+8.3f}")
         d = np.array([e - c for _, e, c in cal])
-        print(f"\n  평균 차이 {d.mean():+.3f} dB, 최대 |차이| {np.abs(d).max():.3f} dB")
-        if np.abs(d).max() < 0.05:
-            print("  → 재현된다. 두 집합을 **한 표에 합쳐도** 된다.")
+        sd = float(d.std(ddof=1)) if d.size > 1 else float("nan")
+        se = sd / math.sqrt(d.size) if d.size > 1 else float("nan")
+        print(f"\n  평균 차이 {d.mean():+.3f} dB   흩어짐 sd {sd:.3f}   n = {d.size}")
+
+        # **판정은 평균 차이로 한다.** 개별 판의 차이는 부동소수점 발산 때문에
+        # 늘 있고(F-41: sd 0.184), 그것을 「재현 실패」로 읽으면 멀쩡한 환경을
+        # 버리게 된다. 물어야 할 것은 «체계적으로 밀렸나» 이지 «흩어지나» 가 아니다.
+        if d.size < 2:
+            print("  → n=1 이라 판정할 수 없다. 한 판의 차이는 부동소수점 발산만으로도")
+            print("     ±0.2 dB 가 난다(F-41). **seed 를 최소 3 개** 돌려야 한다.")
+        elif abs(d.mean()) < 2 * se:
+            print(f"  → **체계적 편향이 없다** (|평균| < 2 SE = {2*se:.3f}).")
+            print(f"     남는 것은 흩어짐 sd {sd:.3f} 뿐이고, 그것이 «같은 설정을 다시")
+            print("     돌렸을 때» 의 바닥이다. 두 집합을 한 표에 합쳐도 된다.")
         else:
-            print("  → 재현되지 않는다. 커널·수치정밀도가 다르므로 두 집합은")
-            print("     **다른 계보**다. 외부 집합 안에서만 비교한다 (그래도 유효하다).")
+            print(f"  → **체계적으로 밀렸다** ({d.mean():+.3f} dB). 커널·수치정밀도가")
+            print("     다르므로 두 집합은 다른 계보다. 외부 집합 안에서만 비교한다")
+            print("     (그래도 유효하다).")
+        if d.size > 1:
+            print(f"\n  이 sd({sd:.3f})를 고정 평가의 sd 와 견줘 보라 — 붙어 있으면")
+            print("  seed 가 만든 모델들이 공통 자로는 구별되지 않는다는 뜻이다(F-41).")
 
     # ---------------------------------------------------------------- 2. 산포
     for key, label in METRICS:
