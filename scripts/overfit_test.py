@@ -17,12 +17,18 @@ from ecgdn.train import snr_metrics_torch
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="resunet1d")
-    ap.add_argument("--loss", default="L1")
-    ap.add_argument("--steps", type=int, default=300)
-    ap.add_argument("--batch", type=int, default=16)
-    ap.add_argument("--lr", type=float, default=1e-3)
-    ap.add_argument("--target", type=float, default=1e-4)
+    ap.add_argument("--model", default="resunet1d",
+        help="과적합시킬 모델 이름")
+    ap.add_argument("--loss", default="L1",
+        help="쓸 손실 이름")
+    ap.add_argument("--steps", type=int, default=300,
+        help="몇 step 을 돌릴 것인가")
+    ap.add_argument("--batch", type=int, default=16,
+        help="배치 크기")
+    ap.add_argument("--lr", type=float, default=1e-3,
+        help="학습률")
+    ap.add_argument("--target", type=float, default=1e-4,
+        help="이 손실보다 작아지면 통과. **못 내려가면 배관이 틀린 것**")
     args = ap.parse_args()
 
     torch.manual_seed(0)

@@ -257,12 +257,14 @@ def main() -> int:
     ap.add_argument("--arms", default=None, help="쉼표로 구분한 config stem")
     ap.add_argument("--seeds", default=None, help="예: 0-9  또는  0,1,2,5")
     ap.add_argument("--out", default=None, help="기본 results/ext/<stage 또는 custom>")
-    ap.add_argument("--source", default="mitdb", choices=("mitdb", "synthetic"))
+    ap.add_argument("--source", default="mitdb", choices=("mitdb", "synthetic"),
+        help="clean 신호의 출처. auto 는 파일이 생기면 조용히 바뀐다 — 99_status 2.1")
     ap.add_argument("--device", default=None, help="cuda | cpu (기본: 있으면 cuda)")
     ap.add_argument("--amp", choices=("on", "off"), default="off",
                     help="기본 off — CPU(fp32) 결과와 같은 계보로 두기 위해서다")
     ap.add_argument("--epochs", type=int, default=None, help="빠른 확인용 축소")
-    ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--workers", type=int, default=2,
+        help="동시에 돌릴 학습 수. 올리면 메모리와 코어를 나눠 쓴다")
     ap.add_argument("--threads", type=int, default=None,
                     help="torch 스레드 수. 이 저장소의 학습은 4 로 돌았다 — "
                          "맞춰 두면 부동소수점 축약 순서까지 같아진다")

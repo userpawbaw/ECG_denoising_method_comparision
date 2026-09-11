@@ -74,9 +74,12 @@ def b64(v: np.ndarray, scale: float) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", default="mitdb", choices=("mitdb", "synthetic"))
-    ap.add_argument("--snr", type=float, default=5.0)
-    ap.add_argument("--out", default="demo/card_bank.js")
+    ap.add_argument("--source", default="mitdb", choices=("mitdb", "synthetic"),
+        help="clean 신호의 출처. auto 는 파일이 생기면 조용히 바뀐다 — 99_status 2.1")
+    ap.add_argument("--snr", type=float, default=5.0,
+        help="카드에 쓸 입력 SNR [dB]")
+    ap.add_argument("--out", default="demo/card_bank.js",
+        help="산출물을 둘 곳")
     a = ap.parse_args()
 
     tag = source_tag(a.source)

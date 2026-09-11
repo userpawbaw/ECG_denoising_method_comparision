@@ -27,8 +27,10 @@ from ecgdn.utils import ensure_dir, power, save_manifest
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="inp", default="data/arduino")
-    ap.add_argument("--out", default="results/real_snr")
+    ap.add_argument("--in", dest="inp", default="data/arduino",
+        help="읽을 CSV 가 있는 폴더")
+    ap.add_argument("--out", default="results/real_snr",
+        help="산출물을 둘 곳")
     ap.add_argument("--seg-s", type=float, default=60.0,
                     help="구간 길이. 여러 구간으로 나눠 분포를 본다.")
     args = ap.parse_args()

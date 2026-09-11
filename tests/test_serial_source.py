@@ -1,0 +1,451 @@
+"""실제 시리얼 경로 (`SerialSource`) — R-7. **가상 포트로 끝까지 태운다.**
+
+`--replay` 는 브리지 **안에서** 바이트를 만들므로, 시연 당일 실제로 타는 길
+— pyserial 이 포트를 열고, 보드에 명령을 보내고, OS 버퍼에서 읽는 경로 —
+가 **한 줄도 실행되지 않는다.** 여기서는 `os.openpty()` 로 커널이 만든 진짜
+tty 한 쌍을 열고 한쪽에 `FakeBoard` 를 붙여 그 길을 통째로 태운다.
+
+고정하는 것 넷 — 넷 다 시연 당일에 실제로 일어나는 일이다:
+
+1. **명령이 보드에 닿는가** (`--board-fs 250` 이 정말 250 Hz 를 만드는가)
+2. **포트가 배타 자원인가** (IDE 나 두 번째 브리지가 붙으면 막히는가 — O-30)
+3. **선이 끊기면 알아채는가** (조용히 멈추지 않는가 — O-30)
+4. **부팅 잡음이 신호에 안 섞이는가**
+"""
+from __future__ import annotations
+
+import errno
+import importlib.util
+import os
+import sys
+import threading
+import time
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from ecgdn.realtime.fake_board import BOOTLOADER_S, FakeBoard, UsbPipe
+from ecgdn.realtime.serial_link import BinaryParser
+
+ROOT = Path(__file__).resolve().parent.parent
+
+pytest.importorskip("serial", reason="pyserial 이 있어야 실경로를 태울 수 있다")
+if not hasattr(os, "openpty"):                              # pragma: no cover
+    pytest.skip("가상 포트를 못 만든다 (윈도우는 com0com 을 쓴다)",
+                allow_module_level=True)
+
+
+def _load(name: str):
+    sys.path.insert(0, str(ROOT / "scripts"))
+    sys.path.insert(0, str(ROOT))
+    spec = importlib.util.spec_from_file_location(
+        name, ROOT / "scripts" / f"{name}.py")
+    m = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(m)
+    except Exception as e:                                   # pragma: no cover
+        pytest.skip(f"{name} 을 못 읽었다: {e}")
+    return m
+
+
+class VirtualBoard:
+    """가상 아두이노를 스레드로 돌린다. `port` 가 브리지에 줄 이름이다.
+
+    `scripts/fake_arduino.py` 의 몸통과 같은 규칙으로 돈다 — **slave 를 놓아**
+    누가 포트를 여는지 보고(EIO 가 풀리는 순간), 열릴 때마다 보드를 리셋한다.
+    그것이 실제 Uno 에서 DTR 이 하는 일의 자리다.
+    """
+
+    def __init__(self, link=None, **kw):
+        self.fa = _load("fake_arduino")
+        self.link = link if link is not None else self.fa.PtyLink()
+        self.port = self.link.name
+        kw.setdefault("fs", 500)
+        self._kw = kw
+        self.board = self._new()
+        self.pipe = UsbPipe(poll_ms=1.0, packet=64)
+        self.resets = 0
+        self._attached = False
+        self._stop = threading.Event()
+        self._th = threading.Thread(target=self._run, daemon=True)
+        self._th.start()
+
+    def _new(self) -> FakeBoard:
+        return FakeBoard(np.full(4000, 700), **self._kw)
+
+    def _run(self):
+        while not self._stop.is_set():
+            now = time.perf_counter()
+            cmd = self.link.read(256)
+            live = self.link.attached()
+            if live and not self._attached:
+                self.resets += 1
+                self.board = self._new()
+                self.board.reset(now)
+                self.pipe = UsbPipe(poll_ms=1.0, packet=64)
+            self._attached = live
+            if cmd:
+                self.board.feed_command(cmd)
+            self.pipe.push(self.board.poll(now))
+            data = self.pipe.pop(now) if live else b""
+            if data:
+                self.link.write(data)
+            time.sleep(0.002)
+
+    def unplug(self) -> None:
+        """케이블을 뽑는다."""
+        self._stop.set()
+        self._th.join(timeout=1.0)
+        self.link.close()
+
+    def close(self) -> None:
+        if not self._stop.is_set():
+            self.unplug()
+
+
+@pytest.fixture
+def board():
+    b = VirtualBoard(mode="ascii")
+    yield b
+    b.close()
+
+
+# ----------------------------------------------- 명령이 보드에 닿는가
+def test_the_bridge_actually_switches_the_board_to_250_hz(board):
+    """`--board-fs 250` 은 **보드에게 보내는 명령**이다. 닿는지 여기서 본다."""
+    m = _load("serial_bridge")
+    src = m.SerialSource(board.port, 115200, 250, True, settle_s=0.3)
+    try:
+        assert board.board.fs == 250, "fs 명령이 보드에 안 닿았다"
+        assert board.board.mode == "bin", "형식 명령이 보드에 안 닿았다"
+        p = BinaryParser()
+        got = 0
+        t0 = time.perf_counter()
+        while got < 200 and time.perf_counter() - t0 < 5.0:
+            got += len(p.feed(src.read()))
+        assert got >= 200, "실경로로 샘플이 안 들어온다"
+    finally:
+        src.close()
+
+
+def test_the_boot_banner_never_reaches_the_signal(board):
+    """포트를 열면 보드가 리셋되고 `# logger ready` 를 흘린다 — 그것을 버려야 한다."""
+    m = _load("serial_bridge")
+    src = m.SerialSource(board.port, 115200, 250, True)
+    try:
+        raw = b""
+        t0 = time.perf_counter()
+        while len(raw) < 400 and time.perf_counter() - t0 < 5.0:
+            raw += src.read()
+        assert b"# logger ready" not in raw, "부팅 배너가 신호에 섞였다"
+        assert b"# ecgstream" not in raw, "헤더가 신호에 섞였다"
+        ch = BinaryParser().feed(raw)
+        assert len(ch) > 50
+        # 재동기에 쓰인 몇 바이트는 있을 수 있지만, 프레임의 대부분은 맞아야 한다
+        assert ch.n_bad < 10, f"프레임이 계속 깨진다 (bad={ch.n_bad})"
+    finally:
+        src.close()
+
+
+# --------------------------------------------------- 포트는 배타 자원이다
+def test_a_second_bridge_cannot_take_the_port(board):
+    """**이것이 없으면 두 브리지가 에러 없이 바이트를 나눠 가진다** (O-30).
+
+    양쪽 화면이 손실 50 % 로 보이고, 그 증상은 전극 문제와 구별되지 않는다.
+    """
+    m = _load("serial_bridge")
+    first = m.SerialSource(board.port, 115200, 250, True, settle_s=0.3)
+    try:
+        with pytest.raises(SystemExit) as e:
+            m.SerialSource(board.port, 115200, 250, True, settle_s=0.3)
+        assert "포트를 열 수 없다" in str(e.value)
+        assert "시리얼 모니터" in str(e.value), "무엇을 닫아야 하는지 안 적혀 있다"
+    finally:
+        first.close()
+
+
+def test_without_the_exclusive_flag_two_readers_split_the_bytes(board):
+    """왜 배타 잠금이 필요한지 — **잠그지 않으면 조용히 나눠 갖는다.**"""
+    import serial
+
+    a = serial.Serial(board.port, 115200, timeout=0.05)
+    b = serial.Serial(board.port, 115200, timeout=0.05)
+    try:
+        t0 = time.perf_counter()
+        na = nb = 0
+        while time.perf_counter() - t0 < 0.6:
+            na += len(a.read(200))
+            nb += len(b.read(200))
+        assert na > 0 and nb > 0, "둘 다 읽지는 못했다 — 전제가 바뀌었다"
+    finally:
+        a.close()
+        b.close()
+
+
+# ------------------------------------------------------- 선이 끊기면
+def test_pulling_the_cable_raises_instead_of_going_quiet(board):
+    """읽기가 조용히 죽으면 화면은 «연결됨» 인 채 파형만 멈춘다 (O-30)."""
+    m = _load("serial_bridge")
+    src = m.SerialSource(board.port, 115200, 250, True, settle_s=0.3)
+    try:
+        assert src.read() is not None
+        board.unplug()
+        with pytest.raises(m.LinkLost):
+            t0 = time.perf_counter()
+            while time.perf_counter() - t0 < 3.0:
+                src.read()
+            pytest.fail("케이블을 뽑았는데 3 초 동안 아무 일도 안 났다")
+    finally:
+        try:
+            src.close()
+        except Exception:
+            pass
+
+
+def test_link_loss_is_a_distinct_error_type():
+    """`LinkLost` 여야 읽기 스레드가 그것만 잡고 나머지는 그대로 터진다."""
+    m = _load("serial_bridge")
+    assert issubclass(m.LinkLost, RuntimeError)
+
+
+# ------------------------------------------- 구 스케치가 꽂혀 있으면
+def test_an_old_sketch_keeps_its_own_fs_and_the_bridge_can_see_it():
+    """명령을 모르는 판은 500 Hz 를 계속 준다 — **에러 없이 시간축만 틀린다**(F-42).
+
+    브리지가 이것을 잡는 근거는 «실측 샘플률» 하나뿐이므로, 그 값이 정말
+    보드를 따라가는지 여기서 고정한다.
+    """
+    b = VirtualBoard(mode="bin", accept_commands=False, fs=500)
+    m = _load("serial_bridge")
+    try:
+        src = m.SerialSource(b.port, 115200, 250, True, settle_s=0.3)
+        try:
+            assert b.board.fs == 500, "명령을 모르는 판인데 fs 가 바뀌었다"
+            p = BinaryParser()
+            n = 0
+            t0 = time.perf_counter()
+            while time.perf_counter() - t0 < 3.0:
+                n += len(p.feed(src.read()))
+            meas = n / (time.perf_counter() - t0)
+            assert meas > 250 * 1.5, (
+                f"실측 {meas:.0f} Hz — 250 Hz 라고 믿으면 시간축이 배로 틀린다")
+        finally:
+            src.close()
+    finally:
+        b.close()
+
+# ------------------------------------------- 포트를 열면 보드가 리셋된다
+def test_opening_the_port_resets_the_board():
+    """**DTR 리셋의 자리.** PTY 에는 modem line 이 없지만 결과는 같다.
+
+    `TIOCMGET` 이 ENOTTY 라 DTR 자체는 못 건드린다 — 대신 slave 를 놓아 두면
+    누가 포트를 여는 순간이 보이고, 실제 Uno 는 바로 그 자리에서 리셋된다.
+    """
+    b = VirtualBoard(mode="ascii", boot_s=0.0)
+    m = _load("serial_bridge")
+    try:
+        assert b.resets == 0, "아무도 안 열었는데 리셋됐다"
+        src = m.SerialSource(b.port, 115200, 250, True, settle_s=0.3)
+        src.close()
+        time.sleep(0.3)
+        assert b.resets == 1, f"열었는데 리셋이 {b.resets} 회다"
+        src = m.SerialSource(b.port, 115200, 250, True, settle_s=0.3)
+        src.close()
+        time.sleep(0.3)
+        assert b.resets == 2, "두 번째로 열었는데 리셋이 안 됐다"
+    finally:
+        b.close()
+
+
+def test_not_waiting_for_the_bootloader_loses_the_commands():
+    """**포트를 연 뒤 2 초를 기다리는 이유.** 성급하면 명령이 부트로더에 먹힌다.
+
+    그러면 보드는 기본값(500 Hz · ASCII)으로 남고, 브리지는 BINARY 를 기대하므로
+    **화면이 통째로 빈다** — 깨진 바이트만 올라간다.
+    """
+    m = _load("serial_bridge")
+    for settle, want_bin in ((0.3, False), (2.0, True)):
+        b = VirtualBoard(mode="ascii", boot_s=BOOTLOADER_S)
+        try:
+            src = m.SerialSource(b.port, 115200, 250, True, settle_s=settle)
+            try:
+                raw = b""
+                t0 = time.perf_counter()
+                while time.perf_counter() - t0 < 2.5:
+                    raw += src.read()
+                ch = BinaryParser().feed(raw)
+                if want_bin:
+                    assert b.board.mode == "bin", "충분히 기다렸는데 명령이 안 닿았다"
+                    assert len(ch) > 100 and ch.n_bad == 0
+                else:
+                    assert b.board.mode == "ascii", \
+                        "부트로더 중에 보낸 명령이 스케치에 닿았다"
+                    assert len(ch) == 0, "ASCII 를 BINARY 로 읽었는데 샘플이 나왔다"
+                    assert ch.n_bad > 100, "깨진 바이트조차 안 세어졌다"
+            finally:
+                src.close()
+        finally:
+            b.close()
+
+
+# ----------------------------------------- USB 뭉침에도 시간축이 안 밀린다
+def test_bursty_usb_delivery_does_not_shift_the_time_axis():
+    """**도착이 뭉쳐도 파형은 정확해야 한다** — 6.2 (3) 의 「시간축의 주인은 보드」.
+
+    고르게 오면 벽시계로 세는 잘못된 구현도 똑같이 잘 돈다. 뭉쳐야 갈린다.
+    """
+    b = VirtualBoard(mode="bin", boot_s=0.0)
+    b.pipe = UsbPipe(poll_ms=1.0, packet=64, hiccup_every_s=0.5, hiccup_ms=300.0)
+    m = _load("serial_bridge")
+    try:
+        src = m.SerialSource(b.port, 115200, 250, True, settle_s=0.3)
+        try:
+            p = BinaryParser()
+            n = lost = bad = 0
+            t0 = time.perf_counter()
+            while time.perf_counter() - t0 < 4.0:
+                ch = p.feed(src.read())
+                n += len(ch)
+                lost += ch.n_lost
+                bad += ch.n_bad
+            el = time.perf_counter() - t0
+            assert lost == 0, f"뭉쳐 왔다고 샘플을 잃었다 ({lost} 개)"
+            assert bad == 0, f"뭉쳐 왔다고 프레임이 깨졌다 ({bad} B)"
+            assert abs(n / el - 250) < 25, f"실측 {n/el:.0f} Hz — 시간축이 밀렸다"
+        finally:
+            src.close()
+    finally:
+        b.close()
+
+# ===================================================== 윈도우 경로 (`--attach`)
+class ComPair:
+    """**com0com 의 `COM8 ↔ COM9` 쌍을 흉내낸다.**
+
+    윈도우에는 `pty` 가 없어 가상 보드가 포트를 **만들지** 못한다. 그래서
+    com0com 이 만든 쌍의 한쪽에 붙고(`--attach COM8`), 브리지가 다른 쪽을
+    연다(`--port COM9`). 그 배선을 리눅스에서 재현해 **같은 코드 경로**
+    (`SerialLink` — pyserial 의 `read`/`write`) 를 태운다.
+
+    한동안 문서가 이 길을 윈도우 대안으로 안내했는데, `attach_port` 가
+    `ser.fileno()` 를 쓰고 있어서 **윈도우에서는 그 줄에서 터졌다** (O-32).
+    `fileno()` 는 pyserial 의 POSIX 구현에만 있다.
+    """
+
+    def __init__(self):
+        import pty
+
+        m1, s1 = pty.openpty()
+        m2, s2 = pty.openpty()
+        for fd in (m1, m2, s1, s2):
+            os.set_blocking(fd, False)
+        self.a, self.b = os.ttyname(s1), os.ttyname(s2)
+        self._slaves = (s1, s2)
+        self._m = (m1, m2)
+        self._stop = threading.Event()
+        self._th = threading.Thread(target=self._pump, daemon=True)
+        self._th.start()
+
+    def _pump(self):
+        m1, m2 = self._m
+        while not self._stop.is_set():
+            moved = False
+            for src, dst in ((m1, m2), (m2, m1)):
+                try:
+                    d = os.read(src, 4096)
+                except (BlockingIOError, OSError):
+                    d = b""
+                if d:
+                    moved = True
+                    try:
+                        os.write(dst, d)
+                    except (BlockingIOError, OSError):
+                        pass
+            if not moved:
+                time.sleep(0.001)
+
+    def close(self):
+        self._stop.set()
+        self._th.join(timeout=1.0)
+        for fd in self._m + self._slaves:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def test_the_serial_link_works_without_fileno():
+    """**윈도우 pyserial 에는 `fileno()` 가 없다.** 그것 없이 도는지 본다."""
+    m = _load("fake_arduino")
+    pair = ComPair()
+    try:
+        link = m.SerialLink(pair.a, 115200)
+        try:
+            assert link.can_detect is False, \
+                "시리얼 포트로는 상대가 여는 것을 볼 수 없다"
+            import serial
+            other = serial.Serial(pair.b, 115200, timeout=0.2)
+            try:
+                link.write(b"hello-from-board")
+                got = b""
+                t0 = time.perf_counter()
+                while len(got) < 16 and time.perf_counter() - t0 < 2.0:
+                    got += other.read(64)
+                assert got == b"hello-from-board", f"반대쪽이 받은 것: {got!r}"
+                other.write(b"2b")
+                cmd = b""
+                t0 = time.perf_counter()
+                while len(cmd) < 2 and time.perf_counter() - t0 < 2.0:
+                    cmd += link.read(64)
+                assert cmd == b"2b", f"보드가 받은 명령: {cmd!r}"
+            finally:
+                other.close()
+        finally:
+            link.close()
+    finally:
+        pair.close()
+
+
+def test_a_board_on_a_com_pair_reaches_the_bridge():
+    """윈도우에서 실제로 타는 길 전체 — **가상 보드 → com0com 쌍 → 브리지.**"""
+    m = _load("fake_arduino")
+    sb = _load("serial_bridge")
+    pair = ComPair()
+    board = None
+    try:
+        board = VirtualBoard(link=m.SerialLink(pair.a, 115200),
+                             mode="bin", boot_s=0.0)
+        src = sb.SerialSource(pair.b, 115200, 250, True, settle_s=0.5)
+        try:
+            p = BinaryParser()
+            got = 0
+            t0 = time.perf_counter()
+            while got < 150 and time.perf_counter() - t0 < 6.0:
+                got += len(p.feed(src.read()))
+            assert got >= 150, f"com0com 쌍으로 샘플이 안 들어온다 ({got} 개)"
+        finally:
+            src.close()
+    finally:
+        if board is not None:
+            board.close()
+        pair.close()
+
+
+def test_windows_without_attach_says_to_install_com0com():
+    """**`--attach` 없이 윈도우에서 돌리면 무엇을 깔아야 하는지 말해야 한다.**
+
+    실제로 「termios 모듈이 없다」는 스택트레이스만 보고 무엇을 해야 할지
+    모르는 일이 있었다 (O-32).
+    """
+    m = _load("fake_arduino")
+    real = getattr(os, "openpty")
+    try:
+        del os.openpty                       # 윈도우인 척한다
+        with pytest.raises(SystemExit) as e:
+            m.open_link(None, 115200, False)
+        msg = str(e.value)
+        assert "com0com" in msg, "무엇을 깔아야 하는지 안 적혀 있다"
+        assert "--attach" in msg and "--port" in msg, "어떻게 붙는지 안 적혀 있다"
+    finally:
+        os.openpty = real
+
