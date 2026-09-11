@@ -420,7 +420,11 @@ bash scripts/run_d23_queue.sh      # ← Bash 도구의 run_in_background 로
 **감시**: D-24 구조 sweep(seed 4~7)이 도는 동안 watchdog Routine 을 다시 켰다
 (2026-09-10 12:37). 끝나면 대기로 되돌린다.
 
-### 지금 도는 것 — D-24 구조 sweep (seed 4~7)
+### 지금 도는 것 — D-24 seed sweep (seed 4~7)
+
+**구조 20 판은 끝났다**(2026-09-11 02:07, 실패 0). 이어서 **용량·손실 16 판**이
+돈다 — `m06_l1_quarter` · `m06_l1_half` · `m06_l3` · `m06_l6` × seed 4~7.
+기준 `m06_l1` 은 구조 판에서 이미 나왔으므로 다시 돌리지 않는다.
 
 **두 환경이 seed 를 나눠 갖는다.** Colab T4 가 0~3, 이 컨테이너가 4~7 이다.
 합치면 5 arm × 8 seed = 40 판이고, 고정 평가 기준으로 0.25 dB 를 가르기에
@@ -431,7 +435,8 @@ bash scripts/run_d23_queue.sh      # ← Bash 도구의 run_in_background 로
 > 나누지 않았다. 분석기가 섞임을 감지해 경고한다.
 
 ```bash
-띄우기   bash scripts/run_sweep_locked.sh structure 4-7    # 락을 잡는다
+띄우기   bash scripts/run_sweep_locked.sh structure 4-7            # 단계 이름으로
+         bash scripts/run_sweep_locked.sh --arms m06_l3,m06_l6 4-7 # arm 목록으로
          (Bash 도구의 run_in_background:true 로 — setsid nohup 은 죽는다, O-28)
 확인     python3 scripts/watchdog.py        # running · 학습프로세스 비어 있지 않을 것
 재개     같은 명령을 다시 실행. summary.json 이 있는 판은 건너뛴다
