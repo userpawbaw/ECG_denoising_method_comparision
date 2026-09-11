@@ -98,6 +98,68 @@ def attach_port(port: str, baud: int) -> tuple[int, int, str]:
     return ser.fileno(), -1, port
 
 
+def print_choices() -> int:
+    """`--list` — **무엇을 고를 수 있는지 한 화면에.**
+
+    이것이 없으면 「`--noise bw2` 가 왜 안 되나」를 스택트레이스로 배우게 된다.
+    """
+    from ecgdn.data.mitdb import available_records
+    from ecgdn.data.noise import NOISE_FNS
+    from ecgdn.data.nstdb import NSTDB_KINDS
+    from ecgdn.data.splits import MITDB_SPLIT
+
+    have = set(available_records())
+    print("== 기록 (--record) ==  디스크에 %d 개" % len(have))
+    note = {"test": "**시연은 여기서 고른다** — 모델이 학습에 안 쓴 기록",
+            "train": "모델이 학습한 기록. 쓰면 딥러닝이 실제보다 잘 나온다",
+            "val": "모델 선택에 쓴 기록",
+            "paced": "페이스메이커 — D1 평가에서 제외했다"}
+    for split in ("test", "train", "val", "paced"):
+        names = [r for r in MITDB_SPLIT.get(split, ()) if r in have]
+        miss = len(MITDB_SPLIT.get(split, ())) - len(names)
+        print(f"  {split:6s} ({len(names):2d}개{', 없는 것 %d' % miss if miss else ''}) "
+              f"{note[split]}")
+        print(f"         {' '.join(names)}")
+
+    print("\n== 잡음 (--noise) ==")
+    print(f"  NSTDB 실측 : {' '.join(sorted(NSTDB_KINDS))}"
+          "        <- 30 분 실측 녹음. 보고서의 D1 이 쓰는 것")
+    print(f"  합성       : {' '.join(sorted(NOISE_FNS))}")
+    print("  mixed      : 위에서 1~3 종을 랜덤 가중 합성 (학습 파이프라인과 같은 구성)")
+    print("  none       : 잡음 없이 기록 그대로 — 「기법이 깨끗한 신호를 망치나」")
+
+    print("\n== 방법 (브리지의 --methods) ==")
+    print("  M_FE  front-end 출력 그대로 (필터가 곧 방법)")
+    for mid, label in (("M00", "항등 — 배관 점검용"),
+                       ("M01", "대역통과 0.5-40 Hz + 자동 notch"),
+                       ("M02", "Savitzky-Golay"), ("M03", "DWT soft threshold"),
+                       ("M04", "SWT 적응 임계 (고전 최강)"),
+                       ("M05", "Sameni EKS")):
+        print(f"  {mid:5s} {label}")
+    print("  딥러닝: M06 · M06L6 · M08 · M08L6 · M09   "
+          "(results/<축>/<태그>/best.pt 가 있어야 한다)")
+
+    print("\n== 이런 것을 보고 싶으면 ==")
+    for want, cmd in (
+        ("기본 — 실측 잡음에서 방법이 갈리는 것",
+         "--record 100 --noise bw --snr-db 6"),
+        ("전원선 잡음이 지워지는 것 (M01 의 자동 notch)",
+         "--record 103 --noise pli --snr-db 6"),
+        ("근전도가 QRS 를 먹는 어려운 판",
+         "--record 105 --noise ma --snr-db 0"),
+        ("기저선이 크게 흔들리는 판",
+         "--record 111 --noise bw --snr-db 0"),
+        ("깨끗한 신호를 망치지 않는가",
+         "--record 100 --noise none"),
+        ("깊은 잡음 — 어디서 무너지나",
+         "--record 200 --noise mixed --snr-db -5 --seed 3"),
+    ):
+        print(f"  {want}\n      … --source d1 {cmd}")
+    print("\n  (`mixed` 는 seed 마다 성분이 바뀐다. 같은 그림을 다시 보려면 "
+          "--seed 를 고정한다)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fs", type=int, default=500, choices=[250, 500, 1000],
@@ -148,9 +210,14 @@ def main() -> int:
     ap.add_argument("--hiccup-ms", type=float, default=40.0,
                     help="그 «안 가져가는» 시간 [ms]")
     ap.add_argument("--attach", help="PTY 대신 이 포트에 붙는다 (com0com·socat)")
+    ap.add_argument("--list", action="store_true",
+                    help="고를 수 있는 기록·잡음·방법을 보여주고 끝낸다")
     ap.add_argument("--port-file", help="포트 이름을 이 파일에 적는다")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
+
+    if args.list:
+        return print_choices()
 
     if args.source == "d1":
         counts, info = record_counts(
@@ -168,6 +235,20 @@ def main() -> int:
                   "합성 잡음만 썼다. data/raw/nstdb 를 확인할 것")
         print(f"  전극 단 진폭 {info['mv_p2p']:.2f} mV p-p · "
               f"ADC 클리핑 {100 * info['clipped_frac']:.2f} %")
+        # **어느 split 인지가 시연에서 중요하다.** `train` 을 쓰면 딥러닝이
+        # 자기가 학습한 파형을 보게 되고, 화면에 수치가 안 떠도 파형 품질이
+        # 실제보다 좋아 보인다. 조용히 지나가면 안 되는 자리다.
+        where = info["split_of_record"]
+        if where != "test":
+            why = {"train": "**모델이 이 기록으로 학습했다.** 딥러닝이 자기가 본 "
+                            "파형을 보게 되므로 실제보다 잘 나온다",
+                   "val": "모델 선택(early stopping)에 쓴 기록이다 — 완전히 "
+                          "새로운 신호가 아니다",
+                   "paced": "페이스메이커 기록이라 **D1 평가에서 제외했다** "
+                            "(01_design). 파형 자체가 다른 문제다",
+                   }.get(where, "D1 split 밖의 기록이다")
+            print(f"  [warn] 기록 {info['record']} 은 **{where}** split 이다 — {why}.\n"
+                  "         시연에는 test split 을 쓴다 (`--list` 로 목록을 본다)")
         if info["clipped_frac"] > 0.001:
             print(f"  [warn] R 파가 ADC 레인지를 넘는다 — 이득 {args.gain:g} 에서 "
                   f"잡을 수 있는 폭은 ±{args.vref / args.gain * 1e3 / 2:.2f} mV 다. "

@@ -801,3 +801,56 @@ def test_demo_cards_share_the_lane_renderer(card: str):
     assert not missing, (
         f"{card} 이 {missing} 를 안 쓴다 — 겹쳐 그리면 R-peak 만 보인다 "
         "(docs/33_card_design_samples.md «파형 패널을 다시 만들었다»)")
+
+# --------------------------------------------------------------------------
+# 사용자가 **직접 실행하는** 스크립트의 옵션은 전부 문서에 있어야 한다.
+# 기본 예시만 보고 돌리면 고를 수 있는 것을 모른 채 한 가지 그림만 보게 된다 —
+# 실제로 `--record`·`--noise` 를 문서에서 못 찾아 "여러 개를 못 돌려보겠다" 는
+# 지적이 나왔다. 옵션을 늘리고 문서를 안 고치면 여기서 걸린다.
+USER_FACING_SCRIPTS = {
+    "scripts/fake_arduino.py": "docs/30_realtime_demo.md",
+    "scripts/serial_bridge.py": "docs/30_realtime_demo.md",
+}
+
+
+def _cli_flags(rel: str) -> list[str]:
+    src = (ROOT / rel).read_text(encoding="utf-8")
+    return sorted(set(re.findall(r"""add_argument\(\s*["'](--[\w-]+)""", src)))
+
+
+def _option_reference(doc: str) -> str:
+    """옵션 참조표(6.4) 만 잘라낸다.
+
+    **문서 아무 데나 한 번 언급된 것으로는 부족하다.** 그러면 예시 명령줄에
+    스쳐 지나간 옵션도 «문서화됨» 이 되어, 정작 한자리에 모아 놓은 표는
+    구멍이 난 채로 통과한다 (처음에 그렇게 짰다가 검사가 안 잡는 것을 봤다).
+    """
+    body = (ROOT / doc).read_text(encoding="utf-8")
+    i = body.index("### 6.4")
+    j = body.index("\n## ", i)
+    return body[i:j]
+
+
+@pytest.mark.parametrize("script,doc", sorted(USER_FACING_SCRIPTS.items()))
+def test_every_option_of_a_user_facing_script_is_documented(script: str, doc: str):
+    flags = _cli_flags(script)
+    assert flags, f"{script} 에서 옵션을 못 찾았다 — 추출 규칙이 낡았다"
+    ref = _option_reference(doc)
+    missing = [f for f in flags if f"`{f}`" not in ref]
+    assert not missing, (
+        f"{script} 의 옵션이 {doc} 6.4 참조표에 없다: {missing}\n"
+        "  실행 파일의 옵션은 **생략 없이** 한자리에 싣는다")
+
+
+def test_the_option_extractor_would_notice_a_new_flag():
+    """검사가 살아 있는지 — **없는 옵션을 넣어 잡히는지**까지 본다.
+
+    추출 규칙이 낡아 빈 목록을 돌려주면 위 검사는 조용히 통과한다.
+    """
+    flags = _cli_flags("scripts/fake_arduino.py")
+    for must in ("--source", "--record", "--noise", "--list"):
+        assert must in flags, f"{must} 를 못 뽑았다 — 추출 규칙을 고칠 것"
+    ref = _option_reference("docs/30_realtime_demo.md")
+    assert "`--port-file`" in ref and "`--methods`" in ref, "참조표를 잘못 잘랐다"
+    assert "`--zzz-not-an-option`" not in ref       # 대조군
+

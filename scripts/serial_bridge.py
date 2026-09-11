@@ -531,9 +531,16 @@ def main() -> int:
                     except queue.Empty:
                         pass
         except LinkLost as e:
-            link_err.append(str(e))
+            # **정상 종료를 끊김으로 보고하면 안 된다.** 본체가 끝나며
+            # `stop.set()` 뒤에 `source.close()` 를 부르는데, 그때 읽기가
+            # 이미 `read()` 안에 들어가 있었으면 닫힌 fd 로 Errno 9 가 난다.
+            # 그것을 경보로 올리면 `--dur` 로 끝내거나 Ctrl+C 를 누를 때마다
+            # 「케이블이 빠졌다」가 뜬다 (O-31).
+            if not stop.is_set():
+                link_err.append(str(e))
         except Exception as e:                               # pragma: no cover
-            link_err.append(f"{type(e).__name__}: {e}")
+            if not stop.is_set():
+                link_err.append(f"{type(e).__name__}: {e}")
         finally:
             stop.set()
 

@@ -356,3 +356,40 @@ def test_the_requested_snr_is_what_actually_goes_on_the_wire():
         assert abs(info["snr_measured"] - want) < 0.01, \
             f"요청 {want} dB 인데 실제 {info['snr_measured']:.2f} dB 다"
 
+@pytest.mark.skipif(not (MITDB.exists() and any(MITDB.glob("*.hea"))),
+                    reason="MIT-BIH 가 없다")
+def test_a_wrong_name_says_what_can_be_chosen():
+    """**틀린 이름은 wfdb 안쪽이 아니라 여기서 막힌다.**
+
+    예전에는 `--noise bw2` 가 잡음 공장 깊은 곳에서 KeyError 로 터졌고,
+    무엇을 고를 수 있는지는 스택트레이스 밑에 묻혔다.
+    """
+    from ecgdn.realtime.fake_board import record_counts
+
+    with pytest.raises(ValueError, match="--list"):
+        record_counts("999", 250, dur_s=5.0)
+    with pytest.raises(ValueError) as e:
+        record_counts("100", 250, noise="bw2", dur_s=5.0)
+    msg = str(e.value)
+    assert "NSTDB 실측" in msg and "합성" in msg, "고를 수 있는 것이 안 적혀 있다"
+    assert "mixed" in msg and "none" in msg
+
+
+@pytest.mark.skipif(not (MITDB.exists() and any(MITDB.glob("*.hea"))),
+                    reason="MIT-BIH 가 없다")
+def test_the_record_says_which_split_it_belongs_to():
+    """**`train` 기록을 시연에 쓰면 딥러닝이 자기가 학습한 파형을 본다.**
+
+    화면에 수치가 안 떠도 파형 품질이 실제보다 좋아진다. 그래서 어느 split
+    인지를 함께 돌려주고, 스크립트가 `test` 가 아니면 경고한다.
+    """
+    from ecgdn.data.splits import MITDB_SPLIT
+    from ecgdn.realtime.fake_board import record_counts
+
+    for split, name in (("test", "100"), ("train", "101"),
+                        ("val", "208"), ("paced", "102")):
+        assert name in MITDB_SPLIT[split], f"split 표가 바뀌었다: {name}"
+        _, info = record_counts(name, 250, noise="none", dur_s=5.0)
+        assert info["split_of_record"] == split, \
+            f"{name} 을 {info['split_of_record']} 로 봤다 (실제 {split})"
+

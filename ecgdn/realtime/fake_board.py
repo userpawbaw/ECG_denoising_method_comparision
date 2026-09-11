@@ -370,9 +370,28 @@ def record_counts(name: str, fs: int, *, noise: str = "mixed",
     `noise="none"` 이면 기록을 그대로 싣는다 — 「기법이 깨끗한 신호를
     망치지는 않는가」를 보는 자리다.
     """
-    from ..data.mitdb import load_record
+    from ..data.mitdb import available_records, load_record
     from ..data.mixer import measure_snr, mix_at_snr
-    from ..data.noise import make_noise, mixed_noise
+    from ..data.noise import NOISE_FNS, make_noise, mixed_noise
+    from ..data.nstdb import NSTDB_KINDS
+    from ..data.splits import MITDB_SPLIT
+
+    # **틀린 이름은 여기서 막는다.** 안 그러면 wfdb 나 잡음 공장 깊은 곳에서
+    # 스택트레이스가 나고, 무엇을 고를 수 있는지는 거기 안 적혀 있다.
+    have = available_records(root)
+    if str(name) not in have:
+        raise ValueError(
+            f"기록 {name!r} 이 없다 ({root}). "
+            f"있는 것 {len(have)} 개 중 앞의 다섯: {have[:5]} …\n"
+            "  시연에는 **test split** 을 쓴다 — "
+            "`python3 scripts/fake_arduino.py --list` 로 목록을 본다")
+    ok_noise = set(NOISE_FNS) | set(NSTDB_KINDS) | {"mixed", "none"}
+    if noise not in ok_noise:
+        raise ValueError(
+            f"잡음 {noise!r} 을 모른다. 고를 수 있는 것:\n"
+            f"  NSTDB 실측 — {sorted(NSTDB_KINDS)}\n"
+            f"  합성      — {sorted(NOISE_FNS)}\n"
+            f"  그 밖     — ['mixed', 'none']")
 
     rec = load_record(name, root, lead=lead, fs_out=float(fs))
     x = np.asarray(rec.x, dtype=np.float64)
@@ -383,9 +402,13 @@ def record_counts(name: str, fs: int, *, noise: str = "mixed",
         raise ValueError(f"구간이 너무 짧다: {name} @ {offset_s:g}s -> {x.size} 샘플")
 
     gen = np.random.default_rng(seed)
+    # **이 기록이 D1 의 어느 split 인가.** `train` 을 시연에 쓰면 딥러닝이
+    # 자기가 학습한 파형을 보게 된다 — 화면에 수치가 안 떠도 파형 품질이
+    # 실제보다 좋아 보인다. 그래서 어디에 속하는지 함께 돌려준다.
+    where = next((k for k, v in MITDB_SPLIT.items() if str(name) in v), "unlisted")
     info: dict = {"record": name, "lead": rec.lead, "fs": fs,
                   "n": int(x.size), "offset_s": float(offset_s),
-                  "noise": noise, "snr_db": float(snr_db)}
+                  "noise": noise, "snr_db": float(snr_db), "split_of_record": where}
     if noise == "none":
         y = x
         info["snr_measured"] = None
