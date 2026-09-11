@@ -1,0 +1,28 @@
+{
+  "run_id": "m10_l1__s7",
+  "arm": "m10_l1",
+  "seed": 7,
+  "n_params": 979926,
+  "loss": "L1",
+  "best_metric": 2.977291915565729,
+  "best_epoch": 15,
+  "n_epochs": 27,
+  "wall_s": 2116.7,
+  "sec_per_epoch": 78.4,
+  "source": "mitdb",
+  "fixed_snr_in": 15.496414953976636,
+  "fixed_snr_imp_strict": 3.5168405499309303,
+  "fixed_snr_imp_scaled": 3.7001382816582917,
+  "fixed_gain_bias": 1.0027313990518452,
+  "fixed_rmse": 0.02860041709136567,
+  "fixed_loss": 0.001289323001401499,
+  "env": {
+    "git_commit": "fb4eaef6ff7c43c98037310b75e5940cd5f375bc",
+    "python": "3.11.15",
+    "torch": "2.13.0+cu130",
+    "platform": "Linux-6.18.44-fc-v24-x86_64-with-glibc2.39",
+    "device": "cpu",
+    "amp": false,
+    "threads": 4
+  }
+}
