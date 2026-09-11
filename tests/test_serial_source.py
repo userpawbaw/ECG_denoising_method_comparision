@@ -57,9 +57,10 @@ class VirtualBoard:
     그것이 실제 Uno 에서 DTR 이 하는 일의 자리다.
     """
 
-    def __init__(self, **kw):
+    def __init__(self, link=None, **kw):
         self.fa = _load("fake_arduino")
-        self.master, self.slave, self.port = self.fa.open_virtual_port()
+        self.link = link if link is not None else self.fa.PtyLink()
+        self.port = self.link.name
         kw.setdefault("fs", 500)
         self._kw = kw
         self.board = self._new()
@@ -76,15 +77,8 @@ class VirtualBoard:
     def _run(self):
         while not self._stop.is_set():
             now = time.perf_counter()
-            cmd = b""
-            live = True
-            try:
-                cmd = os.read(self.master, 256)
-            except BlockingIOError:
-                pass
-            except OSError as e:
-                if e.errno == errno.EIO:
-                    live = False
+            cmd = self.link.read(256)
+            live = self.link.attached()
             if live and not self._attached:
                 self.resets += 1
                 self.board = self._new()
@@ -96,21 +90,14 @@ class VirtualBoard:
             self.pipe.push(self.board.poll(now))
             data = self.pipe.pop(now) if live else b""
             if data:
-                try:
-                    os.write(self.master, data)
-                except (BlockingIOError, OSError):
-                    pass
+                self.link.write(data)
             time.sleep(0.002)
 
     def unplug(self) -> None:
         """케이블을 뽑는다."""
         self._stop.set()
         self._th.join(timeout=1.0)
-        for fd in (self.master, self.slave):
-            try:
-                os.close(fd)
-            except OSError:
-                pass
+        self.link.close()
 
     def close(self) -> None:
         if not self._stop.is_set():
@@ -330,4 +317,135 @@ def test_bursty_usb_delivery_does_not_shift_the_time_axis():
             src.close()
     finally:
         b.close()
+
+# ===================================================== 윈도우 경로 (`--attach`)
+class ComPair:
+    """**com0com 의 `COM8 ↔ COM9` 쌍을 흉내낸다.**
+
+    윈도우에는 `pty` 가 없어 가상 보드가 포트를 **만들지** 못한다. 그래서
+    com0com 이 만든 쌍의 한쪽에 붙고(`--attach COM8`), 브리지가 다른 쪽을
+    연다(`--port COM9`). 그 배선을 리눅스에서 재현해 **같은 코드 경로**
+    (`SerialLink` — pyserial 의 `read`/`write`) 를 태운다.
+
+    한동안 문서가 이 길을 윈도우 대안으로 안내했는데, `attach_port` 가
+    `ser.fileno()` 를 쓰고 있어서 **윈도우에서는 그 줄에서 터졌다** (O-32).
+    `fileno()` 는 pyserial 의 POSIX 구현에만 있다.
+    """
+
+    def __init__(self):
+        import pty
+
+        m1, s1 = pty.openpty()
+        m2, s2 = pty.openpty()
+        for fd in (m1, m2, s1, s2):
+            os.set_blocking(fd, False)
+        self.a, self.b = os.ttyname(s1), os.ttyname(s2)
+        self._slaves = (s1, s2)
+        self._m = (m1, m2)
+        self._stop = threading.Event()
+        self._th = threading.Thread(target=self._pump, daemon=True)
+        self._th.start()
+
+    def _pump(self):
+        m1, m2 = self._m
+        while not self._stop.is_set():
+            moved = False
+            for src, dst in ((m1, m2), (m2, m1)):
+                try:
+                    d = os.read(src, 4096)
+                except (BlockingIOError, OSError):
+                    d = b""
+                if d:
+                    moved = True
+                    try:
+                        os.write(dst, d)
+                    except (BlockingIOError, OSError):
+                        pass
+            if not moved:
+                time.sleep(0.001)
+
+    def close(self):
+        self._stop.set()
+        self._th.join(timeout=1.0)
+        for fd in self._m + self._slaves:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def test_the_serial_link_works_without_fileno():
+    """**윈도우 pyserial 에는 `fileno()` 가 없다.** 그것 없이 도는지 본다."""
+    m = _load("fake_arduino")
+    pair = ComPair()
+    try:
+        link = m.SerialLink(pair.a, 115200)
+        try:
+            assert link.can_detect is False, \
+                "시리얼 포트로는 상대가 여는 것을 볼 수 없다"
+            import serial
+            other = serial.Serial(pair.b, 115200, timeout=0.2)
+            try:
+                link.write(b"hello-from-board")
+                got = b""
+                t0 = time.perf_counter()
+                while len(got) < 16 and time.perf_counter() - t0 < 2.0:
+                    got += other.read(64)
+                assert got == b"hello-from-board", f"반대쪽이 받은 것: {got!r}"
+                other.write(b"2b")
+                cmd = b""
+                t0 = time.perf_counter()
+                while len(cmd) < 2 and time.perf_counter() - t0 < 2.0:
+                    cmd += link.read(64)
+                assert cmd == b"2b", f"보드가 받은 명령: {cmd!r}"
+            finally:
+                other.close()
+        finally:
+            link.close()
+    finally:
+        pair.close()
+
+
+def test_a_board_on_a_com_pair_reaches_the_bridge():
+    """윈도우에서 실제로 타는 길 전체 — **가상 보드 → com0com 쌍 → 브리지.**"""
+    m = _load("fake_arduino")
+    sb = _load("serial_bridge")
+    pair = ComPair()
+    board = None
+    try:
+        board = VirtualBoard(link=m.SerialLink(pair.a, 115200),
+                             mode="bin", boot_s=0.0)
+        src = sb.SerialSource(pair.b, 115200, 250, True, settle_s=0.5)
+        try:
+            p = BinaryParser()
+            got = 0
+            t0 = time.perf_counter()
+            while got < 150 and time.perf_counter() - t0 < 6.0:
+                got += len(p.feed(src.read()))
+            assert got >= 150, f"com0com 쌍으로 샘플이 안 들어온다 ({got} 개)"
+        finally:
+            src.close()
+    finally:
+        if board is not None:
+            board.close()
+        pair.close()
+
+
+def test_windows_without_attach_says_to_install_com0com():
+    """**`--attach` 없이 윈도우에서 돌리면 무엇을 깔아야 하는지 말해야 한다.**
+
+    실제로 「termios 모듈이 없다」는 스택트레이스만 보고 무엇을 해야 할지
+    모르는 일이 있었다 (O-32).
+    """
+    m = _load("fake_arduino")
+    real = getattr(os, "openpty")
+    try:
+        del os.openpty                       # 윈도우인 척한다
+        with pytest.raises(SystemExit) as e:
+            m.open_link(None, 115200, False)
+        msg = str(e.value)
+        assert "com0com" in msg, "무엇을 깔아야 하는지 안 적혀 있다"
+        assert "--attach" in msg and "--port" in msg, "어떻게 붙는지 안 적혀 있다"
+    finally:
+        os.openpty = real
 

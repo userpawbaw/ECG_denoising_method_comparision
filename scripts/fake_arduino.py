@@ -64,38 +64,160 @@ from ecgdn.realtime.fake_board import (BOOTLOADER_S, FakeBoard, UsbPipe,
                                        record_counts, synth_counts)
 
 
-def open_virtual_port(hold_open: bool = False) -> tuple[int, int, str]:
-    """PTY 한 쌍을 연다. 돌려주는 이름이 «가상 아두이노가 꽂힌 포트» 다.
+class Link:
+    """선의 우리 쪽 끝. **PTY 와 pyserial 을 같은 얼굴로 감싼다.**
 
-    `hold_open=False` 면 slave 를 놓는다 — 그래야 **누가 포트를 여는지 보인다**
-    (master 의 EIO 가 풀리는 순간). 그것이 DTR 리셋의 자리다.
+    윈도우에는 `pty`·`tty`·`termios` 가 없고, pyserial 의 윈도우 구현에는
+    **`fileno()` 가 없다**(POSIX 전용이다). 그래서 「fd 를 받아 `os.read` 로
+    읽는다」는 전제가 윈도우에서 통째로 무너진다 — 한동안 문서가 `--attach` 를
+    윈도우 대안으로 안내했는데 **그 길도 같은 이유로 막혀 있었다** (O-32).
+
+    `attached` 는 「지금 누가 반대쪽을 열고 있는가」다. PTY 는 그것을 알 수
+    있고(EIO 가 풀리는 순간이 곧 DTR 리셋의 자리), 시리얼 포트는 **알 수 없다** —
+    그때는 `None` 을 돌려주고 리셋 흉내가 꺼진다.
     """
-    import pty
-    import tty
 
-    master, slave = pty.openpty()
-    name = os.ttyname(slave)
-    # **에코를 끈다.** 안 끄면 브리지가 보낸 `'2'`·`'b'` 가 그대로 되돌아오고,
-    # 바이너리 파서는 그것을 «깨진 프레임» 으로 센다 — 없는 고장이 보인다.
-    tty.setraw(master)
-    tty.setraw(slave)
-    os.set_blocking(master, False)
-    if not hold_open:
-        os.close(slave)
-        slave = -1
-    return master, slave, name
+    name: str = ""
+    can_detect: bool = False
+
+    def read(self, n: int = 256) -> bytes:
+        raise NotImplementedError
+
+    def write(self, data: bytes) -> int:
+        raise NotImplementedError
+
+    def attached(self) -> bool:
+        return True
+
+    def close(self) -> None:
+        pass
 
 
-def attach_port(port: str, baud: int) -> tuple[int, int, str]:
-    """이미 있는 포트(com0com·socat 이 만든 쪽)에 붙는다.
+class PtyLink(Link):
+    """리눅스·맥. 커널이 만든 tty 한 쌍의 master 쪽을 쥔다."""
 
-    이쪽은 **열림 감지가 안 된다** — 상대가 열든 말든 우리 fd 는 멀쩡하다.
-    그래서 `--attach` 에서는 리셋 흉내가 꺼진다.
+    can_detect = True
+
+    def __init__(self, hold_open: bool = False):
+        import pty
+        import tty
+
+        self.master, slave = pty.openpty()
+        self.name = os.ttyname(slave)
+        # **에코를 끈다.** 안 끄면 브리지가 보낸 `'2'`·`'b'` 가 그대로 되돌아오고,
+        # 바이너리 파서는 그것을 «깨진 프레임» 으로 센다 — 없는 고장이 보인다.
+        tty.setraw(self.master)
+        tty.setraw(slave)
+        os.set_blocking(self.master, False)
+        if hold_open:
+            self.slave = slave
+            self.can_detect = False      # 우리가 붙들면 남이 여는 것을 못 본다
+        else:
+            os.close(slave)
+            self.slave = -1
+        self._live = True
+
+    def read(self, n: int = 256) -> bytes:
+        try:
+            return os.read(self.master, n)
+        except BlockingIOError:
+            self._live = True
+            return b""
+        except OSError as e:
+            # **아무도 slave 를 안 열고 있으면 EIO 다.** 그것이 풀리는 순간이
+            # 「포트가 열렸다」이고, 실제 Uno 가 리셋되는 자리와 같다.
+            if e.errno == errno.EIO and self.can_detect:
+                self._live = False
+                return b""
+            raise
+        finally:
+            pass
+
+    def write(self, data: bytes) -> int:
+        try:
+            return os.write(self.master, data)
+        except BlockingIOError:
+            return 0                     # PC 가 안 읽어 버퍼가 찼다 — 잃는 자리다
+        except OSError as e:
+            if e.errno == errno.EIO:
+                self._live = False
+                return 0
+            raise
+
+    def attached(self) -> bool:
+        return self._live or not self.can_detect
+
+    def close(self) -> None:
+        for fd in (self.slave, self.master):
+            if fd is not None and fd >= 0:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+
+
+class SerialLink(Link):
+    """이미 있는 포트에 붙는다 — **윈도우의 com0com, 리눅스·맥의 socat.**
+
+    `fileno()` 를 쓰지 않는다. 윈도우 pyserial 에는 그 메서드가 아예 없고,
+    있더라도 윈도우 시리얼 핸들에는 `os.read`/`os.write` 가 안 통한다.
     """
-    import serial
 
-    ser = serial.Serial(port, baud, timeout=0)
-    return ser.fileno(), -1, port
+    can_detect = False                   # 상대가 열든 말든 우리 포트는 멀쩡하다
+
+    def __init__(self, port: str, baud: int):
+        try:
+            import serial
+        except ImportError:                                  # pragma: no cover
+            raise SystemExit("pyserial 이 필요하다:  pip install pyserial")
+        try:
+            self.ser = serial.Serial(port, baud, timeout=0, write_timeout=0)
+        except Exception as e:
+            raise SystemExit(
+                f"포트를 열 수 없다: {port}\n  {e}\n"
+                "  - com0com 이라면 **쌍의 한쪽**을 여기에 준다 (예: --attach COM8).\n"
+                "    브리지에는 **다른 쪽**을 준다 (--port COM9)\n"
+                "  - 장치 관리자 → 포트(COM & LPT) 에서 이름을 확인할 것\n"
+                "  - 다른 프로그램(아두이노 IDE 시리얼 모니터 등)이 잡고 있지 않은지")
+        self.name = port
+
+    def read(self, n: int = 256) -> bytes:
+        waiting = getattr(self.ser, "in_waiting", 0)
+        if not waiting:
+            return b""
+        return self.ser.read(min(n, waiting))
+
+    def write(self, data: bytes) -> int:
+        try:
+            return self.ser.write(data) or 0
+        except Exception:
+            # 윈도우에서는 write_timeout 초과가 예외로 온다. 보드는 기다려
+            # 주지 않으므로 여기서도 버린다.
+            return 0
+
+    def close(self) -> None:
+        try:
+            self.ser.close()
+        except Exception:
+            pass
+
+
+def open_link(attach: str | None, baud: int, hold_open: bool) -> Link:
+    """무엇에 붙을지 고른다. **윈도우에서는 `--attach` 가 유일한 길이다.**"""
+    if attach:
+        return SerialLink(attach, baud)
+    if not hasattr(os, "openpty"):
+        raise SystemExit(
+            "이 운영체제에는 **가상 시리얼 포트를 만드는 기능이 없다**"
+            f" (지금: {sys.platform}).\n"
+            "  `pty`·`tty`·`termios` 는 리눅스·맥 전용이라 여기서는 못 쓴다.\n\n"
+            "  윈도우에서는 **포트 쌍을 만들어 주는 프로그램**을 먼저 깐다:\n"
+            "    1. com0com (무료, https://sourceforge.net/projects/com0com/)\n"
+            "       설치 후 Setup 에서 CNCA0/CNCB0 을 COM8/COM9 로 바꾼다\n"
+            "    2. 이 스크립트에 한쪽을:   --attach COM8\n"
+            "    3. 브리지에 다른 쪽을:     --port COM9\n\n"
+            "  절차는 docs/30_realtime_demo.md 6.2.1 «윈도우에서는» 을 볼 것.")
+    return PtyLink(hold_open=hold_open)
 
 
 def print_choices() -> int:
@@ -271,12 +393,8 @@ def main() -> int:
                          accept_commands=(args.firmware == "current"),
                          boot_s=boot_s)
 
-    if args.attach:
-        fd, slave, name = attach_port(args.attach, args.baud)
-        can_detect = False
-    else:
-        fd, slave, name = open_virtual_port(hold_open=args.hold_open)
-        can_detect = slave < 0
+    link = open_link(args.attach, args.baud, args.hold_open)
+    name, can_detect = link.name, link.can_detect
     # 열림을 못 보는 구성에서는 켜자마자 도는 보드가 맞다 (부트로더도 이미 끝난 것).
     board = new_board(args.boot_s if can_detect else 0.0)
     pipe = UsbPipe(poll_ms=args.usb_poll_ms, packet=args.usb_packet,
@@ -290,6 +408,9 @@ def main() -> int:
     else:
         why = "--attach" if args.attach else "--hold-open"
         print(f"  [{why}] 열림을 못 보므로 **리셋 흉내가 꺼진다.** 보드는 계속 돈다")
+        if args.attach:
+            print("         (com0com·socat 이 만든 쌍에서는 상대가 여는 것을 "
+                  "볼 수 없다 — 브리지를 먼저 띄워도 된다)")
     if args.hiccup_every > 0:
         print(f"  USB: {args.usb_poll_ms:g} ms 폴링 · {args.usb_packet} B 패킷 · "
               f"{args.hiccup_every:g} s 마다 {args.hiccup_ms:g} ms 멈춤")
@@ -310,17 +431,8 @@ def main() -> int:
                 break
             # ---- 명령을 읽으면서 «누가 열고 있는가» 를 함께 본다.
             # PTY master 는 slave 를 아무도 안 열었을 때만 EIO 를 낸다.
-            cmd = b""
-            live = True
-            try:
-                cmd = os.read(fd, 256)
-            except BlockingIOError:
-                pass
-            except OSError as e:
-                if e.errno == errno.EIO and can_detect:
-                    live = False
-                elif e.errno not in (errno.EAGAIN, errno.EIO):
-                    raise
+            cmd = link.read(256)
+            live = link.attached()
             if can_detect and live and not attached:
                 # **DTR 리셋.** 실제 Uno 가 이 자리에서 처음부터 시작한다.
                 n_reset += 1
@@ -346,16 +458,10 @@ def main() -> int:
             pipe.push(board.poll(now))
             data = pipe.pop(now) if attached else b""
             if data:
-                try:
-                    n_out += os.write(fd, data)
-                except BlockingIOError:
-                    # PC 가 안 읽어 OS 버퍼가 찼다. **보드는 기다려 주지 않는다** —
-                    # 실제 보드에서도 이 자리는 잃는 자리다.
-                    pass
-                except OSError as e:
-                    if e.errno != errno.EIO:
-                        raise
-                    attached = False       # 그 사이 닫혔다
+                # 못 나간 만큼은 **잃는다.** PC 가 안 읽어 버퍼가 찼거나 그
+                # 사이 닫힌 것이고, 실제 보드도 기다려 주지 않는다.
+                n_out += link.write(data)
+                attached = link.attached()
             if not args.quiet and now - t_log >= 1.0:
                 t_log = now
                 state = "연결됨" if attached else "**아무도 안 열었다**"
@@ -369,9 +475,7 @@ def main() -> int:
     except KeyboardInterrupt:
         pass
     finally:
-        if slave >= 0:
-            os.close(slave)
-        os.close(fd)
+        link.close()
         if args.port_file:
             Path(args.port_file).unlink(missing_ok=True)
     el = max(time.perf_counter() - t0, 1e-9)

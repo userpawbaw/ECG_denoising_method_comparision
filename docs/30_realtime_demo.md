@@ -765,17 +765,77 @@ ASCII 에만 해당한다.
 > 뒤부터 4 %가 조용히 사라진다.** 그리고 ASCII 는 `seq` 가 없어 **손실을 셀 수
 > 없다**. 1 kHz 수집은 BINARY 로 하거나 baud 를 올려야 한다.
 
-#### 윈도우·맥에서는
+#### 윈도우에서는 — **com0com 을 먼저 깐다** `[측정]`
 
-`os.openpty()` 는 POSIX 전용이다. 윈도우는 **com0com**(무료) 이나 VSPE 로
-`COM8 ↔ COM9` 쌍을 만든 뒤 `--attach COM8` 로 붙이면 아래가 같아진다.
-리눅스·맥에서 `socat -d -d pty,raw,echo=0 pty,raw,echo=0` 을 쓰는 경우도 같다 —
-다만 그쪽은 설치가 전제이고, `--attach` 없이도 되는 것이 기본 경로다.
+`pty`·`tty`·`termios` 는 **POSIX 전용**이다. 윈도우에는 그 모듈 자체가 없어
+가상 보드가 포트를 **만들지** 못한다. 그래서 순서가 뒤집힌다 — **포트 쌍을
+먼저 만들어 놓고 거기에 붙는다.**
+
+| | 리눅스 · 맥 | **윈도우** |
+|---|---|---|
+| 포트를 누가 만드나 | `fake_arduino.py` 가 직접 (`os.openpty`) | **com0com 이 미리** 만들어 둔다 |
+| 실행 | `--port-file /tmp/fakeuno` | `--attach COM8` |
+| 브리지 | `--port $(cat /tmp/fakeuno)` | `--port COM9` |
+| 포트 열림 감지 → **DTR 리셋 흉내** | ✅ | ❌ (쌍에서는 상대가 여는 것이 안 보인다) |
+
+##### 1. com0com 설치
+
+[com0com](https://sourceforge.net/projects/com0com/) (무료·오픈소스)을 받아
+설치한다. 설치 시 서명되지 않은 드라이버 경고가 나오면 그대로 진행한다.
+설치되면 **Setup Command Prompt** 또는 `setupc.exe` 에서 기본 쌍
+`CNCA0 ↔ CNCB0` 이 이미 만들어져 있는데, 이름이 `COM` 으로 시작하지 않으면
+아두이노 IDE 나 일부 도구가 못 찾으므로 바꿔 준다:
+
+```
+change CNCA0 PortName=COM8
+change CNCB0 PortName=COM9
+```
+
+장치 관리자 → **포트(COM & LPT)** 에 `COM8` · `COM9` 가 보이면 된 것이다.
+
+> **VSPE 도 같은 일을 한다**(Pair 장치를 만든다). 무료판은 64 bit 에서 제약이
+> 있으니 com0com 을 먼저 권한다.
+
+##### 2. 창 두 개로 띄운다
+
+```powershell
+# 창 1 — 가상 보드가 COM8 에 붙는다
+python scripts\fake_arduino.py --attach COM8 --source d1 --record 100 `
+       --noise bw --snr-db 6 --fs 250
+
+# 창 2 — 브리지가 **반대쪽** COM9 를 연다
+python scripts\serial_bridge.py --port COM9 --board-fs 250 `
+       --methods M_FE,M01,M04 --serve
+#   -> http://127.0.0.1:8765/live.html
+```
+
+**한쪽에 쓴 것이 다른 쪽에서 읽히는 것**이 com0com 쌍이므로, 두 창이 같은
+포트를 열면 안 된다 — `--attach` 와 `--port` 는 **반드시 다른 이름**이다.
+
+##### 무엇이 달라지나
+
+- **DTR 리셋 흉내가 꺼진다.** 쌍에서는 상대가 포트를 여는 것을 볼 수 없다.
+  그래서 부트로더 침묵(1.6 s)과 「성급한 명령이 먹힌다」는 여기서 재현되지
+  않는다. 창 1 이 시작할 때 그렇게 적어 준다. 대신 **브리지를 먼저 띄워도
+  된다** — 리눅스 쪽은 순서가 있지만 여기는 없다.
+- 나머지는 같다. 선 규격·송신 버퍼 드롭·USB 뭉침·손실 계수는 그대로 돈다.
+
+리눅스·맥에서도 같은 배선을 쓸 수 있다:
+`socat -d -d pty,raw,echo=0 pty,raw,echo=0` 이 만든 두 이름을 `--attach` 와
+`--port` 에 나눠 준다. 다만 그쪽은 설치가 전제이고, **`--attach` 없이 되는
+것이 기본 경로**다.
 
 > **에코를 반드시 끈다.** 안 끄면 브리지가 보낸 `'2'`·`'b'` 가 되돌아오고
 > 바이너리 파서가 그것을 «깨진 프레임» 으로 센다 — **없는 고장이 보인다.**
 > `fake_arduino.py` 는 PTY 양쪽을 raw 로 두므로 이 문제가 없고, socat 은
-> `echo=0` 이 그 일을 한다.
+> `echo=0` 이, com0com 은 기본 설정이 그 일을 한다.
+
+> **한동안 이 절이 틀렸다.** 「com0com 으로 쌍을 만들고 `--attach` 로 붙이면
+> 된다」고만 적어 뒀는데, 그 코드가 `ser.fileno()` 를 쓰고 있었다 —
+> **`fileno()` 는 pyserial 의 POSIX 구현에만 있다.** 윈도우에서는 그 줄에서
+> 터졌고, 사용자가 본 것은 「termios 모듈이 없다」는 스택트레이스였다(O-32).
+> 지금은 `SerialLink` 가 `read`/`write` 만 쓰고, **리눅스에서 com0com 쌍을
+> 흉내내 그 경로를 회귀 테스트로 고정한다**(`tests/test_serial_source.py`).
 
 ---
 
