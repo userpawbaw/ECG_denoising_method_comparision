@@ -114,17 +114,22 @@
   영위상으로 걸어 이 처짐이 상쇄된다 — 경위와 수치는 <b>F-27</b>.
 </footer>
 
+<script src="live_axis.js"></script>
 <script>
 // ---------------------------------------------------------------- 상태
 const WIN_S = 10;                  // 화면에 보이는 길이
 let fs = 250, cap = WIN_S * fs;
 let head = -1;                     // 지금까지 받은 **절대** 샘플 인덱스의 끝
-/* **아직 한 번도 안 쓴 자리**를 그리면 안 된다. Float32Array 는 0 으로 시작하니
- * 첫 바퀴에는 화면 절반이 «평평한 0 선» 으로 그려지고, ok 도 0 이라 그 구간이
- * 통째로 회색(=측정값 아님)으로 칠해진다 — 실제로 그렇게 나왔다.
- * 한 바퀴를 다 돌기 전까지는 `written` 아래 자리만 유효하다. */
-let written = 0;
-const valid = j => written >= cap || j < written;
+/* **아직 안 쓴 자리를 그리면 안 된다.** Float32Array 는 0 으로 시작하니 그대로
+ * 그리면 평평한 0 선이 나오고, ok 도 0 이라 그 구간이 통째로 회색(=측정값
+ * 아님)으로 칠해진다.
+ *
+ * 전에는 «받은 개수»(`written`) 로 막았다. 그런데 버퍼는 **절대 인덱스의
+ * 나머지**로 쓰는데 개수는 0 부터 세므로, 스트림 중간에 창을 열거나
+ * front-end 를 바꿔 인덱스가 다시 시작하면 둘이 어긋난다 — 화면 한가운데서
+ * 평평한 선이 돋아나고 새 표본은 오른쪽 끝에서 따로 나타났다 (F-44).
+ * 그래서 **시작한 절대 인덱스**를 들고, 자리마다 절대 인덱스로 판정한다. */
+let first = 0;                     // 이 화면이 시작한 절대 인덱스
 let mode = "split";                // split | overlay
 let play = "scroll";               // scroll | sweep
 const bufs = new Map();            // name -> Float32Array(cap)
@@ -132,6 +137,10 @@ let okBuf = null;
 const panels = new Map();          // name -> canvas (분리 모드)
 let overlayCv = null;
 const hidden = new Set();          // 겹치기에서 끈 방법
+
+const AX = LiveAxis;               // 축 계산은 live_axis.js 에 있다 (테스트가 붙어 있다)
+const gain = AX.makeGain();        // **이득은 화면에 하나뿐이다**
+const ctr  = AX.makeCenter();      // 중심만 계열별
 
 /* **버퍼를 절대 인덱스의 나머지로 쓴다.**
  * 전에는 "최근 N 개" 링이라 스윕을 만들 수 없었다 — 스윕은 화면의 **자리가
@@ -141,6 +150,12 @@ const hidden = new Set();          // 겹치기에서 끈 방법
 function alloc(n){ return new Float32Array(n); }
 function writeAt(a, abs0, arr){
   for (let i = 0; i < arr.length; i++) a[(abs0 + i) % cap] = arr[i];
+}
+/** 화면을 비운다. **색과 켜고 끈 상태는 남긴다** — front-end 를 바꿨다고
+ *  방법이 달라지는 것이 아니라, 그것까지 지우면 시연 중에 손이 두 번 간다. */
+function clearScreen(){
+  bufs.clear(); okBuf = null; head = -1; first = 0;
+  gain.reset(); ctr.clear();
 }
 
 function panel(name, label){
@@ -177,73 +192,58 @@ function fitc(c){
   return {g, w, h};
 }
 
-/** 세로 스케일 — **보이는 구간의 로버스트 폭**. 최대값으로 잡으면 잡음 한 방에
- *  파형 전체가 납작해진다. 여러 계열을 겹칠 때는 **같은 스케일**을 공유한다. */
-function rawScale(arrs, k){
-  let m = 0, s = 0, cnt = 0;
-  const n = Math.min(cap, Math.max(written, 1));
-  for (const a of arrs){ for (let i = 0; i < n; i++){ m += a[i]; cnt++; } }
-  m /= Math.max(cnt, 1);
-  for (const a of arrs){ for (let i = 0; i < n; i++) s += Math.abs(a[i] - m); }
-  // k 를 키우면 세로가 눌린다. 겹치기는 계열이 여럿이라 R-peak 가 화면 밖으로
-  // 나가면 어느 선인지 알 수 없어져, 분리 모드보다 여유를 더 준다.
-  s = (k || 3.2) * (s / Math.max(cnt, 1)) || 1;
-  return {m, s};
+/** 보이는 구간에서 그 계열의 중심과 로버스트 피크. 아직 아무것도 없으면 null. */
+function look(name){
+  const a = bufs.get(name);
+  if (!a || head < 0) return null;
+  const lo = AX.windowStart(first, head, cap);
+  return lo > head ? null : AX.scan(a, lo, head, cap);
 }
 
-/** 1-2-5 사다리. 이 위에만 올려 두면 **작은 변화가 아무 변화도 만들지 않는다.** */
-function ladder(v){
-  if (!(v > 0) || !isFinite(v)) return 1;
-  const e = Math.floor(Math.log10(v)), b = v / Math.pow(10, e);
-  return (b <= 1 ? 1 : b <= 2 ? 2 : b <= 5 ? 5 : 10) * Math.pow(10, e);
-}
-
-/** 세로 스케일을 **한 번 정하면 붙여 둔다.**
+/** **화면 전체가 이득 하나를 같이 쓴다.**
  *
- * 원래는 `rawScale` 을 매 프레임 그대로 썼다. 캔버스는 매 프레임 버퍼에서
- * **전부 다시** 그리므로, 중심 `m` 이나 폭 `s` 가 조금만 달라져도 «이미 그려진
- * 파형까지» 함께 움직인다. R 피크가 20 s 창에 들고 날 때마다 `s` 가 튀어서
- * **심박 주기로 화면이 들썩였다** (F-32).
+ * 계열마다 따로 잡던 것이 두 가지를 한꺼번에 망가뜨렸다.
+ *  - 겹치기에서 입력을 **뺀 채로** 폭을 잡아서, 전극 DC(AD8232 는 전원
+ *    중간에 띄운다 — 전극 환산 약 +2.3 mV)가 실린 입력이 축 밖으로
+ *    떨어졌다. 다른 방법을 다 꺼야 입력이 보였다 (F-45).
+ *  - 계열마다 다른 순간에 이득이 바뀌어 화면이 제각각 들썩였다 (F-43).
  *
- * 그래서 병원 모니터처럼 **이득을 단계로 고정**한다:
- *   - 폭은 1-2-5 사다리 위에만 두고, 현재 값의 +10 %/−45 % 밖으로 나가야 다시 잡는다
- *   - 중심은 폭의 1/4 격자에 붙이고, 한 칸 안이면 안 움직인다
- * 밴드 안에서는 **반환값이 완전히 동일한 객체**라 화면이 1 픽셀도 안 움직인다.
- */
-const scaleState = new Map();
-function vscale(arrs, k, key){
-  const r = rawScale(arrs, k);
-  const st = scaleState.get(key);
-  const s = (!st || r.s > st.s * 1.10 || r.s < st.s * 0.55) ? ladder(r.s) : st.s;
-  const q = s / 4;
-  const m = Math.round(r.m / q) * q;
-  if (st && st.s === s && Math.abs(st.m - m) < q) return st;   // 아무것도 안 바꾼다
-  const next = {m, s};
-  scaleState.set(key, next);
-  return next;
+ * 그래서 이득은 **켜 놓은 계열 전부가 들어가는 값** 하나이고, 계열마다
+ * 다른 것은 **중심뿐**이다. 출력들은 중심도 같이 쓴다 — 따로 잡으면 겹쳐
+ * 놓아도 정렬이 안 맞아 비교가 안 된다. */
+function axesFor(names){
+  const now = performance.now();
+  const seen = new Map();
+  let need = 0, om = 0, oc = 0;
+  for (const n of names){
+    const r = look(n); if (!r) continue;
+    seen.set(n, r);
+    need = Math.max(need, r.peak);
+    if (n !== 'raw'){ om += r.m; oc++; }
+  }
+  const s = gain.fit(need, now);
+  const mo = ctr.at('out', oc ? om / oc : 0, s, now);
+  const out = new Map();
+  for (const [n, r] of seen)
+    out.set(n, {m: n === 'raw' ? ctr.at('raw', r.m, s, now) : mo, s});
+  return out;
 }
 
-/** 화면 칸 i(0..cap-1) 가 버퍼의 어느 자리인가.
- *  스윕이면 그대로(자리 고정), 스크롤이면 커서를 오른쪽 끝으로 회전한다. */
-function slotIndex(i){
-  return play === "sweep" ? i : (head + 1 + i) % cap;
-}
-
-function strokeBuf(g, a, w, h, sc, color, lw, alpha){
+function strokeBuf(g, a, w, h, ax, color, lw, alpha){
   const x = i => i / (cap - 1) * w;
-  const y = v => h/2 - (v - sc.m)/sc.s * (h/2 - 6);
+  const y = v => h/2 - (v - ax.m)/ax.s * (h/2 - 6);
   const gapN = play === "sweep" ? Math.round(0.35 * fs) : 0;   // 커서 앞 빈 자리
-  const curs = (head + 1) % cap;
   g.save(); g.globalAlpha = alpha == null ? 1 : alpha;
   g.strokeStyle = color; g.lineWidth = lw; g.lineJoin = "round";
   g.beginPath();
   let pen = false;
   for (let i = 0; i < cap; i++){
-    const j = slotIndex(i);
+    const t = AX.absAt(i, head, cap, play);
     // 스윕: 커서 바로 앞 구간은 **지운다** — 다음 바퀴가 들어올 자리다.
-    const ahead = gapN && ((j - curs + cap) % cap) < gapN;
-    if (ahead || !valid(j)){ pen = false; continue; }
-    const px = x(i), py = y(a[j]);
+    if (!AX.have(t, first, head, cap) || (gapN && head - t > cap - gapN)){
+      pen = false; continue;
+    }
+    const px = x(i), py = y(a[t % cap]);
     if (!pen){ g.moveTo(px, py); pen = true; } else g.lineTo(px, py);
   }
   g.stroke(); g.restore();
@@ -251,16 +251,16 @@ function strokeBuf(g, a, w, h, sc, color, lw, alpha){
 
 /** 채운 구간(측정값 아님)을 회색으로. 어느 모드든 **모든 칸에** 깐다. */
 function shadeBad(g, w, h){
-  if (!okBuf) return;
+  if (!okBuf || head < 0) return;
+  const bad = i => { const t = AX.absAt(i, head, cap, play);
+                     return AX.have(t, first, head, cap) && okBuf[t % cap] < 0.5; };
   g.fillStyle = '#eeeeee';
   const x = i => i / (cap - 1) * w;
   let i = 0;
   while (i < cap){
-    const j0 = slotIndex(i);
-    if (valid(j0) && okBuf[j0] < 0.5){
-      let j = i; while (j < cap && valid(slotIndex(j)) && okBuf[slotIndex(j)] < 0.5) j++;
-      g.fillRect(x(i), 0, Math.max(1, x(j) - x(i)), h); i = j;
-    } else i++;
+    if (bad(i)){ let j = i; while (j < cap && bad(j)) j++;
+      g.fillRect(x(i), 0, Math.max(1, x(j) - x(i)), h); i = j; }
+    else i++;
   }
 }
 
@@ -274,11 +274,13 @@ function cursorLine(g, w, h){
 }
 
 function drawSplit(){
+  const ax = axesFor([...panels.keys()]);
   for (const [name, c] of panels){
-    const a = bufs.get(name); if (!a) continue;
     const {g, w, h} = fitc(c);
+    const a = bufs.get(name), q = ax.get(name);
+    if (!a || !q) continue;                    // 아직 받은 것이 없다 — 빈 칸으로 둔다
     shadeBad(g, w, h);
-    strokeBuf(g, a, w, h, vscale([a], 3.2, name), name === 'raw' ? '#8a8a8a' : '#184f95', 1.1);
+    strokeBuf(g, a, w, h, q, name === 'raw' ? '#8a8a8a' : '#184f95', 1.1);
     cursorLine(g, w, h);
   }
 }
@@ -286,17 +288,15 @@ function drawSplit(){
 function drawOverlay(){
   if (!overlayCv) return;
   const {g, w, h} = fitc(overlayCv);
-  shadeBad(g, w, h);
   const on = [...bufs.keys()].filter(n => n !== 'raw' && !hidden.has(n));
-  const arrs = on.map(n => bufs.get(n));
-  // 입력도 끄고 켠다. **스케일은 입력을 뺀 채로 잡는다** — 잡음이 실린 입력이
-  // 폭을 정하면 출력들이 다 납작해져서 겹쳐 놓은 의미가 없어진다.
-  const raw = hidden.has('raw') ? null : bufs.get('raw');
-  // **스케일을 공유한다.** 계열마다 따로 잡으면 겹쳐 놓는 의미가 없다.
-  const sc = vscale(arrs.length ? arrs : [bufs.get('raw')], 5.0, 'overlay');
-  if (raw) strokeBuf(g, raw, w, h, sc, '#c9c9c9', 1, 0.75);   // 입력을 옅게 뒤에
-  on.forEach(n => strokeBuf(g, bufs.get(n), w, h, sc, colorOf.get(n), 1.8, 0.5));
-  // 직접 라벨 — 50 % 로 겹치면 색이 섞여 보이므로 이름을 붙여야 한다
+  const raw = (!hidden.has('raw') && bufs.has('raw')) ? 'raw' : null;
+  const ax = axesFor(raw ? [raw, ...on] : on);
+  shadeBad(g, w, h);
+  // 입력을 **같은 이득**으로, 자기 중심만 빼고 옅게 뒤에 깐다.
+  if (raw && ax.has(raw)) strokeBuf(g, bufs.get(raw), w, h, ax.get(raw), '#b4b4b4', 1.0, 0.7);
+  on.forEach(n => { const q = ax.get(n); if (q)
+    strokeBuf(g, bufs.get(n), w, h, q, colorOf.get(n), 1.1, 0.7); });
+  // 직접 라벨 — 겹치면 색이 섞여 보이므로 이름을 붙여야 한다
   g.font = '700 11px ui-monospace,monospace'; g.textAlign = 'right';
   on.forEach((n, k) => { g.fillStyle = colorOf.get(n);
     g.globalAlpha = 1; g.fillText(n, w - 6, 14 + k * 14); });
@@ -320,8 +320,8 @@ function relayout(){
   const lg = document.getElementById('legend');
   if (mode === 'overlay'){
     const d = document.createElement('div'); d.className = 'row';
-    d.innerHTML = '<div class="lab"><b>겹쳐 보기 — 모든 방법이 같은 축, 투명도 50 %</b>' +
-                  '<span>입력은 옅은 회색</span></div>';
+    d.innerHTML = '<div class="lab"><b>겹쳐 보기 — 모든 방법이 같은 축·같은 이득, 투명도 70 %</b>' +
+                  '<span>입력은 옅은 회색 — 전극 DC 만 뺐고 이득은 같다</span></div>';
     overlayCv = document.createElement('canvas'); overlayCv.id = 'overlay';
     d.appendChild(overlayCv); host.appendChild(d);
     lg.hidden = false; lg.innerHTML = '';
@@ -388,12 +388,21 @@ fetch('/fe').then(r => r.json()).then(d => {
   feModes = d.modes || {}; feMode = d.current; paintFe();
 }).catch(() => {});
 es.onmessage = ev => {
-  const m = JSON.parse(ev.data);
+  let m;
+  try { m = JSON.parse(ev.data); } catch (e) { return; }
+  /* 브리지가 한 번 더 감싸 보낸 적이 있다 — `Hub.publish` 가 JSON 을 만드는데
+   * 전환 알림만 **이미 만든 JSON 문자열**을 넘겼다. 그러면 여기서 풀린 것이
+   * 객체가 아니라 문자열이라 `m.reset` 이 undefined 가 되고, 바로 아래
+   * `m.fs` 도 undefined 라 `cap` 이 NaN 이 된다 — 화면이 통째로 죽었다
+   * (F-44). 브리지는 고쳤지만, **낡은 브리지에 붙어도 죽지 않게** 한 번 더
+   * 풀어 준다. */
+  if (typeof m === 'string'){ try { m = JSON.parse(m); } catch (e) { return; } }
+  if (!m || typeof m !== 'object') return;
+
   // front-end 를 바꾸면 브리지가 처리기 버퍼를 비운다 — 화면도 비워야 한다.
   // 안 비우면 **이전 필터로 만든 파형과 새 필터의 파형이 한 화면에 섞인다.**
   if (m.reset){
-    bufs.clear(); colorOf.clear(); hidden.clear(); scaleState.clear();
-    okBuf = null; head = -1; written = 0; relayout();
+    clearScreen(); relayout();
     feMode = m.fe; paintFe();
     const nt = el('fenote');
     nt.hidden = false;
@@ -401,11 +410,16 @@ es.onmessage = ev => {
     setTimeout(() => { nt.hidden = true; }, 6000);
     return;
   }
-  if (m.fs !== fs){ fs = m.fs; cap = WIN_S * fs; bufs.clear(); colorOf.clear();
-                    scaleState.clear();
-                    okBuf = null; head = -1; written = 0; }
+  // **fs 가 없는 프레임으로 cap 을 NaN 으로 만들지 않는다.**
+  if (m.fs && m.fs !== fs){ fs = m.fs; cap = WIN_S * fs; clearScreen(); }
+  if (!Number.isFinite(m.i) || !Array.isArray(m.raw)) return;
+
   let fresh = false;
   if (!bufs.has('raw')){ bufs.set('raw', alloc(cap)); okBuf = alloc(cap); fresh = true; }
+  /* **이어지지 않는 블록은 새 화면이다.** 재동기(브리지가 시간축을 못 잇는다)나
+   * front-end 전환에서 절대 인덱스가 되돌아가거나 건너뛴다. 그때 옛 자리에
+   * 남아 있는 값은 «지금 화면» 의 것이 아니므로 시작점을 여기로 옮긴다. */
+  if (head < 0 || m.i !== head + 1) first = m.i;
   writeAt(bufs.get('raw'), m.i, m.raw);
   writeAt(okBuf, m.i, m.ok);
   for (const name of Object.keys(m.out)){
@@ -413,15 +427,16 @@ es.onmessage = ev => {
       bufs.set(name, alloc(cap));
       // 색은 **등장 순서로 고정**한다. 겹치기에서 계열이 켜졌다 꺼졌다 해도
       // 살아남은 것의 색이 바뀌면 안 된다.
-      const k = colorOf.size;
-      colorOf.set(name, SLOTS[k % SLOTS.length]);
-      if (k >= OVER_MAX) hidden.add(name);      // 넷을 넘으면 겹치기에서는 꺼 둔다
+      if (!colorOf.has(name)){
+        const k = colorOf.size;
+        colorOf.set(name, SLOTS[k % SLOTS.length]);
+        if (k >= OVER_MAX) hidden.add(name);    // 넷을 넘으면 겹치기에서는 꺼 둔다
+      }
       fresh = true;
     }
     writeAt(bufs.get(name), m.i, m.out[name]);
   }
   head = m.i + m.n - 1;
-  written += m.n;
   if (fresh) relayout();
   const nOver = [...bufs.keys()].length - 1;
   const nt = el('ovnote');

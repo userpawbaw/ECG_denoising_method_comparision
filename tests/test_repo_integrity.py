@@ -211,12 +211,15 @@ def test_every_package_source_file_is_tracked_by_git():
     tracked = set(subprocess.run(["git", "ls-files"], cwd=ROOT, check=True,
                                  capture_output=True, text=True).stdout.split())
     on_disk = set()
-    # `demo/` 의 화면도 소스다. 생성물(`demo_bank.js`)은 아래에서 따로 본다.
+    # `demo/` 의 화면도 소스다 — **`.js` 도 본다.** 화면에서 떼어낸 모듈
+    # (`demo/live_axis.js`)이 빠지면 클론한 저장소에서 화면이 통째로 죽는데,
+    # 확장자 목록에 `.js` 가 없어서 그 구멍이 열려 있었다. 생성물
+    # (`demo_bank.js` · `card_bank.js`)도 추적 대상이라 같이 봐도 된다.
     for sub in ("ecgdn", "scripts", "tests", "configs", "demo"):
         if not (ROOT / sub).exists():
             continue
         for f in (ROOT / sub).rglob("*"):
-            if f.is_file() and f.suffix in (".py", ".yaml", ".sh", ".html") \
+            if f.is_file() and f.suffix in (".py", ".yaml", ".sh", ".html", ".js") \
                     and "__pycache__" not in f.parts:
                 on_disk.add(str(f.relative_to(ROOT)))
     missing = sorted(on_disk - tracked)

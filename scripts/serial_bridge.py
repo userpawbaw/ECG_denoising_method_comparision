@@ -260,6 +260,10 @@ class Hub:
                 self.qs.remove(q)
 
     def publish(self, payload: dict) -> None:
+        # **여기서 JSON 을 만든다.** 이미 만든 문자열을 넘기면 한 번 더 감싸져
+        # 브라우저가 문자열을 받는다 — 조용히 틀리므로 그 자리에서 세운다 (F-44).
+        if not isinstance(payload, dict):
+            raise TypeError(f"publish 는 dict 를 받는다 (받은 것: {type(payload).__name__})")
         data = json.dumps(payload, separators=(",", ":"))
         with self.lock:
             targets = list(self.qs)
@@ -529,10 +533,13 @@ def main() -> int:
                 al = Aligner(names)
                 raw, rawok, raw_base, n_in, n_input = [], [], 0, 0, 0
                 fe_lat_ms = fe.latency_samples / FS * 1000.0
-                hub.publish(json.dumps({"reset": True, "fe": want,
-                                        "fe_label": FE_MODES[want]["label"],
-                                        "fe_lat_ms": round(fe_lat_ms, 0)},
-                                       ensure_ascii=False))
+                # **dict 를 그대로 넘긴다.** `Hub.publish` 가 JSON 으로 만든다 —
+                # 여기서 미리 `json.dumps` 하면 한 번 더 감싸져서 브라우저가
+                # 푼 결과가 **객체가 아니라 문자열**이 되고, `m.reset` 이 없어
+                # 전환 알림이 통째로 무시됐다 (F-44).
+                hub.publish({"reset": True, "fe": want,
+                             "fe_label": FE_MODES[want]["label"],
+                             "fe_lat_ms": round(fe_lat_ms, 0)})
                 if not args.quiet:
                     print(f"\n  front-end -> {want} ({FE_MODES[want]['label']}, "
                           f"+{fe_lat_ms:.0f} ms) · 화면을 다시 채운다")
