@@ -172,12 +172,15 @@ def main() -> int:
                     help="보드 클럭 오차. Uno 의 세라믹 레조네이터는 약 ±5000 ppm")
     ap.add_argument("--leadoff-every", type=float, default=0.0,
                     help="N 초마다 전극이 떨어진다 [s]")
-    ap.add_argument("--leadoff-len", type=float, default=0.7)
+    ap.add_argument("--leadoff-len", type=float, default=0.7,
+        help="전극이 떨어져 있는 시간 [s]")
     ap.add_argument("--dur", type=float, default=0.0, help="0 이면 무한")
     ap.add_argument("--signal-s", type=float, default=60.0,
                     help="신호 길이 [s]. 끝나면 처음으로 돌아간다. d1 에서 0 이면 기록 전체")
-    ap.add_argument("--snr-db", type=float, default=8.0)
-    ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--snr-db", type=float, default=8.0,
+        help="입력 SNR [dB]. 이 값이 되도록 잡음을 섞는다")
+    ap.add_argument("--seed", type=int, default=7,
+        help="잡음 성분과 crop 위치를 고정한다. mixed 를 재현하려면 이것")
     # ---- 무엇을 흘릴 것인가
     ap.add_argument("--source", default="synth", choices=["synth", "d1"],
                     help="synth = 합성 심전도, d1 = MIT-BIH 기록 + NSTDB 잡음")
@@ -189,10 +192,12 @@ def main() -> int:
                     help="NSTDB 잡음 구간. **보고서와 같은 자리를 보려면 test**")
     ap.add_argument("--offset-s", type=float, default=0.0,
                     help="기록에서 몇 초 지점부터 실을 것인가")
-    ap.add_argument("--lead", default="MLII")
+    ap.add_argument("--lead", default="MLII",
+        help="MIT-BIH 유도. 기록에 없으면 첫 채널을 쓴다")
     ap.add_argument("--gain", type=float, default=1100.0,
                     help="AFE 총 이득. **브리지의 --gain 과 같아야** mV 축이 맞는다")
-    ap.add_argument("--vref", type=float, default=5.0)
+    ap.add_argument("--vref", type=float, default=5.0,
+        help="ADC 기준 전압 [V]. 브리지의 --vref 와 같아야 한다")
     ap.add_argument("--firmware", default="current", choices=["current", "old"],
                     help="old 면 fs·형식 명령을 무시한다 — 구 스케치가 꽂힌 판")
     # ---- DTR 리셋 흉내
@@ -213,7 +218,8 @@ def main() -> int:
     ap.add_argument("--list", action="store_true",
                     help="고를 수 있는 기록·잡음·방법을 보여주고 끝낸다")
     ap.add_argument("--port-file", help="포트 이름을 이 파일에 적는다")
-    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--quiet", action="store_true",
+        help="진행 줄을 안 찍는다")
     args = ap.parse_args()
 
     if args.list:

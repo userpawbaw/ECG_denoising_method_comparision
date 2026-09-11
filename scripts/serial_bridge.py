@@ -412,7 +412,8 @@ def main() -> int:
     src.add_argument("--replay", choices=["synth", "csv"],
                      help="하드웨어 없이 같은 선 규격으로 흉내낸다")
     ap.add_argument("--csv", help="--replay csv 일 때 읽을 파일")
-    ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--baud", type=int, default=115200,
+        help="시리얼 속도. 스케치의 SERIAL_BAUD 와 맞춘다")
     ap.add_argument("--board-fs", type=int, default=250, choices=[250, 500, 1000],
                     help="보드의 샘플링률. **250 이면 리샘플이 없다**")
     ap.add_argument("--ascii", action="store_true",
@@ -432,16 +433,20 @@ def main() -> int:
                     help="front-end 블록 [샘플]. 작을수록 지연이 줄고 CPU 만 조금 든다")
     ap.add_argument("--fps", type=float, default=25.0, help="화면 갱신률")
     ap.add_argument("--serve", action="store_true", help="브라우저용 SSE 서버를 연다")
-    ap.add_argument("--http-port", type=int, default=8765)
+    ap.add_argument("--http-port", type=int, default=8765,
+        help="--serve 가 여는 웹서버 포트")
     ap.add_argument("--dur", type=float, default=0.0, help="0 이면 무한")
     ap.add_argument("--drift-ppm", type=float, default=3000.0, help="--replay 전용")
     ap.add_argument("--drop", type=float, default=0.0, help="--replay 전용 드롭률")
     ap.add_argument("--leadoff-every", type=float, default=0.0, help="--replay 전용 [s]")
-    ap.add_argument("--adc-bits", type=int, default=10)
-    ap.add_argument("--vref", type=float, default=5.0)
+    ap.add_argument("--adc-bits", type=int, default=10,
+        help="ADC 분해능 [bit]. 카운트를 mV 로 바꿀 때 쓴다")
+    ap.add_argument("--vref", type=float, default=5.0,
+        help="ADC 기준 전압 [V]. 가상 보드의 --vref 와 같아야 한다")
     ap.add_argument("--gain", type=float, default=1100.0,
                     help="아날로그 프런트엔드 총 이득 (AD8232 기본 약 1100)")
-    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--quiet", action="store_true",
+        help="진행 줄을 안 찍는다 (파이프로 넘기면 자동으로 켜진다)")
     ap.add_argument("--diag", type=float, default=0.0,
                     help="N 초마다 버퍼 크기와 RSS 를 적는다 (성능 저하 추적용)")
     args = ap.parse_args()

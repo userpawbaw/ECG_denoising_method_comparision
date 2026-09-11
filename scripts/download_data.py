@@ -14,9 +14,12 @@ from ecgdn.data.download import DBS, download, verify
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", nargs="+", default=["mitdb", "nstdb"], choices=sorted(DBS))
-    ap.add_argument("--out", default="data/raw")
-    ap.add_argument("--verify-only", action="store_true")
+    ap.add_argument("--db", nargs="+", default=["mitdb", "nstdb"], choices=sorted(DBS),
+        help="받을 데이터베이스 (mitdb · nstdb). 여러 개를 나열할 수 있다")
+    ap.add_argument("--out", default="data/raw",
+        help="받은 것을 둘 곳")
+    ap.add_argument("--verify-only", action="store_true",
+        help="받지 않고 **이미 있는 것만** 검사한다")
     args = ap.parse_args()
 
     rc = 0

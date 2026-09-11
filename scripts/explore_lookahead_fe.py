@@ -740,7 +740,8 @@ def write_doc(per_axis: dict, made: list[Path], costs: list[dict]) -> Path:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--axis", nargs="*", default=["d0", "d1"])
+    ap.add_argument("--axis", nargs="*", default=["d0", "d1"],
+        help="데이터 축 (d0 = 합성 · d1 = MIT-BIH). 산출물 경로가 갈린다")
     a = ap.parse_args()
     per_axis, made = {}, []
     for tag in a.axis:

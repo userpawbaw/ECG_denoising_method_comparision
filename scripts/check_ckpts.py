@@ -120,7 +120,8 @@ def main() -> int:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="auto",
-                    choices=("auto", "synthetic", "mitdb"))
+                    choices=("auto", "synthetic", "mitdb"),
+        help="clean 신호의 출처. auto 는 파일이 생기면 조용히 바뀐다 — 99_status 2.1")
     ap.add_argument("-c", "--configs", nargs="*", default=list(DEFAULT_CONFIGS),
                     help="config 이름 또는 경로 (기본: 실험 러너가 도는 전부)")
     ap.add_argument("--ignore-lock", action="store_true",

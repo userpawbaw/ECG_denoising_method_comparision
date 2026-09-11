@@ -16,6 +16,7 @@ import ast
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -803,54 +804,85 @@ def test_demo_cards_share_the_lane_renderer(card: str):
         "(docs/33_card_design_samples.md «파형 패널을 다시 만들었다»)")
 
 # --------------------------------------------------------------------------
-# 사용자가 **직접 실행하는** 스크립트의 옵션은 전부 문서에 있어야 한다.
+# 실행 스크립트의 옵션은 **전부** `docs/24_cli_reference.md` 에 있어야 한다.
 # 기본 예시만 보고 돌리면 고를 수 있는 것을 모른 채 한 가지 그림만 보게 된다 —
 # 실제로 `--record`·`--noise` 를 문서에서 못 찾아 "여러 개를 못 돌려보겠다" 는
-# 지적이 나왔다. 옵션을 늘리고 문서를 안 고치면 여기서 걸린다.
-USER_FACING_SCRIPTS = {
-    "scripts/fake_arduino.py": "docs/30_realtime_demo.md",
-    "scripts/serial_bridge.py": "docs/30_realtime_demo.md",
-}
+# 지적이 나왔다 (O-31). 그 문서는 자동 생성이므로 여기서는 **재생성이 필요한지**
+# 와 **설명이 빈 옵션이 있는지** 둘을 본다.
+CLI_DOC = ROOT / "docs" / "24_cli_reference.md"
+CLI_MAKER = ROOT / "scripts" / "make_cli_reference.py"
 
 
 def _cli_flags(rel: str) -> list[str]:
+    """`add_argument` 의 긴 플래그. `-c, --config` 처럼 짧은 것이 앞에 와도 잡는다."""
     src = (ROOT / rel).read_text(encoding="utf-8")
-    return sorted(set(re.findall(r"""add_argument\(\s*["'](--[\w-]+)""", src)))
+    return sorted(set(re.findall(r"""add_argument\([^)]*?["'](--[\w-]+)["']""",
+                                 src, re.S)))
 
 
-def _option_reference(doc: str) -> str:
-    """옵션 참조표(6.4) 만 잘라낸다.
+def _scripts_with_options() -> list[str]:
+    out = []
+    for p in sorted((ROOT / "scripts").glob("*.py")):
+        if p.name.startswith("_"):
+            continue
+        if "add_argument" in p.read_text(encoding="utf-8"):
+            out.append(f"scripts/{p.name}")
+    return out
 
-    **문서 아무 데나 한 번 언급된 것으로는 부족하다.** 그러면 예시 명령줄에
-    스쳐 지나간 옵션도 «문서화됨» 이 되어, 정작 한자리에 모아 놓은 표는
-    구멍이 난 채로 통과한다 (처음에 그렇게 짰다가 검사가 안 잡는 것을 봤다).
+
+def test_the_cli_reference_is_not_stale():
+    """**옵션을 늘리고 재생성을 안 하면 여기서 걸린다.**
+
+    문서를 손으로 고치는 것이 아니라 스크립트의 `help=` 를 고치고 다시 만든다.
     """
-    body = (ROOT / doc).read_text(encoding="utf-8")
-    i = body.index("### 6.4")
-    j = body.index("\n## ", i)
-    return body[i:j]
+    assert CLI_DOC.exists(), f"{CLI_DOC.name} 이 없다 — make_cli_reference.py 를 돌릴 것"
+    r = subprocess.run([sys.executable, str(CLI_MAKER), "--check"],
+                       cwd=ROOT, capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, (
+        f"{CLI_DOC.name} 이 낡았다:\n{r.stdout[-800:]}\n"
+        "  python3 scripts/make_cli_reference.py 로 다시 만들 것")
 
 
-@pytest.mark.parametrize("script,doc", sorted(USER_FACING_SCRIPTS.items()))
-def test_every_option_of_a_user_facing_script_is_documented(script: str, doc: str):
+@pytest.mark.parametrize("script", _scripts_with_options())
+def test_every_option_of_every_script_is_in_the_reference(script: str):
     flags = _cli_flags(script)
     assert flags, f"{script} 에서 옵션을 못 찾았다 — 추출 규칙이 낡았다"
-    ref = _option_reference(doc)
+    ref = CLI_DOC.read_text(encoding="utf-8")
     missing = [f for f in flags if f"`{f}`" not in ref]
     assert not missing, (
-        f"{script} 의 옵션이 {doc} 6.4 참조표에 없다: {missing}\n"
-        "  실행 파일의 옵션은 **생략 없이** 한자리에 싣는다")
+        f"{script} 의 옵션이 docs/24_cli_reference.md 에 없다: {missing}\n"
+        "  python3 scripts/make_cli_reference.py 로 다시 만들 것")
+
+
+def test_no_option_is_left_without_an_explanation():
+    """`help=` 가 비면 문서에 «(설명 없음)» 으로 남는다 — **그대로 두지 않는다.**
+
+    한때 173 개 중 78 개가 비어 있었다. 표에 줄은 있는데 무엇인지 안 적혀
+    있으면, 그 옵션은 **없는 것과 같다.**
+    """
+    body = CLI_DOC.read_text(encoding="utf-8")
+    n = body.count("**(설명 없음)**")
+    assert n == 0, (
+        f"설명이 빈 옵션이 {n} 개다. 스크립트의 `help=` 를 채우고 "
+        "make_cli_reference.py 를 다시 돌릴 것")
+
+
+def test_the_manuals_point_at_the_reference():
+    """**매뉴얼이 참조를 잃으면 문서가 다시 흩어진다.**
+
+    명령을 안내하는 문서는 「전부는 24 를 보라」를 적어 둔다.
+    """
+    for rel in ("docs/02_procedure.md", "docs/08_acquisition.md",
+                "docs/30_realtime_demo.md", "docs/99_status.md"):
+        body = (ROOT / rel).read_text(encoding="utf-8")
+        assert "24_cli_reference" in body, f"{rel} 에 옵션 문서 참조가 없다"
 
 
 def test_the_option_extractor_would_notice_a_new_flag():
-    """검사가 살아 있는지 — **없는 옵션을 넣어 잡히는지**까지 본다.
-
-    추출 규칙이 낡아 빈 목록을 돌려주면 위 검사는 조용히 통과한다.
-    """
+    """검사가 살아 있는지 — 추출 규칙이 낡아 빈 목록을 돌려주면 위가 조용히 통과한다."""
     flags = _cli_flags("scripts/fake_arduino.py")
     for must in ("--source", "--record", "--noise", "--list"):
         assert must in flags, f"{must} 를 못 뽑았다 — 추출 규칙을 고칠 것"
-    ref = _option_reference("docs/30_realtime_demo.md")
-    assert "`--port-file`" in ref and "`--methods`" in ref, "참조표를 잘못 잘랐다"
-    assert "`--zzz-not-an-option`" not in ref       # 대조군
+    assert "--config" in _cli_flags("scripts/train.py"), \
+        "`-c, --config` 처럼 짧은 플래그가 앞에 오면 못 잡는다"
 

@@ -186,7 +186,8 @@ def figure(tag: str, out: Path):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--axis", nargs="*", default=["d0", "d1"])
+    ap.add_argument("--axis", nargs="*", default=["d0", "d1"],
+        help="데이터 축 (d0 = 합성 · d1 = MIT-BIH). 산출물 경로가 갈린다")
     a = ap.parse_args()
 
     L = ["# 12. 인과 front-end 설계 — **두 대가를 같은 단위로**", "",

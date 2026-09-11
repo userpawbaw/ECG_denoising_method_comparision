@@ -69,10 +69,14 @@ def score(cfg, cases):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dur", type=float, default=90.0)
-    ap.add_argument("--tune-seeds", type=int, nargs="+", default=[0, 1])
-    ap.add_argument("--holdout-seeds", type=int, nargs="+", default=[7, 8])
-    ap.add_argument("--snrs", type=int, nargs="+", default=[5, 10, 15])
+    ap.add_argument("--dur", type=float, default=90.0,
+        help="한 구간의 길이 [s]")
+    ap.add_argument("--tune-seeds", type=int, nargs="+", default=[0, 1],
+        help="탐색에 쓸 seed 수")
+    ap.add_argument("--holdout-seeds", type=int, nargs="+", default=[7, 8],
+        help="**탐색에 안 쓴** seed 수. 고른 값을 여기서 확인한다")
+    ap.add_argument("--snrs", type=int, nargs="+", default=[5, 10, 15],
+        help="쓸 입력 SNR 목록 [dB]")
     ap.add_argument("--source", default="synthetic", choices=("synthetic", "mitdb"),
                     help="synthetic 이 기본 — D0 결과(보고서 인용값)와의 연속성을 지킨다")
     args = ap.parse_args()

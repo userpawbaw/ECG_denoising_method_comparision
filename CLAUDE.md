@@ -38,7 +38,7 @@ ECG 잡음 제거 기법 비교(졸업과제). 규약 원문은 `docs/`, **이 �
 
 ## 커밋 전
 
-`pytest tests/` — 537 개, 약 1 분 10 초. 기록 무결성 검사가 여기 들어 있어
+`pytest tests/` — 573 개, 약 1 분. 기록 무결성 검사가 여기 들어 있어
 **빠진 F/D 기록과 낡은 보고서 수치를 잡는다** (`tests/test_repo_integrity.py`).
 
 ## 길 찾기
@@ -48,4 +48,5 @@ ECG 잡음 제거 기법 비교(졸업과제). 규약 원문은 `docs/`, **이 �
 | 종합 보고서 (유일한 진입점) | `docs/91_report.md` |
 | 발견 · 결정 · 사고 기록 | `docs/20_findings.md` · `21_decisions.md` · `22_incidents.md` |
 | 실험 절차서 / 설계 근거 | `docs/02_procedure.md` · `01_design.md` |
+| **실행 옵션 전부** (자동 생성) | `docs/24_cli_reference.md` |
 | 현재 상태 · 인수인계 | `docs/99_status.md` |

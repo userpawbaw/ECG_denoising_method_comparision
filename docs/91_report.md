@@ -19,6 +19,7 @@
 | **설계·절차** | `00_review` · `01_design` · `02_procedure` | 초기 검토와 그 정정, 확정 설계안, STEP 별 실행 절차 |
 | **기록** | `20_findings`(F) · `21_decisions`(D) · `22_incidents`(O) · `23_ai_review`(R) | 발견 · 설계 결정 · 운영 사고 · AI 협업 검토. **기각한 가설과 틀린 예측이 지워지지 않고 남아 있다** — 6 장이 그 요약이다 |
 | | `19_record_keeping` · `17_checklists` · `18_glossary` | 기록 규약 · 작업 직전에 보는 체크리스트 · **용어와 지표 사전** |
+| | `24_cli_reference`\* | **실행 스크립트의 옵션 전부** — 각 절차서는 자주 쓰는 것만 적고 여기를 가리킨다 (O-31) |
 | **실험 상세** | `03_metric_floor`\* · `04_snr_estimator_calibration`\* · `05_swt_tuning`\* · `06_sameni_diagnosis`\* · `07_safety_probe`\* · `10_loss_ablation` — 여섯 다 **두 축 짝**이 있다(D0 판은 접미사가 없는 것도 있다) | 본문이 한 문단으로 요약한 것의 전문. 축이 다르면 값도 결론도 다르다(F-16 · F-17) |
 | | `11_loss_by_noise`\* · `12_causal_fe`\* · `13_lookahead_fe`\* · `14_median_vs_zerophase`\* · `15_reference_and_training` · `16_fe_metric_audit` | EXP-G, 실시간 front-end 후보 네 판, 참조 정의 검토, 채점 기준 감사 |
 | **산출물·운영** | `90_results_d0`\* · `90_results_d1`\* · `92_axis_gap`\* | **모든 방법 × 모든 지표**의 자동 생성 결과표 (본문은 여기서 골라 싣는다) |
