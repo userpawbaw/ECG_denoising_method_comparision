@@ -573,7 +573,7 @@ front-end 비교는 `total_db`/`fe_share` 로만 한다. 자세히는 `docs/15` 
 | **R-4** | **스트리밍 처리기** | `ecgdn/realtime/` — 배관 손해는 24 설정 전부 **1.13 dB 이내**. **영위상 front-end 는 실시간이 불가능**하고(링잉 64 s), 인과 FE 는 **차수 1** 을 쓴다 — 차수 4 를 쓰면 QRS 마다 수 초짜리 처짐이 남아 D1 `M06` 이 −4.3 dB 였다. 차수를 낮추자 **D1 세 방법 전부 +0.5~+1.4 dB** (2.4 · **F-25 · F-27 · D-19**) |
 | **R-5** | **시리얼 브리지 + 펌웨어** | `scripts/serial_bridge.py` · `ecgdn/realtime/serial_link.py` · 펌웨어에 바이너리 모드. 대역폭·프레이밍·시계·손실·이상상태 다섯을 따졌다 (**6.2**). **가상 포트로 실경로까지 검증했다**(R-7) — DTR 리셋(결과)과 USB 도착 뭉침까지. 실보드에서 처음 볼 것은 **드라이버·권한(dialout)** 하나뿐이다 |
 | **R-6** | **모드 A 화면** | `demo/live.html` — SSE(**D-18**). 성능 수치는 띄우지 않는다(참값이 없다) |
-| **R-7** | **가상 아두이노 — 실제 포트로 태우기** | `scripts/fake_arduino.py` · `ecgdn/realtime/fake_board.py`. `--replay` 가 **`SerialSource` 를 한 줄도 안 돌린다**는 것이 드러나(**O-30**) PTY 로 그 층을 메웠다. 셋을 잡았다 — 포트 겹침이 조용했던 것(O-30) · `--board-fs` 를 안 듣는 보드(**F-42**) · SSE 이중 직렬화(**F-43**). **DTR 리셋**(포트 열림 = 리셋 + 부트로더 1.6 s 침묵)과 **USB 도착 뭉침**(1 ms 폴링 · 64 B 패킷)까지 흉내낸다 — 뭉침은 파형을 안 흔들고 **화면 갱신 간격만** 88 → 1760 ms 로 늘린다. 근거는 **D-26**, 절차는 **6.2.1** |
+| **R-7** | **가상 아두이노 — 실제 포트로 태우기** | `scripts/fake_arduino.py` · `ecgdn/realtime/fake_board.py`. `--replay` 가 **`SerialSource` 를 한 줄도 안 돌린다**는 것이 드러나(**O-30**) PTY 로 그 층을 메웠다. 셋을 잡았다 — 포트 겹침이 조용했던 것(O-30) · `--board-fs` 를 안 듣는 보드(**F-42**) · SSE 이중 직렬화(**F-43**). **DTR 리셋**(포트 열림 = 리셋 + 부트로더 1.6 s 침묵)과 **USB 도착 뭉침**(1 ms 폴링 · 64 B 패킷)까지 흉내낸다 — 뭉침은 파형을 안 흔들고 **화면 갱신 간격만** 88 → 1760 ms 로 늘린다. **`--source d1` 로 보고서의 신호(MIT-BIH + NSTDB)를 선에 실을 수 있다**(6.2.2) — mV 왕복 오차가 양자화 반 칸(2.22 μV)이라 화면의 세로축이 진짜 mV 다. 근거는 **D-26**, 절차는 **6.2.1 · 6.2.2** |
 
 시연 화면 설계 검토(외부안 대조 + 추가 연출안)는 `docs/31_demo_design_review.md`,
 시안은 `demo/mockup_expo.html` 이다.
@@ -602,6 +602,12 @@ python3 scripts/serial_bridge.py --port /dev/ttyACM0 --board-fs 250 --serve
 # 보드 없이 **시리얼 경로까지** 태운다 (창 둘. 절차는 30_realtime_demo 6.2.1)
 python3 scripts/fake_arduino.py --fs 500 --port-file /tmp/fakeuno
 python3 scripts/serial_bridge.py --port $(cat /tmp/fakeuno) --board-fs 250 --serve
+
+# **D1 기록을 선으로 흘려 화면으로 본다** (6.2.2). 수치는 안 뜬다 — 파형만
+python3 scripts/fake_arduino.py --source d1 --record 100 --noise bw --snr-db 6 \
+        --fs 250 --signal-s 60 --port-file /tmp/fakeuno
+python3 scripts/serial_bridge.py --port $(cat /tmp/fakeuno) --board-fs 250 \
+        --methods M_FE,M01,M04,M06 --serve
 ```
 
 **✅ EXP-G 완료 (잡음 7 종 × 입력 SNR 7 단계 −5~25 dB × 기록 22 × 구간 2, 양축)**

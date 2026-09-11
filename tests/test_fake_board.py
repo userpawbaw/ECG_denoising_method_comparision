@@ -13,11 +13,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ecgdn.realtime.fake_board import (BOOT_BANNER, BOOTLOADER_S,
+from ecgdn.realtime.fake_board import (ADC_MAX, BOOT_BANNER, BOOTLOADER_S,
                                        SERIAL_TX_BUFFER_SIZE, FakeBoard,
-                                       UsbPipe)
+                                       UsbPipe, mv_to_counts)
 from ecgdn.realtime.serial_link import (LEADOFF, SYNC, AsciiParser,
-                                        BinaryParser)
+                                        BinaryParser, adc_to_mv)
 
 ROOT = Path(__file__).resolve().parent.parent
 INO = ROOT / "hardware" / "arduino_ecg_logger" / "arduino_ecg_logger.ino"
@@ -286,4 +286,73 @@ def test_the_host_buffer_can_overflow_and_says_so():
     pipe.push(b"z" * 1500)
     assert pipe.overflow == 500
     assert pipe.pending == 1000
+
+# ------------------------------------- 보고서의 신호를 선에 싣는다 (6.2.2)
+def test_mv_to_counts_is_the_exact_inverse_of_adc_to_mv():
+    """**왕복 오차가 양자화 반 칸을 넘으면 안 된다.**
+
+    MIT-BIH 는 진짜 mV 라 실제 변환을 쓸 수 있고, 그러면 화면의 세로축이 진짜
+    mV 가 된다. 척도가 어긋나면 화면은 그럴듯한데 **진폭만 틀린다** — 눈으로는
+    못 잡는 종류다.
+    """
+    mv = np.linspace(-1.0, 1.0, 4001)
+    counts, clipped = mv_to_counts(mv)
+    assert clipped == 0.0, "±1 mV 는 AD8232 레인지 안이다"
+    back = adc_to_mv(counts)
+    err = (back - back.mean()) - (mv - mv.mean())
+    step = float(adc_to_mv(np.array([1.0]))[0] - adc_to_mv(np.array([0.0]))[0])
+    assert np.abs(err).max() <= step * 0.5 + 1e-12, (
+        f"왕복 오차 {np.abs(err).max() / step:.2f} 칸 — 양자화보다 크다")
+
+
+def test_the_afe_range_clips_big_r_waves_and_says_so():
+    """이득 1100 · 5 V 면 잡을 수 있는 폭이 **±2.27 mV** 뿐이다. 숨기지 않는다."""
+    small = np.linspace(-2.0, 2.0, 1001)
+    big = np.linspace(-4.0, 4.0, 1001)
+    assert mv_to_counts(small)[1] == 0.0
+    clipped = mv_to_counts(big)[1]
+    assert clipped > 0.3, f"±4 mV 인데 클리핑이 {clipped:.1%} 뿐이다"
+    # 이득을 낮추면 들어온다 — 실제 보드에서 쓰는 대응과 같다
+    assert mv_to_counts(big, gain=550.0)[1] == 0.0
+
+
+def test_counts_stay_inside_the_ten_bit_range():
+    counts, _ = mv_to_counts(np.linspace(-10.0, 10.0, 501))
+    assert counts.min() == 0.0 and counts.max() == float(ADC_MAX)
+    assert np.all(counts == counts.round()), "ADC 는 정수만 낸다"
+
+MITDB = ROOT / "data" / "raw" / "mitdb"
+
+
+@pytest.mark.skipif(not (MITDB.exists() and any(MITDB.glob("*.hea"))),
+                    reason="MIT-BIH 가 없다 (scripts/download_data.py --db mitdb)")
+def test_a_d1_record_keeps_its_real_millivolts_on_the_wire():
+    """**보고서의 신호를 선에 실을 때 진폭이 보존돼야 한다.**
+
+    화면의 세로축이 진짜 mV 라고 말하려면 이것이 성립해야 한다. 여기서 유일하게
+    더해지는 손실은 10 bit 양자화뿐이다 (잡음 없이 확인한다).
+    """
+    from ecgdn.realtime.fake_board import record_counts
+
+    counts, info = record_counts("100", 250, noise="none", dur_s=10.0)
+    assert info["record"] == "100" and info["lead"] == "MLII"
+    assert info["n"] == 2500
+    assert info["snr_measured"] is None, "잡음을 안 넣었는데 SNR 이 잡혔다"
+    back = adc_to_mv(counts)
+    assert abs(float(np.ptp(back)) - info["mv_p2p"]) < 0.01, \
+        "선을 지나며 진폭이 바뀌었다"
+    assert 0.5 < info["mv_p2p"] < 5.0, f"MLII 진폭이 이상하다: {info['mv_p2p']} mV"
+
+
+@pytest.mark.skipif(not (MITDB.exists() and any(MITDB.glob("*.hea"))),
+                    reason="MIT-BIH 가 없다")
+def test_the_requested_snr_is_what_actually_goes_on_the_wire():
+    """`--snr-db 6` 이 정말 6 dB 인지 — **선에 싣기 전에** 재서 적는다."""
+    from ecgdn.realtime.fake_board import record_counts
+
+    for want in (0.0, 6.0, 12.0):
+        _, info = record_counts("100", 250, noise="bw_synth", snr_db=want,
+                                dur_s=10.0, seed=1)
+        assert abs(info["snr_measured"] - want) < 0.01, \
+            f"요청 {want} dB 인데 실제 {info['snr_measured']:.2f} dB 다"
 

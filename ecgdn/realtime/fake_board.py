@@ -37,7 +37,8 @@ from __future__ import annotations
 import numpy as np
 
 __all__ = ["FakeBoard", "UsbPipe", "SERIAL_TX_BUFFER_SIZE", "ADC_MAX",
-           "BOOT_BANNER", "BOOTLOADER_S"]
+           "BOOT_BANNER", "BOOTLOADER_S", "mv_to_counts", "record_counts",
+           "synth_counts"]
 
 # AVR `HardwareSerial` 의 송신 링버퍼. `availableForWrite()` 는 링버퍼라
 # 한 칸을 못 쓰므로 **최대 63** 을 돌려준다 — 이 −1 이 있어야 경계가 맞는다.
@@ -330,4 +331,81 @@ class UsbPipe:
     @property
     def pending(self) -> int:
         return len(self._buf)
+
+
+# ------------------------------------------------ 보고서의 신호를 선에 싣는다
+def mv_to_counts(mv: np.ndarray, bits: int = 10, vref: float = 5.0,
+                 gain: float = 1100.0) -> tuple[np.ndarray, float]:
+    """**전극 단 mV → ADC 카운트.** `serial_link.adc_to_mv` 의 정확한 역이다.
+
+    합성 신호(`synth_counts`)는 «ADC 범위의 1/3» 같은 임의 척도를 쓴다 — 참값이
+    mV 가 아니기 때문이다. 그런데 **MIT-BIH 는 진짜 mV** 라 실제 변환을 쓸 수
+    있고, 그러면 브리지가 `adc_to_mv` 로 되돌렸을 때 **원래 mV 가 그대로 나온다.**
+    즉 화면의 세로축이 진짜 mV 가 되고, mV → counts → mV 왕복이 함께 검증된다.
+
+    돌려주는 둘째 값은 **클리핑 비율**이다. AD8232 의 기본 이득 1100 에 5 V
+    레인지면 잡을 수 있는 폭이 ±2.27 mV 뿐이라, 큰 R 파는 실제로 잘린다 —
+    그것도 시연에서 실제로 일어나는 일이므로 숨기지 않고 센다.
+    """
+    full = float(2 ** bits - 1)
+    center = (full + 1) / 2.0                        # AD8232 는 Vref/2 에 바이어스된다
+    raw = center + np.asarray(mv, dtype=np.float64) * 1e-3 * gain / vref * full
+    clipped = float(np.mean((raw < 0) | (raw > full)))
+    return np.clip(raw, 0, full).round(), clipped
+
+
+def record_counts(name: str, fs: int, *, noise: str = "mixed",
+                  snr_db: float = 8.0, split: str = "test", seed: int = 0,
+                  offset_s: float = 0.0, dur_s: float = 0.0,
+                  root: str = "data/raw/mitdb", nstdb_root: str = "data/raw/nstdb",
+                  lead: str = "MLII", gain: float = 1100.0, vref: float = 5.0,
+                  bits: int = 10) -> tuple[np.ndarray, dict]:
+    """**D1 기록(MIT-BIH + NSTDB)을 아두이노 ADC 를 통과시킨 모습으로.**
+
+    이것으로 보는 것은 「보고서의 신호가 **우리 하드웨어를 지났을 때** 어떻게
+    보이는가」다. 보고서 경로에 없는 두 가지가 여기서 더해진다 — **10 bit
+    양자화**와 **AFE 레인지 클리핑**. 그래서 여기서 본 파형은 보고서의 dB 와
+    같은 자에 놓을 수 없다 (`docs/30_realtime_demo.md` 6.2.2).
+
+    `noise="none"` 이면 기록을 그대로 싣는다 — 「기법이 깨끗한 신호를
+    망치지는 않는가」를 보는 자리다.
+    """
+    from ..data.mitdb import load_record
+    from ..data.mixer import measure_snr, mix_at_snr
+    from ..data.noise import make_noise, mixed_noise
+
+    rec = load_record(name, root, lead=lead, fs_out=float(fs))
+    x = np.asarray(rec.x, dtype=np.float64)
+    i0 = int(max(offset_s, 0.0) * fs)
+    i1 = x.size if dur_s <= 0 else min(x.size, i0 + int(dur_s * fs))
+    x = x[i0:i1]
+    if x.size < fs:
+        raise ValueError(f"구간이 너무 짧다: {name} @ {offset_s:g}s -> {x.size} 샘플")
+
+    gen = np.random.default_rng(seed)
+    info: dict = {"record": name, "lead": rec.lead, "fs": fs,
+                  "n": int(x.size), "offset_s": float(offset_s),
+                  "noise": noise, "snr_db": float(snr_db)}
+    if noise == "none":
+        y = x
+        info["snr_measured"] = None
+    else:
+        banks = {}
+        try:
+            from ..data.nstdb import make_banks
+            banks = make_banks(split, nstdb_root, fs_out=float(fs))
+        except Exception as e:                               # pragma: no cover
+            info["banks_error"] = str(e)
+        if noise == "mixed":
+            nz, w = mixed_noise(x.size, float(fs), gen, banks=banks)
+            info["weights"] = w
+        else:
+            nz = make_noise(noise, x.size, float(fs), gen, banks=banks)
+        y, _, _ = mix_at_snr(x, nz, snr_db)
+        info["snr_measured"] = float(measure_snr(x, y - x))
+
+    counts, clipped = mv_to_counts(y, bits=bits, vref=vref, gain=gain)
+    info["clipped_frac"] = clipped
+    info["mv_p2p"] = float(np.ptp(y))
+    return counts, info
 

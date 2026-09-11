@@ -60,7 +60,8 @@ import sys
 import time
 from pathlib import Path
 
-from ecgdn.realtime.fake_board import BOOTLOADER_S, FakeBoard, UsbPipe, synth_counts
+from ecgdn.realtime.fake_board import (BOOTLOADER_S, FakeBoard, UsbPipe,
+                                       record_counts, synth_counts)
 
 
 def open_virtual_port(hold_open: bool = False) -> tuple[int, int, str]:
@@ -112,9 +113,24 @@ def main() -> int:
     ap.add_argument("--leadoff-len", type=float, default=0.7)
     ap.add_argument("--dur", type=float, default=0.0, help="0 이면 무한")
     ap.add_argument("--signal-s", type=float, default=60.0,
-                    help="합성 신호 길이 [s]. 끝나면 처음으로 돌아간다")
+                    help="신호 길이 [s]. 끝나면 처음으로 돌아간다. d1 에서 0 이면 기록 전체")
     ap.add_argument("--snr-db", type=float, default=8.0)
     ap.add_argument("--seed", type=int, default=7)
+    # ---- 무엇을 흘릴 것인가
+    ap.add_argument("--source", default="synth", choices=["synth", "d1"],
+                    help="synth = 합성 심전도, d1 = MIT-BIH 기록 + NSTDB 잡음")
+    ap.add_argument("--record", default="100",
+                    help="--source d1 일 때의 기록 번호 (예: 100 · 105 · 119)")
+    ap.add_argument("--noise", default="mixed",
+                    help="d1 잡음: mixed · bw · em · ma · pli · none 등")
+    ap.add_argument("--split", default="test", choices=["train", "val", "test"],
+                    help="NSTDB 잡음 구간. **보고서와 같은 자리를 보려면 test**")
+    ap.add_argument("--offset-s", type=float, default=0.0,
+                    help="기록에서 몇 초 지점부터 실을 것인가")
+    ap.add_argument("--lead", default="MLII")
+    ap.add_argument("--gain", type=float, default=1100.0,
+                    help="AFE 총 이득. **브리지의 --gain 과 같아야** mV 축이 맞는다")
+    ap.add_argument("--vref", type=float, default=5.0)
     ap.add_argument("--firmware", default="current", choices=["current", "old"],
                     help="old 면 fs·형식 명령을 무시한다 — 구 스케치가 꽂힌 판")
     # ---- DTR 리셋 흉내
@@ -136,8 +152,29 @@ def main() -> int:
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
-    counts = synth_counts(args.signal_s, args.fs, seed=args.seed,
-                          snr_db=args.snr_db)
+    if args.source == "d1":
+        counts, info = record_counts(
+            args.record, args.fs, noise=args.noise, snr_db=args.snr_db,
+            split=args.split, seed=args.seed, offset_s=args.offset_s,
+            dur_s=args.signal_s, lead=args.lead, gain=args.gain, vref=args.vref)
+        print(f"d1 기록 {info['record']} ({info['lead']}) · {info['n']} 샘플 "
+              f"({info['n'] / args.fs:.0f} s @ {args.fs} Hz) · 잡음 {info['noise']}"
+              + (f" {info['snr_db']:g} dB" if info["noise"] != "none" else ""))
+        if info.get("weights"):
+            w = " · ".join(f"{k} {v:.0%}" for k, v in sorted(info["weights"].items()))
+            print(f"  잡음 성분: {w}")
+        if info.get("banks_error"):
+            print(f"  [warn] NSTDB 를 못 읽었다 ({info['banks_error']}) — "
+                  "합성 잡음만 썼다. data/raw/nstdb 를 확인할 것")
+        print(f"  전극 단 진폭 {info['mv_p2p']:.2f} mV p-p · "
+              f"ADC 클리핑 {100 * info['clipped_frac']:.2f} %")
+        if info["clipped_frac"] > 0.001:
+            print(f"  [warn] R 파가 ADC 레인지를 넘는다 — 이득 {args.gain:g} 에서 "
+                  f"잡을 수 있는 폭은 ±{args.vref / args.gain * 1e3 / 2:.2f} mV 다. "
+                  "실제 보드에서도 같은 자리가 잘린다")
+    else:
+        counts = synth_counts(args.signal_s, args.fs, seed=args.seed,
+                              snr_db=args.snr_db)
 
     def new_board(boot_s: float) -> FakeBoard:
         return FakeBoard(counts, fs=args.fs, baud=args.baud, mode=args.mode,
