@@ -114,22 +114,33 @@
   function have(a, first, head, cap) { return a >= windowStart(first, head, cap) && a <= head; }
 
   // -------------------------------------------------------------- 진폭 재기
-  /** 보이는 구간의 **중심과 로버스트 피크**.
+  /** 보이는 구간의 **중심과 «담아야 할 반높이»**.
    *
-   *  피크를 평균 절대 편차(MAD)의 몇 배로 잡던 것이 겹치기에서 R 피크를
-   *  화면 밖으로 밀어냈다 — 잘린 파형은 어느 방법이 어디서 다른지를 가린다.
-   *  그렇다고 진짜 최대값으로 잡으면 스파이크 한 점에 파형 전체가 납작해진다.
-   *  그래서 **MAD 단위 히스토그램의 99.5 백분위**를 쓴다: R 피크(창 하나에
-   *  수십 표본)는 들어가고 한두 점짜리 잡음은 안 들어간다. */
+   *  셋 다 안 된다는 것을 하나씩 봤다.
+   *   - **MAD 의 몇 배**: 겹치기에서 R 피크가 화면 밖으로 밀렸다 — 잘린 파형은
+   *     어느 방법이 어디서 다른지를 가린다.
+   *   - **진짜 최대값**: 스파이크 한 점에 파형 전체가 납작해진다.
+   *   - **99.5 백분위만**: 실측에서 진짜 최대의 **82~93 %** 다 `[측정]` —
+   *     밴드 위쪽(`HI`)까지 흘러가면 R 피크 끝이 잘린다.
+   *
+   *  그래서 **최대값을 쓰되 백분위의 `SPIKE` 배로 묶는다.** 정상 파형은
+   *  최대/백분위가 1.1~1.2 라 최대가 그대로 들어가고(안 잘린다), 스파이크는
+   *  묶여서 파형을 못 눌린다. 백분위는 MAD 단위 히스토그램으로 센다 —
+   *  정렬 없이 한 번 훑으면 된다. */
+  var SPIKE = 1.4;
+
   function scan(a, lo, hi, cap, q) {
-    var n = hi - lo + 1, k, m = 0;
+    var n = hi - lo + 1, k, m = 0, v;
     if (n <= 0) return { m: 0, peak: 0, n: 0 };
     for (k = lo; k <= hi; k++) m += a[((k % cap) + cap) % cap];
     m /= n;
-    var mad = 0;
-    for (k = lo; k <= hi; k++) mad += Math.abs(a[((k % cap) + cap) % cap] - m);
+    var mad = 0, mx = 0;
+    for (k = lo; k <= hi; k++) {
+      v = Math.abs(a[((k % cap) + cap) % cap] - m);
+      mad += v; if (v > mx) mx = v;
+    }
     mad /= n;
-    if (!(mad > 0)) return { m: m, peak: 0, n: n };
+    if (!(mad > 0)) return { m: m, peak: mx, n: n };
     var NB = 96, W = 0.5, h = new Int32Array(NB + 1), b;
     for (k = lo; k <= hi; k++) {
       b = Math.abs(a[((k % cap) + cap) % cap] - m) / mad / W;
@@ -137,13 +148,13 @@
     }
     var want = Math.ceil(n * (q == null ? 0.995 : q)), c = 0, bin = NB;
     for (k = 0; k <= NB; k++) { c += h[k]; if (c >= want) { bin = k; break; } }
-    return { m: m, peak: (bin + 1) * W * mad, n: n };
+    return { m: m, peak: Math.min(mx, (bin + 1) * W * mad * SPIKE), n: n };
   }
 
   var api = {
     STEPS: STEPS, STEP_MAX: STEP_MAX, LO: LO, HI: HI, AIM: AIM, HOLD_MS: HOLD_MS,
     ladder: ladder, makeGain: makeGain, makeCenter: makeCenter,
-    windowStart: windowStart, absAt: absAt, have: have, scan: scan,
+    windowStart: windowStart, absAt: absAt, have: have, scan: scan, SPIKE: SPIKE,
   };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.LiveAxis = api;

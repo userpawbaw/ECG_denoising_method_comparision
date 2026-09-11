@@ -198,7 +198,11 @@ def test_an_index_restart_does_not_resurrect_the_previous_screen():
 
 # ----------------------------------------------------------------- 진폭 재기
 def test_robust_peak_holds_the_r_peak_but_not_a_single_spike():
-    """R 피크는 담고, 한 점짜리 스파이크에는 안 끌려간다."""
+    """R 피크는 **끝까지** 담고, 한 점짜리 스파이크에는 안 끌려간다.
+
+    99.5 백분위만 쓰면 실측에서 진짜 최대의 82~93 % 라 밴드 위쪽까지 흘러갔을
+    때 R 피크 끝이 잘린다 — 그래서 **최대값을 쓰되 백분위의 1.4 배로 묶는다.**
+    """
     r = run_js("""
       const cap = 2500, a = new Float32Array(cap);
       // 0.1 mV 잡음 위에 250 표본마다 1.0 mV R 피크(폭 5 표본)
@@ -213,6 +217,29 @@ def test_robust_peak_holds_the_r_peak_but_not_a_single_spike():
     assert r["base"] >= 0.96, f"R 피크가 안 들어간다: {r['base']:.3f}"
     assert r["base"] <= 2.0, f"너무 크게 잡아 파형이 납작해진다: {r['base']:.3f}"
     assert r["hit"] <= r["base"] * 1.6, "스파이크 한 점에 끌려간다"
+
+
+def test_the_drawn_half_height_never_clips_a_real_beat():
+    """밴드 안을 **끝까지 흘러가도** R 피크가 안 잘리는가.
+
+    `need` 가 `HI × s` 까지 갔을 때 진짜 최대가 `s` 를 넘으면 잘린다. 백분위만
+    쓰던 때가 그랬다 — 겹치기에서 실제로 잘린 화면이 나왔다.
+    """
+    r = run_js("""
+      const cap = 2500, a = new Float32Array(cap);
+      for (let i = 0; i < cap; i++) a[i] = 0.02 * Math.sin(i / 3);
+      for (let k = 0; k < cap; k += 250){                 // R 피크 (폭 5, 높이 1.0)
+        for (let j = 0; j < 5; j++) a[k + j] = 1.0;
+        a[k + 2] = 1.12;                                  // 뾰족한 끝
+      }
+      const r = AX.scan(a, 0, cap - 1, cap);
+      let mx = 0;
+      for (let i = 0; i < cap; i++) mx = Math.max(mx, Math.abs(a[i] - r.m));
+      console.log(JSON.stringify({need: r.peak, mx, HI: AX.HI}));
+    """)
+    # need 가 밴드 위 끝(HI·s)까지 흘러간 최악의 경우: s = need / HI
+    s = r["need"] / r["HI"]
+    assert r["mx"] <= s, f"밴드 끝에서 R 피크가 잘린다 (max {r['mx']:.3f} > 반높이 {s:.3f})"
 
 
 def test_the_page_uses_the_module_rather_than_its_own_copy():
