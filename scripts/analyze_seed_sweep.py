@@ -260,6 +260,18 @@ def main() -> int:
         print(f"  {'재려는 Δ':>10}  {'독립 표본':>10}  {'짝지은 설계':>12}")
         for t in [float(x) for x in args.targets.split(",")]:
             print(f"  {t:>10.2f}  {need_n(sd, t):>10d}  {need_n_paired(sd_d, t):>12d}")
+        # **판 수가 적으면 이 표를 계획에 쓰면 안 된다.** sd 자신의 오차가
+        # 크기 때문에 낙관적으로 나온 sd 가 「2 판으로 0.25 를 잰다」 같은
+        # 결론을 만든다. n=2 에서는 sd 의 95 % 상한이 sd 의 8 배까지 간다.
+        # 같은 종류의 실수를 캘리브레이션 판정에서 한 번 했다(그때는 n=1 로
+        # 「재현되지 않는다」를 선언했다). 여기서는 상한을 함께 찍는다.
+        if bb.size < 4 and sd_d_map:
+            hi = max(sd_ci(v, bb.size)[1] for v in sd_d_map.values())
+            print(f"\n  ⚠ n={bb.size} 다 — **이 표를 예산 계획에 쓰지 마라.**")
+            print(f"    sd(Δ) 의 95 % 상한은 {hi:.3f} dB 이고, 그 값으로 다시 세면:")
+            for t in [float(x) for x in args.targets.split(",")]:
+                print(f"      Δ={t:.2f} → 짝지은 설계 {need_n_paired(hi, t)} 판")
+            print("    계획에는 판이 넉넉한 판정(F-42 의 sd(Δ) 0.30~0.62, n=4)을 쓴다.")
         if spe:
             per = np.mean(spe) * 45 / 60      # 45 epoch 가정, 분
             print(f"\n  (이 환경 한 판 ≈ {per:.1f} 분 — 45 epoch 기준)")
