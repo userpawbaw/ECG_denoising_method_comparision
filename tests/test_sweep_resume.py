@@ -78,3 +78,36 @@ def test_resume_is_on_by_default_and_can_be_turned_off():
     assert "resume: bool = True" in src, "run_one 의 기본이 재개여야 한다"
     assert "--no-resume" in src
     assert "trainer.try_resume()" in src, "sweep 이 try_resume 을 불러야 한다"
+
+
+def test_analyzer_uses_declared_base_not_alphabetical(tmp_path):
+    """**기준 arm 을 알파벳으로 고르면 모든 Δ 의 부호가 뒤집힌다.**
+
+    `sweep.csv` 는 `sorted(glob)` 으로 쓰이므로 행 순서가 알파벳 순이다.
+    D-28 2 번(`m06_cond` vs `m06_l1`)에서 실제로 `m06_cond` 가 기준이 되어
+    「기준이 조건화보다 0.8 dB 나쁘다」가 아니라 그 반대로 찍혀 나왔다.
+    sweep 이 남기는 `arms.txt` 가 의도한 순서를 들고 있어야 한다.
+    """
+    import csv as _csv
+    import subprocess
+    import sys
+
+    cols = ["run_id", "arm", "seed", "best_metric", "fixed_snr_imp_scaled"]
+    rows = [
+        # 알파벳으로는 zzz 가 뒤, aaa 가 앞. 의도한 기준은 zzz 다.
+        ("aaa__s0", "aaa", 0, 5.0, 5.0), ("aaa__s1", "aaa", 1, 5.0, 5.0),
+        ("zzz__s0", "zzz", 0, 4.0, 4.0), ("zzz__s1", "zzz", 1, 4.0, 4.0),
+    ]
+    p = tmp_path / "sweep.csv"
+    with p.open("w", newline="", encoding="utf-8") as f:
+        w = _csv.writer(f)
+        w.writerow(cols)
+        w.writerows(rows)
+    (tmp_path / "arms.txt").write_text("zzz\naaa\n")
+
+    out = subprocess.run([sys.executable, str(ROOT / "scripts" / "analyze_seed_sweep.py"),
+                          str(tmp_path)], capture_output=True, text=True).stdout
+    assert "기준 arm = zzz" in out, out
+    # zzz 가 기준이면 aaa 의 Δ 는 **양수** (5.0 − 4.0)
+    line = [l for l in out.splitlines() if l.strip().startswith("aaa")][-1]
+    assert "+1.00" in line, line

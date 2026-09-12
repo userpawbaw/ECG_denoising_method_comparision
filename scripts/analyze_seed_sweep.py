@@ -105,9 +105,24 @@ def main() -> int:
     for r in rows:
         by_arm[r["arm"]][r["seed"]] = r
     arms = list(dict.fromkeys(r["arm"] for r in rows))
+    # **기준 arm 은 알파벳으로 정하면 안 된다.** `sweep.csv` 는 `sorted(glob)`
+    # 으로 쓰이므로 행 순서가 알파벳 순이고, 그러면 `m06_cond` 처럼 앞서는 arm 이
+    # 기준이 되어 **모든 Δ 의 부호가 뒤집힌다** — D-28 2 번에서 실제로 그렇게
+    # 나왔다. sweep 이 남긴 `arms.txt`(의도한 순서)를 먼저 본다.
+    order = Path(args.path)
+    order = (order if order.is_dir() else order.parent) / "arms.txt"
+    if order.exists():
+        want = [a for a in order.read_text().split() if a in by_arm]
+        if want:
+            arms = want + [a for a in arms if a not in want]
     base = args.base or arms[0]
 
+    src = ("--base" if args.base else
+           "arms.txt" if order.exists() else "표의 첫 행 (⚠ 알파벳 순일 수 있다)")
     env = {k[4:]: rows[0][k] for k in rows[0] if k.startswith("env_")}
+    section(f"기준 arm = {base}   ({src})")
+    print(f"  아래 모든 Δ 는 «다른 arm − {base}» 다. 기준이 틀렸으면 부호가 통째로"
+          f" 뒤집힌다.\n  고치려면 --base {arms[0] if not args.base else base} 처럼 직접 준다.")
     section("환경")
     # 표가 한 환경에서 나왔다고 가정하면 안 된다 — Colab 과 로컬이 seed 를 나눠
     # 갖는 식으로 섞일 수 있다. 섞였으면 **어느 판이 어디서 나왔는지** 보여 준다.

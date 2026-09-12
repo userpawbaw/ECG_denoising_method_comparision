@@ -269,6 +269,17 @@ def rel(p: Path) -> str:
         return str(p)
 
 
+def write_arm_order(out_root: Path, arms: list[str]) -> None:
+    """**기준 arm 이 누구인지**를 파일로 남긴다.
+
+    `sweep.csv` 는 `sorted(glob)` 으로 쓰므로 행 순서가 **알파벳 순**이다.
+    분석기는 첫 arm 을 기준으로 짝을 지었는데, 그러면 `m06_cond` 처럼
+    알파벳이 앞서는 arm 이 기준이 되어 **모든 Δ 의 부호가 뒤집힌다.**
+    실제로 D-28 2 번에서 그렇게 나왔다. 의도한 순서를 여기 적어 둔다.
+    """
+    (out_root / "arms.txt").write_text("\n".join(arms) + "\n", encoding="utf-8")
+
+
 def write_csv(out_root: Path) -> Path:
     rows = []
     for p in sorted(out_root.glob("*/summary.json")):
@@ -346,6 +357,7 @@ def main() -> int:
           f"(완료 {done}, 남은 {len(todo)-done})")
     print(f"[sweep] out={rel(out_root)} source={args.source} "
           f"amp={args.amp}")
+    write_arm_order(out_root, arms)       # 기준 arm = arms[0] 을 남긴다
     if args.dry_run:
         for a, s in todo:
             d = out_root / f"{a}__s{s}"
