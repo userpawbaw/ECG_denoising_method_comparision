@@ -164,9 +164,24 @@ def build_datasets(cfg: dict, source: str):
     return src, tr, va, fx, bands
 
 
+def partial_epoch(out: Path) -> int | None:
+    """이 판이 **몇 epoch 까지 갔다가 끊겼나**. 안 끊겼으면 None.
+
+    `last.pt` 는 epoch 마다 저장되므로 그 안의 `epoch` 이 곧 진행분이다.
+    `summary.json` 이 있으면 끝난 판이라 진행분이 아니다.
+    """
+    if (out / "summary.json").exists() or not (out / "last.pt").exists():
+        return None
+    try:
+        return int(torch.load(out / "last.pt", map_location="cpu",
+                              weights_only=False).get("epoch", 0)) or None
+    except Exception:
+        return None
+
+
 def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None,
             amp: bool | None, epochs: int | None, keep_ckpt: bool,
-            workers: int) -> dict:
+            workers: int, resume: bool = True) -> dict:
     run_id = f"{arm}__s{seed}"
     out = ensure_dir(out_root / run_id)
     summary_p = out / "summary.json"
@@ -199,6 +214,13 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
     n_params = model.n_params()
     print(f"  [{run_id}] params={n_params:,} loss={cfg.get('loss')} "
           f"device={trainer.device.type} amp={trainer.amp}", flush=True)
+
+    # **판 하나가 중간에 끊겨도 이어서 간다.** `last.pt` 에 optimizer·스케줄
+    # 위치·`best_epoch` 까지 들어 있어 「이어서」가 「다른 학습」이 되지 않는다.
+    # Colab 처럼 세션이 자주 끊기는 환경에서 이것이 없으면 한 판을 통째로 다시
+    # 돌린다 — 실제로 그렇게 잃었다.
+    if resume and not trainer.try_resume():
+        pass                                   # 없으면 그냥 처음부터
 
     t0 = time.perf_counter()
     st = trainer.fit()
@@ -282,6 +304,8 @@ def main() -> int:
     ap.add_argument("--threads", type=int, default=None,
                     help="torch 스레드 수. 이 저장소의 학습은 4 로 돌았다 — "
                          "맞춰 두면 부동소수점 축약 순서까지 같아진다")
+    ap.add_argument("--no-resume", action="store_true",
+                    help="끊긴 판을 처음부터 다시 돌린다 (기본은 last.pt 에서 재개)")
     ap.add_argument("--keep-ckpt", action="store_true",
                     help="best.pt/last.pt 를 남긴다 (업로드가 커진다)")
     ap.add_argument("--dry-run", action="store_true", help="무엇을 돌릴지만 출력")
@@ -320,8 +344,13 @@ def main() -> int:
           f"amp={args.amp}")
     if args.dry_run:
         for a, s in todo:
-            mark = "✓" if (out_root / f"{a}__s{s}" / "summary.json").exists() else " "
-            print(f"  {mark} {a}__s{s}")
+            d = out_root / f"{a}__s{s}"
+            if (d / "summary.json").exists():
+                print(f"  ✓ {a}__s{s}")
+            elif (ep := partial_epoch(d)) is not None:
+                print(f"  ↻ {a}__s{s}   epoch {ep} 까지 갔다가 끊겼다 — 거기서 재개한다")
+            else:
+                print(f"    {a}__s{s}")
         return 0
 
     amp = {"on": True, "off": False}[args.amp]
@@ -330,12 +359,16 @@ def main() -> int:
     t_start = time.perf_counter()
     n_ran = 0
     for i, (arm, seed) in enumerate(todo, 1):
-        pre = (out_root / f"{arm}__s{seed}" / "summary.json").exists()
-        print(f"[sweep] {i}/{len(todo)}  {arm} seed={seed}"
-              f"{'  (이미 있음, 건너뜀)' if pre else ''}", flush=True)
+        d = out_root / f"{arm}__s{seed}"
+        pre = (d / "summary.json").exists()
+        part = partial_epoch(d)
+        tag = ("  (이미 있음, 건너뜀)" if pre else
+               f"  (epoch {part} 에서 재개)" if part and not args.no_resume else "")
+        print(f"[sweep] {i}/{len(todo)}  {arm} seed={seed}{tag}", flush=True)
         try:
             run_one(arm, seed, out_root, args.source, args.device, amp,
-                    args.epochs, args.keep_ckpt, args.workers)
+                    args.epochs, args.keep_ckpt, args.workers,
+                    resume=not args.no_resume)
         except Exception as e:                      # 한 판이 죽어도 큐는 계속
             print(f"  [실패] {arm} seed={seed}: {type(e).__name__}: {e}",
                   file=sys.stderr, flush=True)

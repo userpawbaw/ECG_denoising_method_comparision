@@ -38,64 +38,55 @@
 
 ---
 
-## 2. 단계 — **반드시 이 순서로**
+## 2. 지금 돌릴 것 — **D-27 깊이 판** (2026-09-12 기준)
 
-### 2-1. 캘리브레이션 — **끝났다 (2026-09-09, Tesla T4)** ✅
+앞 단계(캘리브레이션 · 구조 · 용량 · 손실)는 끝났다. 결과는 F-41 · F-42 ·
+`docs/21` D-23 · D-24 에 있다. **지금 필요한 것은 D-27 이다.**
 
-| seed | T4 | 이 저장소 CPU | 차이 | best epoch (T4/CPU) | early stop |
-|---:|---:|---:|---:|:--:|:--:|
-| 0 | 3.644 | 3.437 | +0.207 | 34 / 34 | 46 / 46 |
-| 1 | 4.725 | 4.864 | −0.139 | 37 / 37 | 49 / 49 |
-| 2 | 4.418 | 4.493 | −0.075 | 27 / 27 | 39 / 39 |
+### 분담
 
-**평균 차이 −0.002 dB — 체계적 편향이 없다.** 흩어짐만 sd 0.184 이고,
-**best epoch 과 early-stop epoch 이 3/3 씩 일치**했다. 궤적의 모양이 같다.
+| | seed | 판 |
+|---|---|---:|
+| **이 컨테이너 (CPU)** | **4 · 5** | 8 |
+| **Colab (T4)** | **0 · 1 · 2 · 3** | 16 |
+| 합계 | 4 arm × 6 seed | **24** |
 
-> 분석기는 「재현되지 않는다」로 찍었는데, 그때 표에 **seed 2 한 줄만** 있었기
-> 때문이다(Colab 이 끊겨 폴더가 소실). 세 줄을 다 놓고 보면 **편향은 0 이고
-> 남는 것은 ±0.18 의 흩어짐**이다. 임계값 0.05 는 「한 판의 차이」로 잡은
-> 값이라 이 상황을 잘못 판정한다 — 판정은 **평균 차이**로 봐야 한다.
+**한 seed 의 모든 arm 은 반드시 같은 환경에서** 돈다. 갈라지면 짝지은 차분이
+하드웨어 흩어짐(sd 0.184)을 먹는다. 그래서 seed 로 나눴지 arm 으로 나누지 않았다.
 
-**그리고 이 판이 F-41 을 냈다** — `fixed_eval` 이 `best` 대비 산포를 **2.82 배**
-줄였다(0.557 → 0.198). **필요한 판 수가 팔당 78 → 10 으로 내려간다.**
+### 붙여 넣을 것
 
-| | seed 0 | seed 1 | seed 2 | sd |
+```python
+from google.colab import drive; drive.mount('/content/drive')
+```
+
+```bash
+!python scripts/run_seed_sweep.py \
+    --arms m06_l1,m06_l1_deep2,m06_l1_deep3,m06_l1_deep4 \
+    --seeds 0-3 --out /content/drive/MyDrive/ecgdn_sweep/depth
+!python scripts/analyze_seed_sweep.py /content/drive/MyDrive/ecgdn_sweep/depth
+```
+
+**끊기면 같은 명령을 그대로 다시 실행한다** (§4 — 이제 판 안에서도 이어진다).
+
+### 무엇을 묻는 판인가
+
+**파라미터를 976 K 에 맞춰 두고 폭을 깎아 깊이를 산다.**
+
+| arm | 레벨당 ResBlock | conv 층 | params | 수용영역 |
 |---|---:|---:|---:|---:|
-| `best` (seed 별 val 잡음) | 3.644 | 4.725 | 4.418 | 0.557 |
-| **고정 평가** (공통 잡음) | 4.308 | 3.932 | 4.015 | **0.198** |
+| `m06_l1` (기준) | 1 | 34 | 976,489 | 887 (3.55 s) |
+| `m06_l1_deep2` | 2 | 50 | 970,474 | 1127 |
+| `m06_l1_deep3` | 3 | 66 | 979,574 | 1367 |
+| `m06_l1_deep4` | 4 | 82 | 966,846 | 1607 |
 
-**앞으로 판정은 `fixed_snr_imp_scaled` 로 한다.** `best` 는 참고값이다.
+용량 실험(F-42)은 **폭만** 바꿨다. 이 판이 그 범위 단서를 닫는다. 근거와
+사전 예측은 `docs/21` **D-27**, 선행 연구 위치는 `docs/36_related_work.md`.
 
-**속도**: T4 에서 epoch 46.4 s 였다 — 이 저장소 CPU(66 s)의 1.4 배밖에 안 된다.
-**모델이 아니라 데이터 파이프라인이 병목**이었기 때문이다(item 14.64 ms 중
-front-end 두 호출이 13 ms). 그래서 파이프라인에 캐시를 넣어 **2.31 배** 빠르게
-고쳤다(`tests/test_pipeline_cache.py` 가 비트 동일성을 고정한다).
-**다음 판은 절반 시간에 끝난다.**
+### 그다음 (D-28 순서)
 
-### 2-2. 구조 재판정 — **이제 이것부터** 돌린다
-
-산포(`spread`)를 따로 돌릴 이유가 없어졌다. `structure` 의 `m06_l1` 열이
-그대로 산포를 준다 — 같은 판에서 둘 다 나온다.
-
-```bash
-!python scripts/run_seed_sweep.py --stage structure --seeds 0-3
-!python scripts/analyze_seed_sweep.py results/ext/structure
-```
-
-`M06` · `M07` · `M08` · `M09` · `M10` 을 **같은 seed 집합**에서 돌린다.
-5 arm × 4 seed = **20 판**. 끊기면 같은 명령을 다시 실행하면 되고, 이어서
-`--seeds 4-7` 로 20 판을 더하면 **팔당 8 판**이 된다.
-
-**중간에 끊겨도 분석은 된다** — 분석기는 완료된 판만으로 표를 만든다.
-
-### 2-3. 용량 · 손실 (여유가 있으면)
-
-```bash
-!python scripts/run_seed_sweep.py --stage capacity --seeds 0-3   # 12 판
-!python scripts/run_seed_sweep.py --stage loss     --seeds 0-3   # 12 판
-```
-
----
+조건화 → 2×2(`L6` × 조건화) → 추정 SNR. **조건화는 구현이 필요해서** 이
+컨테이너에서 만든 뒤 같은 방식으로 나눈다.
 
 ## 3. 왜 이렇게 설계했나
 
@@ -150,20 +141,45 @@ GPU 에서 `torch.amp` 를 켜면 fp16 으로 학습한다. 그 값은 CPU 의 f
 
 ---
 
-## 4. 중단됐을 때
+## 4. 중단됐을 때 — **이제 판 안에서도 이어진다**
 
-**같은 명령을 다시 실행하면 된다.** `summary.json` 이 있는 판은 건너뛴다.
-Colab 이 끊겨도, 세션이 죽어도 마찬가지다.
+두 층으로 재개한다.
 
-Colab 이라면 결과를 Drive 에 두는 쪽이 안전하다:
+| 무엇이 끊겼나 | 어떻게 이어지나 |
+|---|---|
+| **판 사이** (한 판 끝나고 다음 판 전에) | `summary.json` 이 있는 판은 건너뛴다 |
+| **판 안** (학습 도중 30 epoch 쯤에서) | **`last.pt` 에서 그 epoch 부터 이어 간다** |
+
+**`last.pt` 는 epoch 마다 저장되고** optimizer 모멘텀 · LR 스케줄 위치 ·
+`best_epoch` 까지 담는다. 그래서 「이어서」가 「다른 학습」이 되지 않는다.
+지난번엔 이게 연결돼 있지 않아 **한 판을 통째로 다시 돌렸다.**
+
+**할 일은 없다. 같은 명령을 다시 실행하면 된다.**
+
+```bash
+!python scripts/run_seed_sweep.py --arms ... --seeds ... --out ... --dry-run
+```
+
+`--dry-run` 이 상태를 세 가지로 보여 준다:
+
+```
+  ✓ m06_l1__s0                                        끝났다
+  ↻ m07_l1__s0   epoch 23 까지 갔다가 끊겼다 — 거기서 재개한다
+    m08_l1__s0                                        아직 안 돌았다
+```
+
+> **`epochs` 를 바꾸지 마라.** LR 스케줄이 `epochs × step/epoch` 로 정규화돼
+> 있어서, 재개할 때 값을 바꾸면 남은 구간의 LR 곡선이 원래와 달라진다.
+> 처음부터 다시 돌리고 싶으면 `--no-resume` 을 준다.
+
+**Drive 에 두는 것을 강하게 권한다.** 재개는 `last.pt` 가 살아 있어야 되는데,
+Colab 로컬 디스크는 세션이 죽으면 같이 사라진다.
 
 ```python
 from google.colab import drive; drive.mount('/content/drive')
-!python scripts/run_seed_sweep.py --stage structure --seeds 0-9 \
-    --out /content/drive/MyDrive/ecgdn_sweep/structure
+!python scripts/run_seed_sweep.py --arms m06_l1,m06_l1_deep2,m06_l1_deep3,m06_l1_deep4 \
+    --seeds 0-4 --out /content/drive/MyDrive/ecgdn_sweep/depth
 ```
-
----
 
 ## 5. 돌려줄 것
 
