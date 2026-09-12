@@ -79,6 +79,12 @@ STAGES = {
 # 비교할 수 없게 되므로 바꾸지 않는다.
 FIXED_EVAL_SALT = ("fixed_eval", 20260909)
 
+# **SNR 대역별로도 따로 잰다.** 총합 하나는 동작점에 따라 부호까지 바뀌는 효과를
+# 가린다 — D1 EXP-A 에서 `M06` 은 −5 dB 에서 오라클에 0.90 dB 차로 붙고 20 dB
+# 에서는 7.95 dB 뒤진다. 좁은 대역으로 학습한 모델과 넓은 대역으로 학습한 모델을
+# 견주려면 **같은 대역에서** 재야 하므로, 이 다섯 칸이 그 공통 자가 된다.
+EVAL_BANDS = [(-5.0, 0.0), (0.0, 5.0), (5.0, 10.0), (10.0, 15.0), (15.0, 20.0)]
+
 
 def parse_seeds(spec: str) -> list[int]:
     out: list[int] = []
@@ -148,7 +154,14 @@ def build_datasets(cfg: dict, source: str):
     # 고정 평가용 — 같은 val 기록, **seed 와 무관한 잡음 뽑기**.
     fx = ECGDenoiseDataset(src, "val", banks=make_banks("val", nstdb_root),
                            salt=FIXED_EVAL_SALT, **kw)
-    return src, tr, va, fx
+    # 대역별 고정 평가. `snr_range` 만 좁히고 나머지는 같다.
+    bands = {}
+    for lo, hi in EVAL_BANDS:
+        bkw = dict(kw, snr_range=(lo, hi))
+        bands[f"{lo:g}_{hi:g}"] = ECGDenoiseDataset(
+            src, "val", banks=make_banks("val", nstdb_root),
+            salt=(FIXED_EVAL_SALT, lo, hi), **bkw)
+    return src, tr, va, fx, bands
 
 
 def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None,
@@ -170,7 +183,7 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
                                                     allow_unicode=True))
 
     torch.manual_seed(seed)                      # train.py 와 동일
-    src, tr, va, fx = build_datasets(cfg, source)
+    src, tr, va, fx, bands = build_datasets(cfg, source)
     mcfg = cfg.get("model", {})
     model = build_model(mcfg.get("name", "resunet1d"), **(mcfg.get("kwargs") or {}))
     loss_fn = make_loss(cfg.get("loss", "L1"))
@@ -198,6 +211,9 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
         ck = torch.load(bp, map_location=trainer.device, weights_only=False)
         trainer.model.load_state_dict(ck["model"])
         fixed = {f"fixed_{k}": float(v) for k, v in trainer.evaluate(fx).items()}
+        # 대역별 — `snr_imp_scaled` 하나만 남긴다 (열이 너무 늘지 않게).
+        for name, bds in bands.items():
+            fixed[f"band_{name}"] = float(trainer.evaluate(bds)["snr_imp_scaled"])
 
     rec = {
         "run_id": run_id, "arm": arm, "seed": seed,
