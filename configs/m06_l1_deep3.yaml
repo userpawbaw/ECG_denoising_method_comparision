@@ -1,0 +1,42 @@
+exp_id: m06_l1_deep3
+seed: 0
+model:
+  name: resunet1d
+  kwargs:
+    chs:
+    - 19
+    - 25
+    - 38
+    - 51
+    - 76
+    n_blocks: 3
+loss: L1
+data:
+  source: auto
+  dur_s: 300.0
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 1024
+  hop: 512
+  snr_range:
+  - -5.0
+  - 20.0
+  max_per_record: 160
+  nstdb_root: data/raw/nstdb
+  frontend: true
+train:
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  epochs: 60
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0
+
+# D-27 깊이 축 — **파라미터를 맞추고 폭을 깊이로 바꾼다.**
+#   params 979,574 (기준 976,489 대비 +3,085) · 수용영역 1367 샘플 (5.47 s)
+#   레벨당 ResBlock 3 개 (기준은 1 개).
+# 용량 실험(D-23 B · F-42)은 **폭만** 바꿨다. residual learning 의 대표
+# 이점이 «깊어도 학습이 된다» 인데 그 축을 쓰지 않았다.
+# 주의: 깊이는 **수용영역도 함께 넓힌다** — 둘은 conv 망에서 분리되지 않는다.
