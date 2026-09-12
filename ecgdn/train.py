@@ -103,10 +103,25 @@ class Trainer:
                           num_workers=self.num_workers, drop_last=shuffle,
                           collate_fn=_collate)
 
-    def _forward(self, y):
+    def _forward(self, y, snr=None):
+        """`snr` 은 조건화 모델(D-28 2 번)만 쓴다. 안 쓰는 모델에는 넘기지 않는다."""
+        kw = {"snr": snr} if getattr(self.model, "needs_cond", False) else {}
         if hasattr(self.model, "swt"):
-            return self.model(y, return_bands=True)
-        return self.model(y), None, None
+            return self.model(y, return_bands=True, **kw)
+        return self.model(y, **kw), None, None
+
+    def _cond(self, meta) -> "torch.Tensor | None":
+        """배치의 참 SNR. 조건화 모델이 아니면 만들지 않는다.
+
+        **합성이라 참값을 안다** — 추정값으로 바꾸는 것은 D-28 4 번이고,
+        그 차이 자체가 이 과제의 결과다(F-13: 추정기 8 배 편향).
+        """
+        if not getattr(self.model, "needs_cond", False):
+            return None
+        if "snr" not in meta:
+            raise KeyError("조건화 모델인데 배치에 snr 이 없다")
+        return torch.as_tensor(np.asarray(meta["snr"], dtype=np.float32),
+                               device=self.device)
 
     def _loss_extra(self, y, x) -> dict:
         """손실이 요구하는 추가 입력만 만든다.
@@ -122,7 +137,13 @@ class Trainer:
             # 배치의 앞 일부만 쓴다 (배치는 이미 섞여 있다). 전부 쓰면 forward 가
             # 2 배가 된다.
             k = max(1, int(round(x.shape[0] * float(self.loss_fn.clean_frac))))
-            extra["xhat_clean"] = self._forward(x[:k])[0]
+            # 조건화 모델이면 clean 에도 조건이 필요하다. **배치의 SNR 이 아니라**
+            # 「우리가 본 것 중 가장 깨끗함」을 준다 (`clean_cond_snr`).
+            cs = None
+            if getattr(self.model, "needs_cond", False):
+                cs = torch.full((k,), float(self.model.clean_cond_snr),
+                                device=self.device)
+            extra["xhat_clean"] = self._forward(x[:k], cs)[0]
         return extra
 
     def _lr_at(self, step: int, total: int) -> float:
@@ -139,7 +160,7 @@ class Trainer:
         with torch.no_grad():
             for y, x, meta in self._loader(ds, shuffle=False):
                 y, x = y.to(self.device), x.to(self.device)
-                xhat, s, s_hat = self._forward(y)
+                xhat, s, s_hat = self._forward(y, self._cond(meta))
                 _, parts = self.loss_fn(xhat, x, s_hat, s,
                                         **self._loss_extra(y, x))
                 m = snr_metrics_torch(x[:, 0], y[:, 0], xhat[:, 0])
@@ -191,7 +212,7 @@ class Trainer:
                 y, x = y.to(self.device), x.to(self.device)
                 self.opt.zero_grad(set_to_none=True)
                 with torch.amp.autocast(self.device.type, enabled=self.amp):
-                    xhat, s, s_hat = self._forward(y)
+                    xhat, s, s_hat = self._forward(y, self._cond(meta))
                     loss, _ = self.loss_fn(xhat, x, s_hat, s,
                                            **self._loss_extra(y, x))
                 self.scaler.scale(loss).backward()

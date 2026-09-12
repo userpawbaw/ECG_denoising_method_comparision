@@ -46,7 +46,9 @@ class DLDenoiser(BaseDenoiser):
                  name: str = "M06", win: int | None = None,
                  hop: int | None = None,
                  device: str = "cpu", batch: int = 64, normalize: bool = True,
-                 pre: str | None = None, frontend: bool | None = None):
+                 pre: str | None = None, frontend: bool | None = None,
+                 cond_snr: float | str | None = None,
+                 cond_snr_offset: float = 0.0):
         import torch
 
         self.name = name
@@ -99,6 +101,36 @@ class DLDenoiser(BaseDenoiser):
         if pre is not None:
             from ..registry import build
             self.pre = build(pre)
+        # 조건화 모델(D-28 2 번)의 SNR 출처.
+        #   float -> 고정값 · "est" -> 신호 전체에서 추정 · None -> 없음
+        # **추론에서 참 SNR 을 쓸 길은 없다** — 그건 오라클이다(B01·B02 와 같은
+        # 자리). 실험 단계에서 조건화 모델을 돌리려면 추정값을 쓰거나 고정해야
+        # 하고, 그 대가를 재는 것이 D-28 4 번이다.
+        self.cond_snr = cond_snr
+        self.cond_snr_offset = float(cond_snr_offset)
+        if getattr(self.model, "needs_cond", False) and cond_snr is None:
+            raise ValueError(
+                f"{self.name}: 조건화 모델인데 cond_snr 이 없다. "
+                '추정값은 cond_snr="est", 고정값은 숫자를 준다.')
+        if cond_snr is not None and not getattr(self.model, "needs_cond", False):
+            raise ValueError(f"{self.name}: 조건화하지 않는 모델에 cond_snr 을 줬다")
+
+    def _cond_value(self, y: np.ndarray, fs: float) -> float:
+        """창마다가 아니라 **신호 하나에 한 번** 정한다.
+
+        4.096 s 창에는 박동이 4~5 개뿐이라 추정기가 요구하는 6 개에 못 미친다
+        (`estimate_snr_hsc` 가 NaN 을 낸다). 실제 운용에서도 «구간 단위로 한 번
+        재고 그 구간에 적용» 이 자연스럽다.
+        """
+        if self.cond_snr != "est":
+            return float(self.cond_snr) + self.cond_snr_offset
+        from ..eval.snr_estimation import estimate_snr_hsc
+        v, _ = estimate_snr_hsc(y, fs)
+        if not np.isfinite(v):
+            # 못 재면 학습 범위의 가운데. **조용히 넘어가지 않고 기록한다.**
+            v = 0.5 * (self.model.embed.lo + self.model.embed.hi)
+            self.meta["cond_snr_fallback"] = True
+        return float(v) + self.cond_snr_offset
 
     def _run(self, y: np.ndarray, fs: float, ctx: dict[str, Any]) -> np.ndarray:
         torch = self._torch
@@ -116,12 +148,20 @@ class DLDenoiser(BaseDenoiser):
             scales = np.ones((nf, 1))
         inp = frames / scales
 
+        cond = self._cond_value(y, fs) if self.cond_snr is not None else None
+        if cond is not None:
+            ctx["cond_snr"] = cond
+
         outs = np.empty_like(inp)
         with torch.no_grad():
             for i in range(0, nf, self.batch):
                 blk = torch.from_numpy(inp[i:i + self.batch].astype(np.float32))[:, None, :]
                 blk = blk.to(self.device)
-                pred = self.model(blk)
+                if cond is None:
+                    pred = self.model(blk)
+                else:
+                    pred = self.model(blk, torch.full((blk.shape[0],), cond,
+                                                      device=self.device))
                 if isinstance(pred, tuple):
                     pred = pred[0]
                 outs[i:i + self.batch] = pred[:, 0].cpu().numpy().astype(np.float64)
