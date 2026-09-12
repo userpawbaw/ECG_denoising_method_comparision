@@ -83,10 +83,31 @@ from google.colab import drive; drive.mount('/content/drive')
 용량 실험(F-42)은 **폭만** 바꿨다. 이 판이 그 범위 단서를 닫는다. 근거와
 사전 예측은 `docs/21` **D-27**, 선행 연구 위치는 `docs/36_related_work.md`.
 
-### 그다음 (D-28 순서)
+### 그다음 — **D-28 2 번 조건화 판** (구현 끝, 바로 돌려도 된다)
 
-조건화 → 2×2(`L6` × 조건화) → 추정 SNR. **조건화는 구현이 필요해서** 이
-컨테이너에서 만든 뒤 같은 방식으로 나눈다.
+깊이 판을 마치면 이어서 이것을 돌린다. **분담은 같다** — Colab 이 seed 0~3,
+이 컨테이너가 4·5.
+
+```bash
+!python scripts/run_seed_sweep.py \
+    --arms m06_l1,m06_cond \
+    --seeds 0-3 --out /content/drive/MyDrive/ecgdn_sweep/cond
+!python scripts/analyze_seed_sweep.py /content/drive/MyDrive/ecgdn_sweep/cond
+```
+
+`m06_l1` 을 다시 도는 게 낭비로 보이지만 **짝을 같은 판에서 만들어야** 한다.
+덤도 있다 — 깊이 판의 같은 seed 값과 맞아떨어지는지가 공짜 재현 확인이 된다.
+
+| arm | 무엇 | params |
+|---|---|---:|
+| `m06_l1` (기준) | 조건 없음 | 976,489 |
+| `m06_cond` | 참 SNR → FiLM (γ, β) | 974,693 (−0.18 %) |
+
+사전 예측: **15~20 dB 대역에서 +3 ~ +5 dB.** D-26 의 전담 모델(+4.41)이
+상한이고 조건화는 그 아래일 것이다. **상한을 넘으면 평가 누수부터 의심한다.**
+근거·구현 선택은 `docs/21` **D-28**.
+
+그 뒤로는 2×2(`L6` × 조건화) → 추정 SNR + 교란. 둘 다 구현이 더 필요하다.
 
 ## 3. 왜 이렇게 설계했나
 
