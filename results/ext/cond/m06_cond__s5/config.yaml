@@ -1,0 +1,38 @@
+exp_id: m06_cond__s5
+seed: 5
+model:
+  name: resunet1d
+  kwargs:
+    cond: true
+    cond_dim: 32
+    cond_lo: -5.0
+    cond_hi: 20.0
+    chs:
+    - 24
+    - 32
+    - 48
+    - 60
+    - 96
+loss: L1
+data:
+  source: auto
+  dur_s: 300.0
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 1024
+  hop: 512
+  snr_range:
+  - -5.0
+  - 20.0
+  max_per_record: 160
+  nstdb_root: data/raw/nstdb
+  frontend: true
+train:
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  epochs: 60
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0
