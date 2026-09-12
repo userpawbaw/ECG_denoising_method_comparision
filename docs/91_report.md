@@ -16,7 +16,7 @@
 
 | 갈래 | 문서 | 무엇이 있나 |
 |---|---|---|
-| **설계·절차** | `00_review` · `01_design` · `02_procedure` | 초기 검토와 그 정정, 확정 설계안, STEP 별 실행 절차 |
+| **설계·절차** | `00_review` · `01_design` · `02_procedure` · `36_related_work` | 초기 검토와 그 정정, 확정 설계안, STEP 별 실행 절차, **선행 연구와 우리 위치**(DRUNet·NAFNet·Restormer — 미검증 `[문헌]`) |
 | **기록** | `20_findings`(F) · `21_decisions`(D) · `22_incidents`(O) · `23_ai_review`(R) | 발견 · 설계 결정 · 운영 사고 · AI 협업 검토. **기각한 가설과 틀린 예측이 지워지지 않고 남아 있다** — 6 장이 그 요약이다 |
 | | `19_record_keeping` · `17_checklists` · `18_glossary` | 기록 규약 · 작업 직전에 보는 체크리스트 · **용어와 지표 사전** |
 | **실험 상세** | `03_metric_floor`\* · `04_snr_estimator_calibration`\* · `05_swt_tuning`\* · `06_sameni_diagnosis`\* · `07_safety_probe`\* · `10_loss_ablation` — 여섯 다 **두 축 짝**이 있다(D0 판은 접미사가 없는 것도 있다) | 본문이 한 문단으로 요약한 것의 전문. 축이 다르면 값도 결론도 다르다(F-16 · F-17) |
