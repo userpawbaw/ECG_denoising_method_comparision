@@ -419,36 +419,51 @@ bash scripts/run_d23_queue.sh      # ← Bash 도구의 run_in_background 로
 
 **감시**: sweep 이 끝나 watchdog Routine 은 **대기로 되돌렸다**(2026-09-11 09:29).
 
-### D-24 seed sweep — **seed 4~7 완료** (36 판, 실패 0, 2026-09-11 09:2x)
+### 지금까지 — D-24 · D-26 완료, **D-27 진행 중**
 
-| 언제 | 무엇 | 판 |
+| 판 | 무엇을 물었나 | 결과 | 어디 |
+|---|---|---|---|
+| **D-23** | 용량 · 데이터 · step | 셋 다 산포 안 | F-42 · 5.10.8 |
+| **D-24** | 자를 세우고 아홉 arm 재측정 | **손실만 유의**, 용량 곡선 폐기 | F-42 · 5.10.9 |
+| **D-26** | 왜 안 오르나 — 조준인가 | **전담 모델이 고 SNR 에서 +4.41 dB (p=0.017)** | **F-43 · 5.10.10** |
+| **D-27** | 폭이 아니라 깊이면 다른가 | **진행 중** (seed 4·5) | D-27 |
+
+**D-26 이 다음 수를 정했다** — 모델을 키우는 게 아니라 **동작점을 알려 주는 것**.
+회수 가능한 상한 +4.41 dB(3~5 dB 폭). 실행 순서는 **D-28**.
+
+### 지금 도는 것 — D-27 등파라미터 폭↔깊이
+
+| | seed | 판 |
 |---|---|---:|
-| 09-09 (Colab T4) | 캘리브레이션 `m06_l1` seed 0~2 | 3 |
-| 09-10~11 (여기) | 구조 5 arm × seed 4~7 | 20 |
-| 09-11 (여기) | 용량 2 + 손실 2 arm × seed 4~7 | 16 |
+| **이 컨테이너 (CPU)** | **4 · 5** | 8 |
+| **Colab (T4)** — *아직 안 돌림* | **0 ~ 3** | 16 |
+| 합계 | 4 arm × 6 seed | **24** |
 
-판정은 **F-42** 와 보고서 **5.10.9**. 산출물은 `results/ext/structure/`
-(공용 보관소 — README 참조).
-
-**남은 것 — Colab 의 seed 0~3.** 받으면 `results/ext/structure/` 에 그대로
-풀어 합친다. run_id 가 `<arm>__s<seed>` 라 seed 가 다르면 충돌하지 않는다.
-합치면 팔당 8 판이 되고 해상도가 0.62 → 0.44 쯤으로 좁아진다.
+Colab 붙여넣기 명령은 `docs/35_external_compute.md` §2.
+**판 안에서도 재개된다**(§4) — 끊기면 같은 명령을 다시 실행하면 `last.pt` 의
+epoch 부터 이어 간다. 지난번엔 이게 없어 한 판을 통째로 잃었다.
 
 ```bash
-띄우기   bash scripts/run_sweep_locked.sh structure 4-7            # 단계 이름으로
-         bash scripts/run_sweep_locked.sh --arms m06_l3,m06_l6 4-7 # arm 목록으로
+띄우기   bash scripts/run_sweep_locked.sh --arms <a,b,c> <seeds> --out <dir>
          (Bash 도구의 run_in_background:true 로 — setsid nohup 은 죽는다, O-28)
 확인     python3 scripts/watchdog.py        # running · 학습프로세스 비어 있지 않을 것
-재개     같은 명령을 다시 실행. summary.json 이 있는 판은 건너뛴다
-분석     python3 scripts/analyze_seed_sweep.py results/ext/structure
+상태     python3 scripts/run_seed_sweep.py --arms ... --seeds ... --out ... --dry-run
+         ✓ 끝남 / ↻ epoch N 에서 끊김 / (공백) 아직
+분석     python3 scripts/analyze_seed_sweep.py <dir>
 ```
 
 > **한 seed 의 모든 arm 은 반드시 같은 환경에서 돌아야 한다.** 갈라지면 짝지은
-> 차분이 하드웨어 흩어짐(sd 0.184)을 먹는다. 그래서 seed 로 나눴지 arm 으로
+> 차분이 하드웨어 흩어짐(sd 0.184, F-41)을 먹는다. 그래서 seed 로 나눴지 arm 으로
 > 나누지 않았다. 분석기가 섞임을 감지해 경고한다.
-`<arm>__s<seed>` 라 seed 가 다르면 충돌하지 않는다.
-큐가 끝나면 **대기로 되돌린다**(§2 마지막 줄).
 
+### 보관소
+
+| 경로 | 무엇 |
+|---|---|
+| `results/ext/calib/` | Colab T4 캘리브레이션 3 판 (로그 전사, F-41) |
+| `results/ext/structure/` | **공용 보관소** — 구조 5 + 용량 2 + 손실 2 arm × seed 4~7 (36 판) |
+| `results/ext/band/` | D-26 대역 전담 9 판 |
+| `results/ext/depth/` | **D-27 진행 중** |
 **커밋**: 학습이 도는 동안 `log.csv` 가 매 epoch 자라 stop hook 이 매번 뜬다.
 체크포인트가 tracked 가 아니면 검사가 떨어지므로(O-1 · O-13) **판이 끝날
 때마다** 커밋한다.
