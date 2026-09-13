@@ -38,10 +38,57 @@
 
 ---
 
-## 2. 지금 돌릴 것 — **D-27 깊이 판** (2026-09-12 기준)
+## 2. 지금 돌릴 것 — **조건화 · 블록 두 판** (2026-09-13 기준)
 
-앞 단계(캘리브레이션 · 구조 · 용량 · 손실)는 끝났다. 결과는 F-41 · F-42 ·
-`docs/21` D-23 · D-24 에 있다. **지금 필요한 것은 D-27 이다.**
+> **D-27 깊이 판은 끝났다** — seed 0~3 을 받아 K=6 을 채웠다. 결론은 **F-44**
+> (깊이는 값을 하지 않고, 저 SNR 에서는 유의하게 손해다). 아래 §2.0 이 다음에
+> 돌릴 두 판이고, §2.1 부터는 끝난 D-27 의 기록이다.
+
+### 2.0 다음 두 판 — 순서대로
+
+```python
+from google.colab import drive; drive.mount('/content/drive')
+```
+
+**분담은 그대로다** — Colab 이 seed 0~3, 이 컨테이너가 4·5.
+**한 seed 의 모든 arm 은 반드시 같은 환경에서** 돈다(F-41). 그 대가로 환경이
+seed 묶음과 겹쳐 **환경×arm 상호작용을 못 가르는데**(F-44), 이 컨테이너가
+`overlap` 판으로 그것을 따로 재고 있다.
+
+**① D-28 2 번 조건화** (arm 2 개 × seed 0~3 = 8 판)
+
+```bash
+!python scripts/run_seed_sweep.py --arms m06_l1,m06_cond \
+    --seeds 0-3 --out /content/drive/MyDrive/ecgdn_sweep/cond
+!python scripts/analyze_seed_sweep.py /content/drive/MyDrive/ecgdn_sweep/cond
+```
+
+이 컨테이너 몫(seed 4·5)은 끝났고 **총합 +0.801 · 15~20 대역 +2.51** 이다.
+K=6 이 되면 **손실 이후 처음으로 유의가 나올 만한 판**이다.
+
+**② D-28 5 번 블록** (arm 3 개 × seed 0~3 = 12 판)
+
+```bash
+!python scripts/run_seed_sweep.py --stage blocks \
+    --seeds 0-3 --out /content/drive/MyDrive/ecgdn_sweep/blocks
+!python scripts/analyze_seed_sweep.py /content/drive/MyDrive/ecgdn_sweep/blocks
+```
+
+**폭을 고정하고 깊이만 늘린다 — 파라미터가 함께 는다.** D-27 과 짝이다.
+
+| arm | 레벨당 블록 | 폭 | params |
+|---|---:|---|---:|
+| `m06_l1` (기준) | 1 | (24,32,48,64,96) | 976,489 |
+| `m06_l1_nb2` | 2 | **그대로** | 1,266,505 (×1.30) |
+| `m06_l1_nb4` | 4 | **그대로** | 1,846,537 (×1.89) |
+
+F-44 의 손해가 **「깊어서」인지 「좁아서」인지** 를 가른다. 사전 예측은
+`docs/21` D-28 — **저 SNR 손해가 사라질 것으로 본다. 남으면 깊이 자체가
+저 SNR 에 해롭다는 뜻이고, 그쪽이 더 흥미롭다.**
+
+**끊기면 같은 명령을 그대로 다시 실행한다** (§4 — 판 안에서도 이어진다).
+
+### 2.1 끝난 판 — D-27 깊이 (기록)
 
 ### 분담
 
