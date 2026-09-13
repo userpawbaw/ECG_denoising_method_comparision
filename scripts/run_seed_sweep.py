@@ -353,6 +353,10 @@ def main() -> int:
                     help="끊긴 판을 처음부터 다시 돌린다 (기본은 last.pt 에서 재개)")
     ap.add_argument("--keep-ckpt", action="store_true",
                     help="best.pt/last.pt 를 남긴다 (업로드가 커진다)")
+    ap.add_argument("--cond-offsets", default=None, metavar="a,b,c",
+                    help=f"교란 격자를 직접 준다 [dB] (기본 {COND_OFFSETS}). "
+                         "F-13 의 추정기 편향(+7.6)처럼 기본 격자 밖을 재야 "
+                         "할 때 쓴다")
     ap.add_argument("--cond-perturb", action="store_true",
                     help="조건화 모델을 **틀린 조건값**으로도 평가한다 "
                          f"(참값 {COND_OFFSETS} dB). 학습은 다시 안 한다 — "
@@ -372,6 +376,12 @@ def main() -> int:
                          "**실측 생체신호를 올릴 때는 쓰지 마라**")
     args = ap.parse_args()
 
+    if args.cond_offsets:
+        # 모듈 전역을 갈아끼운다 — `run_one` 이 이 목록을 읽는다.
+        offs = [int(float(x)) for x in args.cond_offsets.split(",") if x.strip()]
+        if 0 in offs:
+            ap.error("0 은 넣지 마라 — fixed_* 가 이미 잰 값이다")
+        globals()["COND_OFFSETS"] = sorted(offs)
     if args.arms:
         arms = [a.strip() for a in args.arms.split(",") if a.strip()]
     elif args.stage:
