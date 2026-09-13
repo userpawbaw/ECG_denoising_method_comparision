@@ -272,9 +272,12 @@ from google.colab import drive; drive.mount('/content/drive')
 
 ```bash
 !pip -q install -U huggingface_hub
-!huggingface-cli whoami          # 토큰이 들어 있는지 확인. 아니면 아래 한 줄
-# !huggingface-cli login
+!hf auth whoami || huggingface-cli whoami     # 토큰이 들어 있는지 확인
+# !hf auth login          (구버전이면 huggingface-cli login)
 ```
+
+> 최근 `huggingface_hub` 는 명령을 `hf` 로 바꿨고 `huggingface-cli` 는 경고와
+> 함께 남겨 뒀다. 어느 쪽이 되는지 몰라서 위처럼 둘 다 걸어 뒀다.
 
 > Colab 은 세션마다 새 기계라 로그인이 남지 않는다. 매번 치기 싫으면
 > **Colab 비밀(🔑 Secrets)** 에 `HF_TOKEN` 을 넣고 「노트북 접근」을 켠 뒤:
