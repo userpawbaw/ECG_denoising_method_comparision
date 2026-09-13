@@ -56,6 +56,7 @@ from ecgdn.data.dataset import ECGDenoiseDataset
 from ecgdn.data.nstdb import make_banks
 from ecgdn.data.sources import get_source, resolve_source_kind
 from ecgdn.models import build_model, make_loss
+from ecgdn.sync_hf import HFStore
 from ecgdn.train import Trainer
 from ecgdn.utils import ensure_dir
 
@@ -189,7 +190,7 @@ def partial_epoch(out: Path) -> int | None:
 
 def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None,
             amp: bool | None, epochs: int | None, keep_ckpt: bool,
-            workers: int, resume: bool = True) -> dict:
+            workers: int, resume: bool = True, hf=None) -> dict:
     run_id = f"{arm}__s{seed}"
     out = ensure_dir(out_root / run_id)
     summary_p = out / "summary.json"
@@ -215,6 +216,10 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
 
     trainer = Trainer(model, loss_fn, tr, va, tcfg, out_dir=out, device=device,
                       num_workers=workers, amp=amp,
+                      # N epoch 마다 `last.pt` 를 밖으로 밀어 올린다. 세션이
+                      # 끊겨도 다음 판에서 `pull` 이 그걸 받아 이어 간다.
+                      on_epoch_end=(lambda ep, row: hf.push_epoch(out, ep))
+                      if hf is not None and hf.enabled else None,
                       model_name=mcfg.get("name", "resunet1d"),
                       extra_manifest={"exp_id": run_id, "arm": arm, "seed": seed,
                                       "source": src.kind, "loss": cfg.get("loss"),
@@ -259,6 +264,8 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
     if not keep_ckpt:
         for nm in ("best.pt", "last.pt"):
             (out / nm).unlink(missing_ok=True)
+    if hf is not None:
+        hf.push_run(out)
     print(f"  [{run_id}] best {st.best_metric:+.3f} dB (ep {st.best_epoch}) · "
           f"fixed {rec.get('fixed_snr_imp_scaled', float('nan')):+.3f} dB · "
           f"{wall/60:.1f} min", flush=True)
@@ -328,6 +335,18 @@ def main() -> int:
     ap.add_argument("--keep-ckpt", action="store_true",
                     help="best.pt/last.pt 를 남긴다 (업로드가 커진다)")
     ap.add_argument("--dry-run", action="store_true", help="무엇을 돌릴지만 출력")
+    ap.add_argument("--hf-repo", default=None, metavar="사용자/저장소",
+                    help="Hugging Face **데이터셋** 저장소로 동기화한다. 시작할 때 "
+                         "받아 오고(끊긴 판이 이어진다), N epoch 마다 last.pt 를 "
+                         "올리고, 판·sweep 이 끝나면 전부 올린다. "
+                         "토큰은 huggingface-cli login 또는 HF_TOKEN 에서 찾는다")
+    ap.add_argument("--hf-every", type=int, default=10, metavar="N",
+                    help="몇 epoch 마다 last.pt 를 올릴지 (기본 10). "
+                         "1 로 두면 저장소가 빨리 커진다 — HF 는 git 이라 "
+                         "이력이 쌓인다")
+    ap.add_argument("--hf-public", action="store_true",
+                    help="저장소를 공개로 만든다 (기본은 비공개). "
+                         "**실측 생체신호를 올릴 때는 쓰지 마라**")
     args = ap.parse_args()
 
     if args.arms:
@@ -341,6 +360,13 @@ def main() -> int:
                                                        else [0, 1, 2])
     out_root = ensure_dir(Path(args.out) if args.out
                           else ROOT / "results" / "ext" / (args.stage or "custom"))
+
+    # **받아 오는 것을 todo 계산보다 먼저 한다.** 그래야 지난 세션에서 끝난 판이
+    # `summary.json` 으로 건너뛰어지고, 끊긴 판이 `last.pt` 의 epoch 에서 이어진다.
+    hf = HFStore(args.hf_repo, prefix=out_root.name, every=args.hf_every,
+                 private=not args.hf_public)
+    if hf.enabled and not args.dry_run:
+        hf.pull(out_root)
 
     missing = [a for a in arms if not (ROOT / "configs" / f"{a}.yaml").exists()]
     if missing:
@@ -388,7 +414,7 @@ def main() -> int:
         try:
             run_one(arm, seed, out_root, args.source, args.device, amp,
                     args.epochs, args.keep_ckpt, args.workers,
-                    resume=not args.no_resume)
+                    resume=not args.no_resume, hf=hf if hf.enabled else None)
         except Exception as e:                      # 한 판이 죽어도 큐는 계속
             print(f"  [실패] {arm} seed={seed}: {type(e).__name__}: {e}",
                   file=sys.stderr, flush=True)
@@ -402,6 +428,7 @@ def main() -> int:
         write_csv(out_root)
 
     p = write_csv(out_root)
+    hf.push_all(out_root)                 # 완료 — 전체 출력을 올린다
     print(f"\n[sweep] 끝. 표 → {rel(p)}")
     print(f"[sweep] 업로드할 것: {rel(out_root)} 폴더 전체 "
           f"({sum(f.stat().st_size for f in out_root.rglob('*') if f.is_file())/1e6:.1f} MB)")

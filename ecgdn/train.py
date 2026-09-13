@@ -64,7 +64,7 @@ class Trainer:
                  cfg: TrainCfg = TrainCfg(), out_dir: str | Path = "results/run",
                  device: str | None = None, num_workers: int = 0,
                  model_name: str = "model", extra_manifest: dict | None = None,
-                 amp: bool | None = None):
+                 amp: bool | None = None, on_epoch_end=None):
         self.model = model
         self.loss_fn = loss_fn
         self.train_ds, self.val_ds = train_ds, val_ds
@@ -79,6 +79,10 @@ class Trainer:
             self.amp = False                       # CPU autocast 는 쓰지 않는다
         self.num_workers = num_workers
         self.model_name = model_name
+        # epoch 이 끝나고 체크포인트를 저장한 **뒤에** 불린다 — 외부 저장소로
+        # 밀어 올리는 용도다(`ecgdn/sync_hf.py`). 여기서 터진 예외는 삼킨다:
+        # 30 분짜리 판을 콜백 실패로 잃는 것이 원래 막으려던 일이다.
+        self.on_epoch_end = on_epoch_end
         self.state = TrainState()
         self.model.to(self.device)
 
@@ -249,6 +253,12 @@ class Trainer:
                 self.state.best_epoch = ep
                 self.save("best.pt")
             self.save("last.pt")
+            if self.on_epoch_end is not None:
+                try:
+                    self.on_epoch_end(ep, row)
+                except Exception as e:      # 학습을 죽이지 않는다 (위 주석)
+                    print(f"[warn] on_epoch_end 실패 — 계속한다: "
+                          f"{type(e).__name__}: {e}", flush=True)
 
             if ep - self.state.best_epoch >= self.cfg.patience:
                 print(f"early stop at epoch {ep} (best {self.state.best_epoch}: "

@@ -46,21 +46,25 @@
 
 ### 2.0 다음 두 판 — 순서대로
 
-```python
-from google.colab import drive; drive.mount('/content/drive')
-```
-
 **분담은 그대로다** — Colab 이 seed 0~3, 이 컨테이너가 4·5.
 **한 seed 의 모든 arm 은 반드시 같은 환경에서** 돈다(F-41). 그 대가로 환경이
 seed 묶음과 겹쳐 **환경×arm 상호작용을 못 가르는데**(F-44), 이 컨테이너가
 `overlap` 판으로 그것을 따로 재고 있다.
 
+먼저 한 번(세션마다):
+
+```bash
+!pip -q install -U huggingface_hub
+!huggingface-cli whoami          # 토큰 확인. 없으면 §4.2 를 본다
+```
+
 **① D-28 2 번 조건화** (arm 2 개 × seed 0~3 = 8 판)
 
 ```bash
-!python scripts/run_seed_sweep.py --arms m06_l1,m06_cond \
-    --seeds 0-3 --out /content/drive/MyDrive/ecgdn_sweep/cond
-!python scripts/analyze_seed_sweep.py /content/drive/MyDrive/ecgdn_sweep/cond
+!python scripts/run_seed_sweep.py --arms m06_l1,m06_cond --seeds 0-3 \
+    --out /content/ecgdn_sweep/cond \
+    --hf-repo <사용자>/<저장소> --hf-every 10
+!python scripts/analyze_seed_sweep.py /content/ecgdn_sweep/cond
 ```
 
 이 컨테이너 몫(seed 4·5)은 끝났고 **총합 +0.801 · 15~20 대역 +2.51** 이다.
@@ -69,9 +73,10 @@ K=6 이 되면 **손실 이후 처음으로 유의가 나올 만한 판**이다.
 **② D-28 5 번 블록** (arm 3 개 × seed 0~3 = 12 판)
 
 ```bash
-!python scripts/run_seed_sweep.py --stage blocks \
-    --seeds 0-3 --out /content/drive/MyDrive/ecgdn_sweep/blocks
-!python scripts/analyze_seed_sweep.py /content/drive/MyDrive/ecgdn_sweep/blocks
+!python scripts/run_seed_sweep.py --stage blocks --seeds 0-3 \
+    --out /content/ecgdn_sweep/blocks \
+    --hf-repo <사용자>/<저장소> --hf-every 10
+!python scripts/analyze_seed_sweep.py /content/ecgdn_sweep/blocks
 ```
 
 **폭을 고정하고 깊이만 늘린다 — 파라미터가 함께 는다.** D-27 과 짝이다.
@@ -86,7 +91,9 @@ F-44 의 손해가 **「깊어서」인지 「좁아서」인지** 를 가른다
 `docs/21` D-28 — **저 SNR 손해가 사라질 것으로 본다. 남으면 깊이 자체가
 저 SNR 에 해롭다는 뜻이고, 그쪽이 더 흥미롭다.**
 
-**끊기면 같은 명령을 그대로 다시 실행한다** (§4 — 판 안에서도 이어진다).
+**끊기면 같은 명령을 그대로 다시 실행한다.** `--hf-repo` 를 주면 `/content` 가
+비어 있어도 된다 — 시작할 때 받아 와서, 끝난 판은 건너뛰고 끊긴 판은 올라가
+있던 epoch 에서 이어 간다(**§4.2**). Drive 를 쓰고 싶으면 §4.1.
 
 ### 2.1 끝난 판 — D-27 깊이 (기록)
 
@@ -240,13 +247,92 @@ GPU 에서 `torch.amp` 를 켜면 fp16 으로 학습한다. 그 값은 CPU 의 f
 > 있어서, 재개할 때 값을 바꾸면 남은 구간의 LR 곡선이 원래와 달라진다.
 > 처음부터 다시 돌리고 싶으면 `--no-resume` 을 준다.
 
-**Drive 에 두는 것을 강하게 권한다.** 재개는 `last.pt` 가 살아 있어야 되는데,
-Colab 로컬 디스크는 세션이 죽으면 같이 사라진다.
+**재개는 `last.pt` 가 살아 있어야 된다.** Colab 로컬 디스크(`/content`)는 세션이
+죽으면 같이 사라지므로, **재개할 것을 세션 밖에 둬야** 한다. 두 길이 있다 —
+Drive 마운트(§4.1)와 Hugging Face 동기화(**§4.2**).
+
+### 4.1 Drive 마운트
 
 ```python
 from google.colab import drive; drive.mount('/content/drive')
-!python scripts/run_seed_sweep.py --arms m06_l1,m06_l1_deep2,m06_l1_deep3,m06_l1_deep4 \
-    --seeds 0-4 --out /content/drive/MyDrive/ecgdn_sweep/depth
+!python scripts/run_seed_sweep.py --arms m06_l1,m06_cond \
+    --seeds 0-3 --out /content/drive/MyDrive/ecgdn_sweep/cond
+```
+
+간단하지만 **마운트 자체가 끊긴다.** 끊긴 뒤의 쓰기는 조용히 로컬 디스크로
+떨어지고, 세션이 죽으면 그것도 사라진다.
+
+### 4.2 Hugging Face 동기화 — `--hf-repo`
+
+**세션과 무관한 곳에 둔다.** 시작할 때 받아 오고, N epoch 마다 `last.pt` 를
+올리고, 판이 끝나면 그 판을, sweep 이 끝나면 **전체 출력**을 올린다.
+
+**준비** (한 번만). HF 에서 **dataset** 저장소를 만들고 터미널에 토큰을 넣은
+뒤라면, Colab 셀에서는 이것만 하면 된다:
+
+```bash
+!pip -q install -U huggingface_hub
+!huggingface-cli whoami          # 토큰이 들어 있는지 확인. 아니면 아래 한 줄
+# !huggingface-cli login
+```
+
+> Colab 은 세션마다 새 기계라 로그인이 남지 않는다. 매번 치기 싫으면
+> **Colab 비밀(🔑 Secrets)** 에 `HF_TOKEN` 을 넣고 「노트북 접근」을 켠 뒤:
+> ```python
+> import os
+> from google.colab import userdata
+> os.environ["HF_TOKEN"] = userdata.get("HF_TOKEN")
+> ```
+> `huggingface_hub` 가 `HF_TOKEN` 을 알아서 읽는다. **토큰은 쓰기 권한**이어야
+> 올라간다.
+
+**돌리기** — 기존 명령에 두 줄만 붙인다:
+
+```bash
+!python scripts/run_seed_sweep.py --arms m06_l1,m06_cond --seeds 0-3 \
+    --out /content/ecgdn_sweep/cond \
+    --hf-repo <사용자>/<저장소> --hf-every 10
+```
+
+**끊기면 똑같은 명령을 다시 실행한다.** 이번엔 `/content` 가 비어 있어도 된다 —
+시작할 때 HF 에서 받아 오므로, 끝난 판은 건너뛰고 끊긴 판은 **올라가 있던
+epoch 에서** 이어 간다.
+
+| 언제 | 무엇이 올라가나 | 어디에 |
+|---|---|---|
+| 시작 전 | *(받아 온다)* | → `--out` 폴더, **있는 파일은 안 덮는다** |
+| `--hf-every` 마다 | `last.pt` · `log.csv` | `<저장소>/<out 폴더이름>/<판>/` |
+| 판 하나 끝 | 그 판 폴더 전부 | 〃 (죽은 `last.pt` 는 지운다) |
+| sweep 끝 | **전체 출력** (`sweep.csv` 포함) | `<저장소>/<out 폴더이름>/` |
+
+저장소 안의 경로는 `--out` 폴더 이름을 접두어로 쓴다 — `--out .../cond` 면
+`cond/m06_cond__s0/...` 다. **판이 다른 sweep 끼리 안 섞인다.**
+
+**왜 이렇게 짰나 — 몇 가지 결정**
+
+- **올리기 실패는 학습을 죽이지 않는다.** 모든 통신은 예외를 삼키고 경고만
+  찍는다. 30 분짜리 판을 네트워크 딸꾹질로 잃는 것이 원래 막으려던 일이다.
+- **받아올 때 있는 파일은 덮지 않는다.** 돌고 있는 기계의 것이 최신이고 HF
+  것은 지난 세션의 흔적이다. 반대로 덮으면 이번 세션의 진행을 지운다.
+- **`--hf-every 1` 은 권하지 않는다.** HF 는 git 이라 이력이 쌓인다.
+  `last.pt` 는 optimizer 상태까지 담아 **모델 크기의 약 3 배**(976 K 모델이면
+  10 MB 대)이고, 매 epoch 올리면 판 하나에 50 번이 쌓인다.
+- **저장소는 기본 비공개**로 만든다(`--hf-public` 으로 뒤집을 수 있다).
+  **`data/arduino/` 같은 실측 생체신호는 어느 쪽으로도 올리지 않는다** —
+  이 sweep 이 올리는 것은 MIT-BIH 로 학습한 산출물뿐이다.
+- **`--hf-repo` 를 안 주면 아무 일도 안 일어난다.** `huggingface_hub` 가 없어도
+  된다 — 늦게 부른다.
+
+**받은 것을 여기로 가져올 때**는 zip 없이 바로 된다:
+
+```bash
+python3 -c "
+from huggingface_hub import snapshot_download
+import shutil, pathlib
+p = snapshot_download('<사용자>/<저장소>', repo_type='dataset',
+                      allow_patterns=['cond/**'])
+shutil.copytree(pathlib.Path(p)/'cond', 'results/ext/cond', dirs_exist_ok=True)
+"
 ```
 
 ## 5. 돌려줄 것
