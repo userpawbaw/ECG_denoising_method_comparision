@@ -75,7 +75,7 @@ K=6 이 되면 **손실 이후 처음으로 유의가 나올 만한 판**이다.
 ```bash
 !python scripts/run_seed_sweep.py --stage blocks --seeds 0-3 \
     --out /content/ecgdn_sweep/blocks \
-    --hf-repo <사용자>/<저장소> --hf-every 10
+    --hf-repo userpaw/ecg_data --hf-every 10
 !python scripts/analyze_seed_sweep.py /content/ecgdn_sweep/blocks
 ```
 
@@ -294,7 +294,7 @@ from google.colab import drive; drive.mount('/content/drive')
 ```bash
 !python scripts/run_seed_sweep.py --arms m06_l1,m06_cond --seeds 0-3 \
     --out /content/ecgdn_sweep/cond \
-    --hf-repo <사용자>/<저장소> --hf-every 10
+    --hf-repo userpaw/ecg_data --hf-every 10
 ```
 
 **끊기면 똑같은 명령을 다시 실행한다.** 이번엔 `/content` 가 비어 있어도 된다 —
@@ -332,7 +332,7 @@ epoch 에서** 이어 간다.
 python3 -c "
 from huggingface_hub import snapshot_download
 import shutil, pathlib
-p = snapshot_download('<사용자>/<저장소>', repo_type='dataset',
+p = snapshot_download('userpaw/ecg_data', repo_type='dataset',
                       allow_patterns=['cond/**'])
 shutil.copytree(pathlib.Path(p)/'cond', 'results/ext/cond', dirs_exist_ok=True)
 "
