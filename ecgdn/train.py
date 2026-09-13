@@ -83,6 +83,10 @@ class Trainer:
         # 밀어 올리는 용도다(`ecgdn/sync_hf.py`). 여기서 터진 예외는 삼킨다:
         # 30 분짜리 판을 콜백 실패로 잃는 것이 원래 막으려던 일이다.
         self.on_epoch_end = on_epoch_end
+        # **조건값을 일부러 틀리게 준다** (D-28 4 번). 학습에서는 0 으로 두고
+        # 평가에서만 흔든다 — 「추정 SNR 이 X dB 틀리면 얼마를 잃나」를
+        # 재는 손잡이다. 학습 중에 0 이 아니면 그건 다른 실험이다.
+        self.cond_offset = 0.0
         self.state = TrainState()
         self.model.to(self.device)
 
@@ -124,8 +128,8 @@ class Trainer:
             return None
         if "snr" not in meta:
             raise KeyError("조건화 모델인데 배치에 snr 이 없다")
-        return torch.as_tensor(np.asarray(meta["snr"], dtype=np.float32),
-                               device=self.device)
+        v = np.asarray(meta["snr"], dtype=np.float32) + np.float32(self.cond_offset)
+        return torch.as_tensor(v, device=self.device)
 
     def _loss_extra(self, y, x) -> dict:
         """손실이 요구하는 추가 입력만 만든다.

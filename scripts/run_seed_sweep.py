@@ -96,6 +96,10 @@ FIXED_EVAL_SALT = ("fixed_eval", 20260909)
 # 견주려면 **같은 대역에서** 재야 하므로, 이 다섯 칸이 그 공통 자가 된다.
 EVAL_BANDS = [(-5.0, 0.0), (0.0, 5.0), (5.0, 10.0), (10.0, 15.0), (15.0, 20.0)]
 
+# 조건 교란 격자 (D-28 4 번). **참값에 더하는 오차**[dB]다. 0 은 넣지 않는다 —
+# `fixed_snr_imp_scaled` 가 이미 그 값이라 두 번 재는 셈이 된다.
+COND_OFFSETS = [-5, -2, 2, 5]
+
 
 def parse_seeds(spec: str) -> list[int]:
     out: list[int] = []
@@ -192,7 +196,8 @@ def partial_epoch(out: Path) -> int | None:
 
 def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None,
             amp: bool | None, epochs: int | None, keep_ckpt: bool,
-            workers: int, resume: bool = True, hf=None) -> dict:
+            workers: int, resume: bool = True, hf=None,
+            cond_perturb: bool = False) -> dict:
     run_id = f"{arm}__s{seed}"
     out = ensure_dir(out_root / run_id)
     summary_p = out / "summary.json"
@@ -251,6 +256,18 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
         # 대역별 — `snr_imp_scaled` 하나만 남긴다 (열이 너무 늘지 않게).
         for name, bds in bands.items():
             fixed[f"band_{name}"] = float(trainer.evaluate(bds)["snr_imp_scaled"])
+        # **조건 교란** (D-28 4 번). 조건화 모델에만, 요청했을 때만 돈다.
+        # 학습은 다시 하지 않는다 — 같은 가중치를 **틀린 조건값**으로 평가할
+        # 뿐이라 판 하나에 평가 다섯 번이 붙는 정도다.
+        if cond_perturb and getattr(trainer.model, "needs_cond", False):
+            for off in COND_OFFSETS:
+                trainer.cond_offset = float(off)
+                tag = f"pert_{off:+d}".replace("+", "p").replace("-", "m")
+                fixed[tag] = float(trainer.evaluate(fx)["snr_imp_scaled"])
+                for name, bds in bands.items():
+                    fixed[f"{tag}_band_{name}"] = float(
+                        trainer.evaluate(bds)["snr_imp_scaled"])
+            trainer.cond_offset = 0.0          # 반드시 되돌린다
 
     rec = {
         "run_id": run_id, "arm": arm, "seed": seed,
@@ -336,6 +353,10 @@ def main() -> int:
                     help="끊긴 판을 처음부터 다시 돌린다 (기본은 last.pt 에서 재개)")
     ap.add_argument("--keep-ckpt", action="store_true",
                     help="best.pt/last.pt 를 남긴다 (업로드가 커진다)")
+    ap.add_argument("--cond-perturb", action="store_true",
+                    help="조건화 모델을 **틀린 조건값**으로도 평가한다 "
+                         f"(참값 {COND_OFFSETS} dB). 학습은 다시 안 한다 — "
+                         "같은 가중치를 다시 잴 뿐이다 (D-28 4 번)")
     ap.add_argument("--dry-run", action="store_true", help="무엇을 돌릴지만 출력")
     ap.add_argument("--hf-repo", default=None, metavar="사용자/저장소",
                     help="Hugging Face **데이터셋** 저장소로 동기화한다. 시작할 때 "
@@ -416,7 +437,8 @@ def main() -> int:
         try:
             run_one(arm, seed, out_root, args.source, args.device, amp,
                     args.epochs, args.keep_ckpt, args.workers,
-                    resume=not args.no_resume, hf=hf if hf.enabled else None)
+                    resume=not args.no_resume, hf=hf if hf.enabled else None,
+                    cond_perturb=args.cond_perturb)
         except Exception as e:                      # 한 판이 죽어도 큐는 계속
             print(f"  [실패] {arm} seed={seed}: {type(e).__name__}: {e}",
                   file=sys.stderr, flush=True)
