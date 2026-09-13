@@ -63,7 +63,7 @@ seed 묶음과 겹쳐 **환경×arm 상호작용을 못 가르는데**(F-44), �
 ```bash
 !python scripts/run_seed_sweep.py --arms m06_l1,m06_cond --seeds 0-3 \
     --out /content/ecgdn_sweep/cond \
-    --hf-repo <사용자>/<저장소> --hf-every 10
+    --hf-repo userpaw/ecg_data --hf-every 10
 !python scripts/analyze_seed_sweep.py /content/ecgdn_sweep/cond
 ```
 
