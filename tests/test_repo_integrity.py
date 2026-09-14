@@ -43,7 +43,9 @@ def test_doc_cross_references_resolve(doc: Path):
     (하드웨어/데이터) 대기 중이라 정상적으로 비어 있을 수 있다.
     """
     produced_later = {"08a_acquisition_log.md", "08b_real_snr.md",
-                      "10_loss_ablation.md"}
+                      "10_loss_ablation.md",
+                      # 0 단계(레퍼런스 분석)의 산출물. D-29 · docs/37 6.0
+                      "38_ui_benchmark.md"}
     text = doc.read_text()
     missing = sorted({m for m in re.findall(r"docs/([0-9A-Za-z_]+\.md)", text)
                       if m not in produced_later and not (ROOT / "docs" / m).exists()})
