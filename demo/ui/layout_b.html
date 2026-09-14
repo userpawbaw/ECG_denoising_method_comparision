@@ -1,0 +1,476 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>레이아웃 시안 — 경로 B (직접 구현)</title>
+<!--
+  3 단계 레이아웃 시안, **경로 B**. UD-1 6.3 의 짝지은 비교에서 「내가 HTML 로
+  직접」 쪽이다. 경로 A 는 Figma 로 만든다.
+
+  0 단계(docs/ui/02_benchmark.md 5절)가 넘긴 일곱을 전부 이 한 화면에 넣었다:
+    1 파형이 세로를 먹고 자란다        5 타이포 모듈러 스케일
+    2 속도 고정 + 격자를 규약에        6 호버·포커스 · 표 뷰 · 시간축 라벨
+    3 세로를 mV 로, 이득도 규약 값     7 컨트롤 위계 · 8px 간격 · 수치 격상
+    4 emphasis — 비교하는 둘만 강조
+
+  시연 산출물과 같은 제약을 쓴다 — 서버 없이 file:// 로 열리고 계산이 없다.
+  색은 tokens.css(원본 ui/palette.json)에서 온다.
+-->
+<link rel="stylesheet" href="tokens.css">
+<script src="../demo_bank.js"></script>
+<style>
+  /* ── 타이포 모듈러 스케일 (U-8 · R-E) ────────────────────────────
+     지금 화면은 8~10 단계가 난립하고 그중 넷은 1 px 이내라 구분되지 않는다.
+     **역할 수만큼만** 둔다 — 눈금 · 본문 · 수치 · 소제목 · 제목 다섯.
+     base 16 · 비율 1.25. 인접 단계가 최소 3 px 벌어져 위계가 눈에 보인다. */
+  :root{
+    --t-tick:13px;   --t-body:16px;  --t-num:20px;
+    --t-sub:25px;    --t-title:31px;
+    /* 간격도 스케일 — 4 의 배수. 조작 요소 사이는 8 px 이상(R-D) */
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s6:24px; --s8:32px;
+
+    --bg:#f5f6f6; --panel:#fff; --sunk:#edf0f0;
+    --ink:#14181a; --ink-2:#596164; --ink-3:#88908f;
+    --line:#dfe3e4; --accent:#0c4f52;
+    --grid-fine:#eceff0; --grid-bold:#dce1e2;
+    --mute:#a8afb0;             /* emphasis 에서 물러난 계열 */
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#0f1213; --panel:#171b1c; --sunk:#1d2223;
+    --ink:#e9eded; --ink-2:#99a3a5; --ink-3:#6b7578;
+    --line:#272d2f; --accent:#57cfc6;
+    --grid-fine:#1e2425; --grid-bold:#283032;
+    --mute:#4c5456;
+  }}
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.01ms!important;
+      transition-duration:.01ms!important}
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:var(--t-body)/1.5 var(--font-sans);
+    display:flex;flex-direction:column;overflow:hidden}
+  .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+  /* ── 머리 — 화면에서 가장 작은 자리를 쓴다 ── */
+  header{display:flex;align-items:baseline;gap:var(--s3);flex-wrap:wrap;
+    padding:var(--s3) var(--s6);border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:var(--t-sub);font-weight:700;letter-spacing:-.02em}
+  header .sub{color:var(--ink-3);font-size:var(--t-tick)}
+  header .badge{margin-left:auto;font-size:var(--t-tick);color:var(--ink-3);
+    border:1px solid var(--line);border-radius:2px;padding:var(--s1) var(--s2)}
+
+  /* ── 컨트롤: 1 차와 2 차를 가른다 (U-4) ────────────────────────
+     1 차 = 관람객이 계속 만지는 것(잡음·SNR·비교 쌍). 2 차 = 가끔(속도·이득·표시).
+     2 차는 접혀 있고 <details> 로 열린다 — 「깊이로 가른다」(docs/31 5절). */
+  .primary{display:flex;align-items:flex-end;gap:var(--s6);flex-wrap:wrap;
+    padding:var(--s3) var(--s6);border-bottom:1px solid var(--line);
+    background:var(--panel)}
+  .grp{display:flex;flex-direction:column;gap:var(--s2)}
+  .grp>label{font-size:var(--t-tick);color:var(--ink-3);letter-spacing:.04em;
+    text-transform:uppercase}
+  .chips{display:flex;gap:var(--s2);flex-wrap:wrap}   /* 8px — R-D */
+  button.chip{font:inherit;font-size:var(--t-tick);min-height:44px;   /* 관람객 기준 */
+    padding:0 var(--s3);border-radius:3px;border:1px solid var(--line);
+    background:var(--panel);color:var(--ink-2);cursor:pointer;
+    display:inline-flex;align-items:center;gap:var(--s2)}
+  button.chip:hover{border-color:var(--accent)}
+  button.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);
+    color:var(--bg);font-weight:600}
+  button.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .chip .sw{width:10px;height:10px;border-radius:2px;flex:0 0 auto}
+
+  details.secondary{border-bottom:1px solid var(--line);background:var(--panel)}
+  details.secondary>summary{cursor:pointer;padding:var(--s2) var(--s6);
+    font-size:var(--t-tick);color:var(--ink-3);list-style:none;
+    display:flex;align-items:center;gap:var(--s2);min-height:36px}
+  details.secondary>summary::-webkit-details-marker{display:none}
+  details.secondary>summary::before{content:"▸";font-size:11px}
+  details.secondary[open]>summary::before{content:"▾"}
+  details.secondary .body{display:flex;gap:var(--s6);flex-wrap:wrap;
+    padding:0 var(--s6) var(--s3)}
+
+  /* ── 증거 수치를 격상한다 (U-5) ── */
+  .verdict{display:flex;align-items:baseline;gap:var(--s3);flex-wrap:wrap;
+    padding:var(--s3) var(--s6);background:var(--sunk);
+    border-bottom:1px solid var(--line)}
+  .verdict .num{font-size:var(--t-num);font-weight:700;letter-spacing:-.02em}
+  .verdict .who{font-size:var(--t-body);color:var(--ink-2)}
+  .verdict .why{font-size:var(--t-tick);color:var(--ink-3);margin-left:auto;
+    text-align:right;max-width:52ch}
+
+  /* ── 파형: 남는 세로를 전부 먹는다 (U-3 · R-D Critical) ── */
+  main{flex:1;min-height:0;display:flex;flex-direction:column;
+    padding:var(--s3) var(--s6) var(--s4);gap:var(--s2);overflow:hidden}
+  .lanes{flex:1;min-height:0;display:flex;flex-direction:column;gap:var(--s2)}
+  .lane{flex:1;min-height:0;display:grid;
+    grid-template-columns:132px minmax(0,1fr);gap:var(--s3);align-items:stretch}
+  .lane .who{display:flex;flex-direction:column;justify-content:center;gap:2px;
+    min-width:0}
+  .lane .who b{font-size:var(--t-body);font-weight:600;display:flex;
+    align-items:center;gap:var(--s2);min-width:0}
+  .lane .who b i{width:11px;height:11px;border-radius:2px;flex:0 0 auto;
+    font-style:normal}
+  .lane .who span{font-size:var(--t-tick);color:var(--ink-3);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lane .who .db{font-size:var(--t-tick);color:var(--ink-2);font-weight:600}
+  .plot{position:relative;min-width:0;border:1px solid var(--line);
+    border-radius:2px;background:var(--panel);overflow:hidden}
+  /* 격자는 **규약이 정한 크기**다 — JS 가 --fine/--bold 를 px 로 넣는다.
+     캔버스 밖에 두는 이유: 스윕의 지우개가 캔버스를 지우기 때문(index.html 과 같다). */
+  .plot::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:
+      repeating-linear-gradient(to right,var(--grid-bold) 0 1px,transparent 1px var(--bold)),
+      repeating-linear-gradient(to bottom,var(--grid-bold) 0 1px,transparent 1px var(--bold)),
+      repeating-linear-gradient(to right,var(--grid-fine) 0 1px,transparent 1px var(--fine)),
+      repeating-linear-gradient(to bottom,var(--grid-fine) 0 1px,transparent 1px var(--fine))}
+  canvas{position:relative;display:block;width:100%;height:100%}
+
+  /* 시간축 (U-13) — 마지막 레인 아래에만 */
+  .xaxis{display:grid;grid-template-columns:132px minmax(0,1fr);gap:var(--s3)}
+  .xaxis .ticks{position:relative;height:18px;font-size:var(--t-tick);
+    color:var(--ink-3)}
+  .xaxis .ticks span{position:absolute;transform:translateX(-50%);top:0}
+
+  /* 호버 (U-10) */
+  .cross{position:absolute;top:0;bottom:0;width:1px;background:var(--ink-3);
+    pointer-events:none;opacity:0;z-index:2}
+  .tip{position:fixed;z-index:9;pointer-events:none;opacity:0;
+    background:var(--panel);border:1px solid var(--line);border-radius:3px;
+    padding:var(--s2) var(--s3);font-size:var(--t-tick);
+    box-shadow:0 2px 10px rgba(0,0,0,.14);white-space:nowrap}
+  .tip b{font-size:var(--t-body)}
+
+  footer{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;
+    padding:var(--s2) var(--s6);border-top:1px solid var(--line);
+    font-size:var(--t-tick);color:var(--ink-3);background:var(--panel)}
+  footer .scale{margin-left:auto}
+  footer a{color:var(--accent)}
+  .empty{padding:var(--s8);color:var(--ink-3)}
+</style>
+
+<header>
+  <h1>ECG denoising — 방법 비교</h1>
+  <span class="sub" id="sub"></span>
+  <span class="badge">연구 시연 · 진단 용도 아님</span>
+</header>
+
+<div class="primary">
+  <div class="grp"><label for="cond-chips">잡음</label>
+    <div class="chips" id="cond-chips"></div></div>
+  <div class="grp"><label for="snr-chips">입력 SNR</label>
+    <div class="chips" id="snr-chips"></div></div>
+  <div class="grp"><label for="cmp-chips">비교</label>
+    <div class="chips" id="cmp-chips"></div></div>
+</div>
+
+<details class="secondary">
+  <summary>표시 설정 — 속도 · 이득 · 축</summary>
+  <div class="body">
+    <div class="grp"><label>속도</label><div class="chips" id="speed-chips"></div></div>
+    <div class="grp"><label>이득</label><div class="chips" id="gain-chips"></div></div>
+    <div class="grp"><label>데이터</label><div class="chips" id="axis-chips"></div></div>
+  </div>
+</details>
+
+<div class="verdict">
+  <span class="num mono" id="v-num"></span>
+  <span class="who" id="v-who"></span>
+  <span class="why" id="v-why"></span>
+</div>
+
+<main id="main"></main>
+
+<footer>
+  <span id="f-note"></span>
+  <span class="scale mono" id="f-scale"></span>
+</footer>
+
+<div class="tip" id="tip"></div>
+
+<script>
+"use strict";
+const B = window.DEMO_BANK;
+const $ = id => document.getElementById(id);
+
+/* ── 규약 (docs/ui/02_benchmark.md 1절) ──────────────────────────
+   CSS 에서 1 mm = 96/25.4 px. 속도와 이득은 **임상 표준 값 중에서만** 고른다 —
+   그래야 격자를 세어 RR·PR·QT 를 읽을 수 있다.
+
+   이것이 U-3(파형이 작다)과 충돌하지 않는 이유: **이득도 규약 값이 여러 개**다
+   (5 · 10 · 20 mm/mV). 화면이 크면 이득을 올려 세로를 채우고, 그래도 격자는
+   여전히 「대칸 = 0.5 mV × 배율」로 정확하다. 실제 심전도기가 ×2 이득을 가진
+   이유와 같다. */
+const PX_MM = 96 / 25.4;
+const SPEEDS = [{mm:25, label:"25 mm/s", note:"표준"},
+                {mm:50, label:"50 mm/s", note:"빠른 기록"}];
+const GAINS  = [{mm:5,  label:"5 mm/mV",  note:"½"},
+                {mm:10, label:"10 mm/mV", note:"표준"},
+                {mm:20, label:"20 mm/mV", note:"×2"}];
+
+const FAM = {M_FE:"frontend", M01:"classic", M02:"classic", M03:"classic",
+             M04:"classic", M05:"classic", B01:"oracle",
+             M06:"deep", M06L6:"deep", M08:"deep", M09:"deep"};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const methodColor = m => css(`--method-${m.toLowerCase().replace(/_/g,"-")}`)
+                      || css(`--family-${FAM[m] || "classic"}`);
+
+const state = {
+  axis: B.scenes[0].axis, cond: B.scenes[0].cond, snr: B.scenes[0].snr,
+  /* emphasis (R-B) — 비교하는 **둘만** 색을 갖고 나머지는 물러난다.
+     dataviz: 「한 계열이 요점이고 나머지가 맥락이면 categorical 이 아니라 emphasis」.
+     우리 주장이 「이 조건에서는 고전이 이긴다」이므로 정확히 이 형식이다. */
+  pair: ["M04", "M06"],
+  speed: 50, gain: 10, start: 0,   // 은행이 10 s 라 50 이 거의 딱 맞는다
+};
+
+const scenes = () => B.scenes.filter(s => s.axis === state.axis);
+const current = () => scenes().find(s => s.cond === state.cond && s.snr === state.snr)
+                   || scenes()[0];
+const has = (cond, snr) => scenes().some(s => s.cond === cond && s.snr === snr);
+
+function decode(b64, scale){
+  const bin = atob(b64), n = bin.length / 2, out = new Float32Array(n);
+  const dv = new DataView(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) dv.setUint8(i, bin.charCodeAt(i));
+  for (let i = 0; i < n; i++) out[i] = dv.getInt16(i * 2, true) * scale;
+  return out;
+}
+
+/* 세로 표시 범위를 **mV 눈금에 스냅**한다 (0단계 R-A «추가»).
+   은행의 ylim 은 임의값(예: 0.949)이라 그대로 쓰면 대칸이 0.5 mV 를 뜻하지 못한다. */
+const snapMv = y => [0.5, 1.0, 1.5, 2.0, 3.0, 4.0].find(v => v >= y) || Math.ceil(y);
+
+function chip(label, on, fn, {title, swatch, disabled} = {}){
+  const b = document.createElement("button");
+  b.className = "chip"; b.setAttribute("aria-pressed", String(on));
+  if (title) b.title = title;
+  if (swatch){
+    const i = document.createElement("span");
+    i.className = "sw"; i.style.background = swatch; b.append(i);
+  }
+  b.append(document.createTextNode(label));
+  if (disabled){ b.disabled = true; b.style.opacity = .35; return b; }
+  b.onclick = () => { fn(); render(); };
+  return b;
+}
+
+function buildControls(){
+  $("cond-chips").replaceChildren(...B.conds.map(c =>
+    chip(B.cond_label?.[c] || c, c === state.cond, () => state.cond = c,
+         {disabled: !has(c, state.snr)})));
+  $("snr-chips").replaceChildren(...B.snrs.map(v =>
+    chip(v + " dB", v === state.snr, () => state.snr = v,
+         {disabled: !has(state.cond, v)})));
+  $("cmp-chips").replaceChildren(...B.methods
+    .filter(m => current().traces[m])
+    .map(m => chip(m, state.pair.includes(m), () => {
+      state.pair = state.pair.includes(m)
+        ? state.pair.filter(x => x !== m)
+        : [...state.pair.slice(-1), m];        // 둘만 유지한다
+    }, {swatch: methodColor(m),
+        title: (B.method_info?.[m] || {}).label || m})));
+  $("speed-chips").replaceChildren(...SPEEDS.map(s =>
+    chip(s.label, s.mm === state.speed, () => state.speed = s.mm, {title: s.note})));
+  $("gain-chips").replaceChildren(...GAINS.map(g =>
+    chip(g.label, g.mm === state.gain, () => state.gain = g.mm, {title: g.note})));
+  $("axis-chips").replaceChildren(...[["d0","합성 (McSharry)"],["d1","MIT-BIH + NSTDB"]]
+    .filter(([a]) => B.scenes.some(s => s.axis === a))
+    .map(([a, n]) => chip(n, a === state.axis, () => {
+      state.axis = a;
+      const s = scenes()[0]; state.cond = s.cond; state.snr = s.snr;
+    })));
+}
+
+let panels = [];
+
+function layout(){
+  const s = current();
+  const main = $("main");
+  const shown = state.pair.length ? state.pair : [B.methods[0]];
+  const series = ["input", ...shown];
+
+  main.replaceChildren();
+  const lanes = document.createElement("div");
+  lanes.className = "lanes";
+  panels = series.map(key => {
+    const lane = document.createElement("div");
+    lane.className = "lane";
+    const who = document.createElement("div");
+    who.className = "who";
+    const b = document.createElement("b");
+    const sw = document.createElement("i");
+    sw.style.background = key === "input" ? css("--family-input") : methodColor(key);
+    b.append(sw, document.createTextNode(key === "input" ? "입력" : key));
+    const desc = document.createElement("span");
+    desc.textContent = key === "input" ? "잡음 섞인 신호"
+      : ((B.method_info?.[key] || {}).label || "").slice(0, 26);
+    who.append(b, desc);
+    if (key !== "input" && s.metrics?.[key]){
+      const db = document.createElement("span");
+      db.className = "db mono";
+      db.textContent = (s.metrics[key].snr_imp >= 0 ? "+" : "")
+                     + s.metrics[key].snr_imp.toFixed(1) + " dB";
+      who.append(db);
+    }
+    const plot = document.createElement("div");
+    plot.className = "plot";
+    const cv = document.createElement("canvas");
+    const cross = document.createElement("div");
+    cross.className = "cross";
+    plot.append(cv, cross);
+    lane.append(who, plot);
+    lanes.append(lane);
+    return {key, cv, plot, cross};
+  });
+  main.append(lanes);
+
+  // 시간축은 **맨 아래 한 번만** (U-13)
+  const ax = document.createElement("div");
+  ax.className = "xaxis";
+  ax.append(document.createElement("div"));
+  const ticks = document.createElement("div");
+  ticks.className = "ticks mono"; ticks.id = "xticks";
+  ticks.style.maxWidth = "100%";
+  ax.append(ticks);
+  main.append(ax);
+}
+
+function draw(){
+  const s = current();
+  const pxPerSec = state.speed * PX_MM;
+  const mv = snapMv(s.ylim);
+  const halfPx = mv * state.gain * PX_MM;          // 중심에서 위/아래 픽셀
+
+  // 격자: 대칸 5 mm · 소칸 1 mm — **규약이 크기를 정한다**
+  document.documentElement.style.setProperty("--bold", (5 * PX_MM).toFixed(2) + "px");
+  document.documentElement.style.setProperty("--fine", PX_MM.toFixed(2) + "px");
+
+  const clean = decode(s.traces.clean, s.scale);
+  const dataSec = clean.length / B.fs;
+  // 폭이 «보이는 시간» 을 정한다 — 속도를 고정했으므로 시간이 따라온다(UF-3).
+  const avail = panels[0].plot.parentElement.clientWidth - 132 - 12;
+  const wantPx = dataSec * pxPerSec;
+  // 데이터보다 넓으면 **그만큼만 쓴다.** 남는 자리에 격자를 이어 그리면
+  // 있지도 않은 시간에 눈금이 서고, 규약을 지키려던 격자가 거짓말이 된다.
+  const plotPx = Math.min(avail, wantPx);
+  for (const p of panels) p.plot.style.maxWidth = plotPx + "px";
+  const visible = plotPx / pxPerSec;
+  const n = Math.min(clean.length, Math.round(visible * B.fs));
+  const a = Math.max(0, Math.min(state.start, clean.length - n));
+
+  for (const p of panels){
+    const dpr = window.devicePixelRatio || 1;
+    const w = p.plot.clientWidth, h = p.plot.clientHeight;
+    if (p.cv.width !== Math.round(w * dpr) || p.cv.height !== Math.round(h * dpr)){
+      p.cv.width = Math.round(w * dpr); p.cv.height = Math.round(h * dpr);
+    }
+    const g = p.cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+
+    const sig = decode(s.traces[p.key], s.scale).subarray(a, a + n);
+    const ref = clean.subarray(a, a + n);
+    // 세로: **mV → mm → px**. 화면 높이가 남으면 이득을 올려 채운다.
+    const scaleY = Math.min(h / 2 / halfPx, 1) * state.gain * PX_MM;
+    const yAt = v => h / 2 - Math.max(-mv, Math.min(mv, v)) * scaleY;
+
+    const line = (arr, color, lw) => {
+      g.beginPath(); g.strokeStyle = color; g.lineWidth = lw;
+      for (let i = 0; i < arr.length; i++){
+        const x = i * pxPerSec / B.fs;
+        i ? g.lineTo(x, yAt(arr[i])) : g.moveTo(x, yAt(arr[i]));
+      }
+      g.stroke();
+    };
+    line(ref, css("--role-clean"), 2.2);
+    const emphasised = p.key === "input" || state.pair.includes(p.key);
+    line(sig, emphasised
+      ? (p.key === "input" ? css("--family-input") : methodColor(p.key))
+      : css("--mute"), 1.2);
+    p.pxPerSec = pxPerSec; p.n = n; p.a = a; p.mv = mv;
+  }
+
+  // 시간축 눈금 — 대칸(0.2 s@25 · 0.1 s@50)의 5 배마다 라벨
+  const step = state.speed === 25 ? 2 : 1;
+  const ticks = $("xticks");
+  if (ticks){
+    ticks.replaceChildren();
+    for (let t = 0; t <= visible; t += step){
+      const el = document.createElement("span");
+      el.style.left = (t * pxPerSec) + "px";
+      el.textContent = t.toFixed(step < 1 ? 1 : 0) + " s";
+      ticks.append(el);
+    }
+  }
+
+  $("f-scale").textContent =
+    `${state.speed} mm/s · ${state.gain} mm/mV · 대칸 ` +
+    `${(5 / state.speed).toFixed(2)} s × 0.5 mV · 화면 ${visible.toFixed(1)} s ` +
+    `/ 은행 ${dataSec.toFixed(0)} s · ±${mv} mV`;
+}
+
+function verdict(){
+  const s = current();
+  const [a, b] = state.pair;
+  const ma = s.metrics?.[a]?.snr_imp, mb = s.metrics?.[b]?.snr_imp;
+  if (a && b && ma != null && mb != null){
+    const win = ma >= mb ? a : b, diff = Math.abs(ma - mb);
+    $("v-num").textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + " dB";
+    $("v-who").innerHTML = `<b>${win}</b> 가 ${win === a ? b : a} 보다 이 조건에서 앞선다`;
+  } else {
+    $("v-num").textContent = "—";
+    $("v-who").textContent = "비교할 방법 둘을 고르라";
+  }
+  $("v-why").textContent = s.claim || "";
+  $("sub").textContent =
+    `${B.cond_label?.[state.cond] || state.cond} · 입력 SNR ${state.snr} dB · ${B.fs} Hz`;
+  $("f-note").textContent = s.evidence || s.record || "";
+}
+
+/* 호버 — 값을 읽을 수 있게 (U-10). **툴팁이 유일한 길이 아니다**:
+   각 레인의 dB 는 라벨에 늘 보이고, 표 뷰는 docs/90_results_* 다. */
+function hover(){
+  const tip = $("tip");
+  const move = ev => {
+    const p0 = panels[0];
+    if (!p0) return;
+    const r = p0.plot.getBoundingClientRect();
+    const x = Math.max(0, Math.min(ev.clientX - r.left, r.width));
+    const i = Math.round(x / p0.pxPerSec * B.fs);
+    const s = current();
+    const rows = panels.map(p => {
+      const sig = decode(s.traces[p.key], s.scale);
+      const v = sig[Math.min(p.a + i, sig.length - 1)];
+      return `${p.key === "input" ? "입력" : p.key} ${v.toFixed(3)} mV`;
+    });
+    tip.innerHTML = `<b class="mono">${(i / B.fs).toFixed(2)} s</b><br>`
+                  + rows.map(r => `<span class="mono">${r}</span>`).join("<br>");
+    tip.style.left = Math.min(ev.clientX + 14, innerWidth - 190) + "px";
+    tip.style.top = (ev.clientY + 14) + "px";
+    tip.style.opacity = 1;
+    for (const p of panels){
+      p.cross.style.left = x + "px"; p.cross.style.opacity = .5;
+    }
+  };
+  const leave = () => {
+    tip.style.opacity = 0;
+    for (const p of panels) p.cross.style.opacity = 0;
+  };
+  $("main").addEventListener("pointermove", move);
+  $("main").addEventListener("pointerleave", leave);
+}
+
+function render(){
+  if (!B || !B.scenes?.length){
+    $("main").innerHTML = '<p class="empty">은행이 없다 — '
+      + '<code>python3 scripts/build_demo_bank.py</code></p>';
+    return;
+  }
+  buildControls(); layout(); verdict();
+  requestAnimationFrame(draw);          // 레이아웃이 자리를 잡은 뒤에 그린다
+}
+
+addEventListener("resize", () => panels.length && draw());
+render(); hover();
+</script>

@@ -254,5 +254,7 @@ def test_gallery_lists_every_screen():
     if not GALLERY.exists():
         pytest.skip("갤러리가 아직 없다")
     src = GALLERY.read_text(encoding="utf-8")
-    missing = [s.name for s in SCREENS if s.name not in src]
+    # 갤러리는 자기 위치(demo/ui/) 기준 상대경로를 쓰므로 파일명으로 대조한다
+    missing = [s.name for s in SCREENS
+               if s.name not in src and Path(s.name).name not in src]
     assert not missing, f"갤러리가 안 싣는 화면: {missing}"

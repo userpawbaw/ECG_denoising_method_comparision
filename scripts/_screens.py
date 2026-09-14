@@ -81,6 +81,10 @@ SCREENS = [
            needs=("card_bank.js",)),
     Screen("cards/C_cardnews.html", "지표 카드 C — 카드뉴스",
            needs=("card_bank.js",)),
+    Screen("ui/layout_b.html", "3 단계 레이아웃 시안 — 경로 B (직접 구현)",
+           needs=("demo_bank.js",),
+           note="0 단계가 넘긴 일곱을 한 화면에 넣은 시안. 경로 A(Figma)와 짝지어 "
+                "비교한다 — docs/ui/01_system.md 6.3"),
 ]
 
 
