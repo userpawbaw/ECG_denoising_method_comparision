@@ -46,8 +46,6 @@ def test_doc_cross_references_resolve(doc: Path):
     """
     produced_later = {"08a_acquisition_log.md", "08b_real_snr.md",
                       "10_loss_ablation.md",
-                      # 0 단계(레퍼런스 분석)의 산출물. UD-1 · docs/ui/01_system 6.0
-                      "ui/02_benchmark.md",
                       # UI 파트의 사고 기록. **없는 것이 정상 상태**이고 사고가
                       # 나야 생긴다 — 인덱스가 자리만 예고한다.
                       "ui/12_incidents.md"}
