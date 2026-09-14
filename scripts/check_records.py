@@ -27,6 +27,11 @@ F_REQUIRED = {
 # 숨기지 않는 것이 이 검사의 목적이다 (docs/19_record_keeping.md 8절).
 EVIDENCE_TAGS = ("[측정]", "[로그]", "[커밋]", "[대화]",
                  "[코드]", "[문헌]", "[추론]", "[재구성]")
+O_REQUIRED = {
+    "무엇을 했나": ("### 무엇을 했나", "### 발단", "### 무엇이 일어났나"),
+    "왜 일어났나": ("### 왜 일어났나", "### 원인"),
+    "조치": ("### 조치", "### 규칙으로 승급"),
+}
 D_REQUIRED = {
     "갈림길": ("### 갈림길",),
     "검토한 선택지": ("### 검토한 선택지", "### 근거 —"),
@@ -290,6 +295,8 @@ def main() -> int:
     if (ui / "11_findings.md").exists():
         problems += check(ui / "11_findings.md", r"UF-\d+", F_REQUIRED, "UI 발견")
         problems += check_evidence_tags(ui / "11_findings.md")
+    if (ui / "12_incidents.md").exists():
+        problems += check(ui / "12_incidents.md", r"UO-\d+", O_REQUIRED, "UI 사고")
 
     ev = check_evidence_tags(d / "20_findings.md")
     if ev:

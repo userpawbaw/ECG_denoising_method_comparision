@@ -28,9 +28,10 @@ UI 결정이 연구 결론에 영향을 주면(예: 그림 색이 바뀌면 보�
 | `docs/ui/01_system.md` | **설계 계획서** — 진단 · 외부안 판정 · 단계별 계획. 이 파트의 기준선 |
 | `docs/ui/10_decisions.md` | UD 기록 |
 | `docs/ui/11_findings.md` | UF 기록 |
+| `docs/ui/12_incidents.md` | UO 기록 |
 | (계획) `docs/ui/02_benchmark.md` | 0 단계 레퍼런스 분석 산출물 |
 
-사고(UO)는 아직 없다. 생기면 `docs/ui/12_incidents.md` 를 만든다.
+네 기록 파일이 모두 있다.
 
 ## 연구 파트와의 접점
 
@@ -47,7 +48,7 @@ UI 결정이 연구 결론에 영향을 주면(예: 그림 색이 바뀌면 보�
 | 단계 | 무엇 | 상태 |
 |---|---|---|
 | 0 | 레퍼런스 분석 (표시 규약 · 비교 UI · 레이아웃 · 타이포 · 반응형) | 대기 |
-| 1 | 값을 한 곳으로 — 검증기 · 팔레트 원본 · 토큰 생성 | **검증기 ✅** · 팔레트 원본 다음 |
+| 1 | 값을 한 곳으로 — 검증기 · 팔레트 원본 · 토큰 생성 | **✅ 끝** — 색 부분. 타이포·간격은 0 단계 뒤 (UD-3) |
 | 2 | 화면을 여는 장치 — 갤러리 · 스크린샷 · 화면 검사 | 대기 |
 | 3 | 레이아웃 재설계 (경로 둘로 짝지어 비교) | 대기 |
 | 4 | 실패 상태 화면 · 색각 이상 검증 | 대기 |
@@ -59,5 +60,10 @@ UI 결정이 연구 결론에 영향을 주면(예: 그림 색이 바뀌면 보�
 
 ```
 python3 scripts/validate_palette.py "<hex 목록>" --mode light [--scope lane|legend]
+python3 scripts/build_tokens.py            # ui/palette.json → CSS · Python
+python3 scripts/build_tokens.py --check    # 생성물이 최신인지
 python3 -m pytest tests/test_palette.py
 ```
+
+**색을 고칠 곳은 `ui/palette.json` 하나다.** 고치면 `build_tokens.py` 를 돌린다 —
+잊으면 검사가 잡는다.

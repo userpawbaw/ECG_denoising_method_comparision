@@ -44,16 +44,10 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "results" / "metric_cards"
 
 # ---------------------------------------------------------------- 스타일
-# 색은 `make_slides.py` 와 **같은 값**을 쓴다. 두 산출물이 같은 자리에서
-# 같이 보이므로 방법 색이 다르면 그것부터 혼란이 된다.
-C = {"M01": "#2a78d6", "M04": "#eb6834", "M08": "#1baf7a",
-     # M05·M_FE 는 M04 주황과 정상시야 ΔE 15 미만이라 옮겼다 (UF-1 · UD-2).
-     # 검증: python3 scripts/validate_palette.py "<hex 목록>" --mode light
-     "M05": "#e4a824", "M_FE": "#e880b4", "M02": "#7b53c1", "M06": "#184f95"}
-CLEAN = "#b8b6ae"       # 참값: 뒤에 두껍게 — '목표' 로 읽히게
-BAD = "#d03b3b"         # 경계선·경고 (validate_palette.js light PASS)
-INK = "#1b1b1b"
-MUTE = "#6b6b6b"
+# 색은 `ui/palette.json` 이 원본이다 (`scripts/build_tokens.py` 가 생성).
+# 예전에는 여기와 `make_slides.py` 가 각자 값을 들고 있어서 **같은 역할 색이
+# 갈려 있었다** — `INK` 가 `#1b1b1b` / `#0b0b0b`, `MUTE` 가 `#6b6b6b` / `#52514e`.
+from _palette import C, CLEAN, BAD, INK, MUTE  # noqa: E402
 
 def _ko_font() -> str:
     """한글 폰트를 고른다 — 없으면 카드가 두부(□)로 나온다.

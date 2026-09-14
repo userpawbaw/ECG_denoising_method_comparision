@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-import re
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -24,23 +24,18 @@ from validate_palette import (  # noqa: E402
     CVD_FLOOR, NORMAL_FLOOR, _delta_e, _linear_rgb, _oklch, _contrast, validate,
 )
 
-# 팔레트 값은 **코드에서 읽는다** — 여기 적어 두면 색을 바꿀 때 검사가 안 따라온다
+# 팔레트 값은 **원본에서 읽는다** — 여기 적어 두면 색을 바꿀 때 검사가 안 따라온다
 # (CLAUDE.md 「수치 옮기기: 로그가 아니라 파일에서 읽는다」와 같은 이유).
-_C_RE = re.compile(r'"(\w+)":\s*"(#[0-9a-fA-F]{6})"')
+# 원본은 `ui/palette.json` 하나이고 `scripts/build_tokens.py` 가 CSS 와 Python 을 만든다.
+PALETTE_SRC = ROOT / "ui" / "palette.json"
 
 
-def _slide_palette() -> dict[str, str]:
-    src = (ROOT / "scripts/make_slides.py").read_text(encoding="utf-8")
-    body = src[src.index("C = {"):]
-    body = body[:body.index("}") + 1]
-    return dict(_C_RE.findall(body))
+def _palette() -> dict:
+    return json.loads(PALETTE_SRC.read_text(encoding="utf-8"))
 
 
-def _card_palette() -> dict[str, str]:
-    src = (ROOT / "scripts/build_metric_cards.py").read_text(encoding="utf-8")
-    body = src[src.index("C = {"):]
-    body = body[:body.index("}") + 1]
-    return dict(_C_RE.findall(body))
+def _method_colors() -> dict[str, str]:
+    return {k: v["light"] for k, v in _palette()["methods"].items() if k != "_"}
 
 
 # **그림이 실제로 쓰는 조합.** 팔레트 전체를 한 번에 재는 것은 과잉이었다 — 7 색이
@@ -94,7 +89,7 @@ def test_every_slide_combination_passes(label):
 
     색을 바꾸면 이 검사가 값을 코드에서 다시 읽으므로 자동으로 따라온다.
     """
-    pal = _slide_palette()
+    pal = _method_colors()
     cols = [pal[m] for m in COMBOS[label]]
     r = validate(cols, "light")
     assert r["ok"], f"{label}: {[c for c in r['checks'] if c['status'] == 'FAIL']}"
@@ -103,21 +98,55 @@ def test_every_slide_combination_passes(label):
 @pytest.mark.parametrize("label", sorted(CARD_COMBOS))
 def test_every_card_combination_passes(label):
     """지표 카드가 한 그림에 놓는 조합도 같은 자로 잰다."""
-    pal = _card_palette()
+    pal = _method_colors()
     cols = [pal[m] for m in CARD_COMBOS[label]]
     r = validate(cols, "light")
     assert r["ok"], f"{label}: {[c for c in r['checks'] if c['status'] == 'FAIL']}"
 
 
-def test_slide_and_card_palettes_agree():
-    """두 산출물이 **같은 방법에 같은 색**을 써야 한다.
+def test_scripts_read_the_palette_instead_of_defining_one():
+    """두 산출물이 **같은 방법에 같은 색**을 쓰는 유일한 방법은 원본을 함께 읽는 것이다.
 
-    이것이 어긋나면 같은 방법이 보고서와 카드에서 다른 색으로 나온다 — U-2.
+    예전에는 각자 `C = {...}` 를 들고 있어서 같은 방법이 보고서와 카드에서 다른
+    색이었다 (U-2). 역할 색도 갈려 있었다 — `INK` 가 `#1b1b1b` / `#0b0b0b`.
+
+    **같은 hex 를 다른 축에 재사용하는 것은 여기서 잡지 않는다.** 슬롯 색을
+    front-end 모드나 측정 함정 종류에 다시 쓰는 그림들이 있고, 그 그림에는 방법이
+    등장하지 않아 충돌하지 않는다. 슬롯을 이름 있는 축으로 올릴지는 **[미정]**
+    (`ui/palette.json` 의 `methods._`).
     """
-    a, b = _slide_palette(), _card_palette()
-    shared = set(a) & set(b)
-    diff = {m: (a[m], b[m]) for m in shared if a[m] != b[m]}
-    assert not diff, f"방법 색이 파일마다 다르다: {diff}"
+    for name in ("make_slides.py", "build_metric_cards.py"):
+        src = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+        assert "from _palette import" in src, f"{name} 이 팔레트 원본을 안 읽는다"
+        code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
+        assert "\nC = {" not in code, (
+            f"{name} 이 방법 색 딕셔너리를 다시 정의한다 — ui/palette.json 에서 읽을 것")
+
+
+def test_generated_tokens_are_up_to_date():
+    """`ui/palette.json` 을 고치고 **생성을 잊으면** 이 검사가 잡는다.
+
+    생성물을 git 에 넣는 이유는 시연 화면이 `file://` 로 열려야 해서 빌드 단계를
+    전제할 수 없기 때문이다 (UD-1 3.1). 그 대가가 「원본과 생성물이 어긋날 수
+    있다」이고, 이것이 그 대가를 갚는 장치다.
+    """
+    r = subprocess.run([sys.executable, str(ROOT / "scripts/build_tokens.py"), "--check"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_generated_python_matches_the_source():
+    """생성된 모듈의 방법 색이 원본과 같아야 한다 (생성기 자체의 검사)."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import importlib
+    import _palette
+    importlib.reload(_palette)
+    assert _palette.METHODS == _method_colors()
+    assert _palette.CLEAN == _palette_roles()["clean"]
+
+
+def _palette_roles() -> dict[str, str]:
+    return {k: v["light"] for k, v in _palette()["roles"].items() if k != "_"}
 
 
 def test_the_two_moved_colors_stayed_close_to_their_originals():
@@ -126,7 +155,7 @@ def test_the_two_moved_colors_stayed_close_to_their_originals():
     분홍이 보라가 되거나 노랑이 갈색이 되면(후보 탐색에서 실제로 그런 답이 먼저
     나왔다 — ΔE 21.6) 보고서 그림의 인상이 바뀐다.
     """
-    pal = _slide_palette()
+    pal = _method_colors()
     for method, was in (("M_FE", "#e87ba4"), ("M05", "#eda100")):
         moved = _delta_e(_linear_rgb(pal[method]), _linear_rgb(was))
         assert moved < 5.0, f"{method} 가 원래 색에서 ΔE {moved:.1f} 나 움직였다"
@@ -135,7 +164,7 @@ def test_the_two_moved_colors_stayed_close_to_their_originals():
 # ------------------------------------------------- scope 두 자 (docs/37 2.1)
 def test_legend_scope_is_looser_than_lane_scope():
     """레인은 모든 쌍, 범례는 인접 쌍만 — 그래서 범례 쪽이 더 너그럽거나 같다."""
-    seven = list(_slide_palette().values())
+    seven = list(_method_colors().values())
     lane = validate(seven, "light", scope="lane")
     legend = validate(seven, "light", scope="legend")
     assert legend["worst_cvd"] >= lane["worst_cvd"]

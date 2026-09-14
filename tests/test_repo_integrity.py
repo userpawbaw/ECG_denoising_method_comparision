@@ -72,8 +72,16 @@ def test_doc_code_references_resolve(doc: Path):
     """
     text = doc.read_text()
     planned = set(re.findall(
-        r"\(계획\)\s*`((?:scripts|ecgdn|configs|tests|demo|firmware)/[\w./{}, -]+?)`",
+        r"\(계획\)\s*`((?:scripts|ecgdn|configs|tests|demo|firmware|ui)/[\w./{}, -]+?)`",
         text))
+    # **기각한 후보**는 없는 것이 정상이다. 이 저장소는 「기각한 가설과 틀린 예측을
+    # 지우지 않는다」(CLAUDE.md)이므로 D 기록의 「검토한 선택지」에는 만들지 않기로
+    # 한 경로가 그대로 남는다. `(계획)` 이 «만들 것이다» 를 표시하듯
+    # `(기각)` 이 «만들지 않기로 했다» 를 표시한다.
+    rejected = set(re.findall(
+        r"\(기각\)\s*`((?:scripts|ecgdn|configs|tests|demo|firmware|ui)/[\w./{}, -]+?)`",
+        text))
+    planned |= rejected
     refs = set(re.findall(r"`((?:scripts|ecgdn|configs|tests)/[\w./{}, ]+?)`", text))
     missing = []
     for r in refs - planned:

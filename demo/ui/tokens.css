@@ -1,0 +1,58 @@
+/* ui/palette.json 에서 생성됨 — 직접 고치지 말 것 (scripts/build_tokens.py) */
+
+:root{
+  /* method */
+  --method-m01: #2a78d6;
+  --method-m04: #eb6834;
+  --method-m08: #1baf7a;
+  --method-m05: #e4a824;
+  --method-m-fe: #e880b4;
+  --method-m02: #7b53c1;
+  --method-m06: #184f95;
+  /* family */
+  --family-input: #b0453a;
+  --family-classic: #c07a1f;
+  --family-deep: #184f95;
+  --family-oracle: #2f7d4f;
+  --family-frontend: #c07a1f;
+  /* role */
+  --role-clean: #b8b6ae;
+  --role-noisy: #52514e;
+  --role-ink: #0b0b0b;
+  --role-ink-2: #52514e;
+  --role-surface: #fcfcfb;
+  --role-bad: #d03b3b;
+  /* kind */
+  --kind-구조: #8a8a8a;
+  --kind-손실: #184f95;
+  /* ramp — ordinal, 순서가 의미를 가진다 */
+  --ramp-loss-l1: #86b6ef;
+  --ramp-loss-l3: #3987e5;
+  --ramp-loss-l6: #184f95;
+  /* type */
+  --font-sans: "IBM Plex Sans KR", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* 다크는 **자동 반전이 아니라 따로 고른 값**이다. 아직 계열과 표면만
+   있고 방법 색은 [미정] — 다크 표면 기준으로 다시 골라야 한다
+   (지금 시안의 다크 4 색은 명도대를 넷 다 벗어난다). docs/ui/01_system.md 7 절. */
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --family-input: #e0705f;
+  --family-classic: #e0a445;
+  --family-deep: #7bb0f0;
+  --family-oracle: #5fbe86;
+  --family-frontend: #e0a445;
+  --role-surface: #1a1a19;
+}}
+
+:root[data-theme="dark"]{
+  --family-input: #e0705f;
+  --family-classic: #e0a445;
+  --family-deep: #7bb0f0;
+  --family-oracle: #5fbe86;
+  --family-frontend: #e0a445;
+  --role-surface: #1a1a19;
+}
+
+/* 표시 장치: 1920×1080 · 최소 1280×720 · 검사 폭 1280, 1440, 1920 */

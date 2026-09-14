@@ -38,36 +38,16 @@ OUT = Path("results/slides")
 ROOT = Path(".")
 
 # ---------------------------------------------------------------- 스타일
-# dataviz 팔레트(light). 색은 **방법에 고정**한다 — 그림마다 바뀌면 안 된다.
-C = {
-    "M01": "#2a78d6",   # slot 1 blue    고전 bandpass
-    "M04": "#eb6834",   # slot 2 orange  SWT thresholding
-    "M08": "#1baf7a",   # slot 3 aqua    딥러닝 (wavelet U-Net)
-    "M05": "#e4a824",   # slot 4 yellow  Sameni EKS
-                        #   원래 #eda100. M04 주황과 정상시야 ΔE 13.7 로 붙어 있었다
-                        #   (UF-1). ΔE 2.0 만 옮겨 15.1 로 벌렸다 — 노랑은 노랑으로 남는다.
-    "M_FE": "#e880b4",  # slot 5 magenta 공통 front-end 단독
-                        #   원래 #e87ba4. docs/33 이 「네 번째를 얹으면 분리도가
-                        #   무너진다」며 카드에서 뺀 바로 그 색인데 슬라이드에는 남아
-                        #   있었다 (M04 와 ΔE 12.9). ΔE 2.2 만 옮겨 15.1 로 벌렸다.
-}
-# 손실 L1 -> L3 -> L6 은 **ordinal** 이다 — 순서를 바꾸면 의미가 달라진다
-# (개입이 점점 커진다). 그래서 방법용 categorical 슬롯이 아니라 **단일 색조
-# 램프**를 쓴다. blue 250/400/600 이고 validate_palette.js --ordinal 통과다
-# (단조 L, 인접 간격 >= 0.06, 밝은 끝 2.06:1). 이 그림들에 `M01`(slot 1 blue)
-# 은 등장하지 않으므로 색이 겹치지 않는다.
-LOSS = {"L1": "#86b6ef", "L3": "#3987e5", "L6": "#184f95"}
-
-# S9 는 **개입의 종류**(구조/손실) 둘만 가른다. 방법 색(C)을 쓰면 "M08 색"
-# 같은 기존 의미와 충돌하므로, 여기서는 개입 종류에 색을 준다 — 구조는
-# 중립 회색(결론이 "아무 일도 없다" 라 무채색이 맞다), 손실은 LOSS 램프의
-# 진한 끝(L6)을 그대로 써서 S7·S8 과 이어지게 한다.
-KIND = {"구조": "#8a8a8a", "손실": "#184f95"}
-
-CLEAN = "#b8b6ae"       # 참조: 뒤에 두껍게 깔아 '목표' 로 읽히게
-NOISY = "#52514e"       # 입력
-INK, INK2 = "#0b0b0b", "#52514e"
-SURFACE = "#fcfcfb"
+# **색은 `ui/palette.json` 이 원본이다.** 여기 값을 적어 두면 같은 방법이 카드와
+# 다른 색이 된다 — 실제로 그랬다(U-2). 고칠 곳은 그 파일 하나이고, 고친 뒤
+# `python3 scripts/build_tokens.py` 로 이 모듈과 `demo/ui/tokens.css` 를 다시 만든다.
+#
+#   C     방법 → 색 (색은 방법에 고정한다)
+#   LOSS  손실 램프 — ordinal, 순서가 의미를 가진다
+#   KIND  개입의 종류(구조/손실)
+from _palette import (  # noqa: E402
+    C, LOSS, KIND, CLEAN, NOISY, INK, INK2, SURFACE,
+)
 
 ORDER = ["noisy", "M_FE", "M01", "M04", "M05", "M08"]
 NAME_KO = {
