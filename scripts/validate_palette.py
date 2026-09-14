@@ -7,7 +7,7 @@
 「`validate_palette.js --mode light` 전 항목 PASS」라고 적어 두었는데, **그 도구가
 저장소에 없었다.** 다른 세션의 것이었고 사라졌다. 그래서 팔레트를 손대려는 순간
 **같은 자로 다시 잴 수가 없었다** — `docs/19_record_keeping.md` 6 절(측정 근거는
-재현 가능하게) 위반이다. D-29 가 이것을 1 단계 첫 항목으로 올린 이유다.
+재현 가능하게) 위반이다. UD-1 이 이것을 1 단계 첫 항목으로 올린 이유다.
 
 **도구가 또 사라져도 자는 남아야 하므로** 기준값과 알고리즘을 여기 함께 적는다.
 전부 공개 표준이다 — OKLab(Ottosson), CVD 시뮬레이션(Machado·Oliveira·Fernandes
@@ -25,7 +25,7 @@
 
 ## 이 저장소에만 있는 것 — `--scope`
 
-`docs/37_ui_system.md` 2.1 이 정한 두 자다. 우리 화면은 **방법마다 레인이 따로**라
+`docs/ui/01_system.md` 2.1 이 정한 두 자다. 우리 화면은 **방법마다 레인이 따로**라
 (`demo/cards/card_core.js` 의 `drawLane()`) 한 레인 안에 동시에 보이는 색은
 [출력 1 + 참값 회색] 둘뿐이고, 여러 색이 나란히 오는 곳은 **범례뿐**이다.
 
@@ -231,12 +231,12 @@ def render(result: dict) -> str:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="색 팔레트 검증 (docs/37 · D-29)")
+    ap = argparse.ArgumentParser(description="색 팔레트 검증 (docs/ui/01_system.md · UD-1)")
     ap.add_argument("colors", help="쉼표로 나눈 hex 목록")
     ap.add_argument("--mode", default="light", choices=sorted(BAND))
     ap.add_argument("--surface", default=None, help="차트 표면색 (기본은 모드별)")
     ap.add_argument("--scope", default="lane", choices=("lane", "legend"),
-                    help="lane=모든 쌍(엄격) · legend=인접 쌍 (docs/37 2.1)")
+                    help="lane=모든 쌍(엄격) · legend=인접 쌍 (docs/ui 01_system 2.1)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
 

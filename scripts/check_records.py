@@ -51,8 +51,12 @@ def check(path: Path, pat: str, required: dict, label: str) -> list[str]:
         # 억지로 채우면 없던 정보를 만들어낸다 — 빈칸이 허위보다 낫다.
         if "기록 없음" in body:
             miss = [k for k in miss if k != "먼저 의심한 것"]
-        # 잠정/철회 항목은 아직 못 채운 것이 정상일 수 있다
-        provisional = "[잠정]" in body[:400] or "상태 | **잠정**" in body
+        # 잠정/철회 항목은 아직 못 채운 것이 정상일 수 있다.
+        # **이관된 항목**도 같다 — 본문이 다른 파트로 갔고 여기에는 포인터만 남는다.
+        # 번호를 비우지 않고 자리를 남기는 것이 규약이라(19_record_keeping 5절),
+        # 그 자리를 「미충족」으로 세면 규약끼리 싸우게 된다.
+        provisional = ("[잠정]" in body[:400] or "상태 | **잠정**" in body
+                       or "**이관됨**" in body[:400])
         if miss and not provisional:
             bad.append(f"{fid}: {', '.join(miss)}")
             print(f"  ✗ {fid:<6} 누락: {', '.join(miss)}")
@@ -278,6 +282,14 @@ def main() -> int:
     problems: list[str] = []
     problems += check(d / "20_findings.md", r"F-\d+", F_REQUIRED, "발견")
     problems += check(d / "21_decisions.md", r"D-\d+", D_REQUIRED, "결정")
+
+    # UI/UX 파트는 번호만 다르고 **규격은 같다** (docs/ui/00_index.md)
+    ui = d / "ui"
+    if (ui / "10_decisions.md").exists():
+        problems += check(ui / "10_decisions.md", r"UD-\d+", D_REQUIRED, "UI 결정")
+    if (ui / "11_findings.md").exists():
+        problems += check(ui / "11_findings.md", r"UF-\d+", F_REQUIRED, "UI 발견")
+        problems += check_evidence_tags(ui / "11_findings.md")
 
     ev = check_evidence_tags(d / "20_findings.md")
     if ev:

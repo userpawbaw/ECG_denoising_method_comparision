@@ -23,7 +23,9 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-DOCS = sorted((ROOT / "docs").glob("*.md"))
+# UI/UX 파트(`docs/ui/`)도 같은 무결성 규격을 받는다 — 분리한 것은 **판단 기준**이지
+# 기록 규격이 아니다 (`docs/ui/00_index.md`).
+DOCS = sorted((ROOT / "docs").glob("*.md")) + sorted((ROOT / "docs" / "ui").glob("*.md"))
 CONFIGS = sorted((ROOT / "configs").glob("*.yaml"))
 
 
@@ -44,10 +46,13 @@ def test_doc_cross_references_resolve(doc: Path):
     """
     produced_later = {"08a_acquisition_log.md", "08b_real_snr.md",
                       "10_loss_ablation.md",
-                      # 0 단계(레퍼런스 분석)의 산출물. D-29 · docs/37 6.0
-                      "38_ui_benchmark.md"}
+                      # 0 단계(레퍼런스 분석)의 산출물. UD-1 · docs/ui/01_system 6.0
+                      "ui/02_benchmark.md",
+                      # UI 파트의 사고 기록. **없는 것이 정상 상태**이고 사고가
+                      # 나야 생긴다 — 인덱스가 자리만 예고한다.
+                      "ui/12_incidents.md"}
     text = doc.read_text()
-    missing = sorted({m for m in re.findall(r"docs/([0-9A-Za-z_]+\.md)", text)
+    missing = sorted({m for m in re.findall(r"docs/((?:ui/)?[0-9A-Za-z_]+\.md)", text)
                       if m not in produced_later and not (ROOT / "docs" / m).exists()})
     assert not missing, f"{doc.name} 이 없는 문서를 가리킨다: {missing}"
 
@@ -776,6 +781,7 @@ REPORT_EXEMPT: dict[str, str] = {
 def test_report_names_every_doc():
     """`docs/*.md` 가 전부 보고서에서 한 번은 이름 불려야 한다 (D-22)."""
     body = REPORT.read_text(encoding="utf-8")
+    # `docs/ui/` 는 보고서가 아니라 `docs/ui/00_index.md` 가 책임진다 (아래 검사).
     missing = sorted(
         d.name for d in (ROOT / "docs").glob("*.md")
         if d.name != REPORT.name and d.name not in REPORT_EXEMPT
@@ -803,3 +809,41 @@ def test_demo_cards_share_the_lane_renderer(card: str):
     assert not missing, (
         f"{card} 이 {missing} 를 안 쓴다 — 겹쳐 그리면 R-peak 만 보인다 "
         "(docs/33_card_design_samples.md «파형 패널을 다시 만들었다»)")
+
+
+# --------------------------------------------------------------------------
+# UI/UX 파트는 **자체 진입점**이 전부를 가리킨다 (docs/ui/00_index.md)
+# 연구 파트에서 D-22 가 「보고서가 유일한 진입점인가」를 지키는 것과 같은 장치다.
+# 파트를 나눈 이상 진입점도 나뉘어야 하고, 나뉜 진입점도 빠짐이 없어야 한다.
+UI_DOCS = ROOT / "docs" / "ui"
+UI_INDEX = UI_DOCS / "00_index.md"
+
+
+def test_ui_part_has_an_index():
+    assert UI_INDEX.exists(), "UI/UX 파트에 진입점이 없다 — docs/ui/00_index.md"
+
+
+def test_ui_index_names_every_ui_doc():
+    """`docs/ui/*.md` 가 전부 인덱스에서 한 번은 이름 불려야 한다."""
+    body = UI_INDEX.read_text(encoding="utf-8")
+    missing = sorted(d.name for d in UI_DOCS.glob("*.md")
+                     if d.name != UI_INDEX.name
+                     and d.name not in body and d.stem not in body)
+    assert not missing, (
+        f"UI 인덱스가 안 가리키는 문서: {missing} — docs/ui/00_index.md 의 «문서» 표에 넣을 것")
+
+
+def test_ui_records_use_their_own_numbering():
+    """UI 기록은 `UD-`/`UF-`/`UO-` 를 쓴다 — 연구 파트의 `D-`/`F-`/`O-` 와 섞이지 않게.
+
+    섞이면 「D-29」가 두 곳을 가리키게 되고, 커밋 메시지의 역추적 경로가 끊긴다.
+    """
+    import re as _re
+    for path, good, bad in ((UI_DOCS / "10_decisions.md", "UD-", r"^## D-\d"),
+                            (UI_DOCS / "11_findings.md", "UF-", r"^## F-\d")):
+        if not path.exists():
+            continue
+        body = path.read_text(encoding="utf-8")
+        assert good in body, f"{path.name} 에 {good} 기록이 없다"
+        stray = _re.findall(bad, body, _re.M)
+        assert not stray, f"{path.name} 이 연구 파트 번호를 쓴다: {stray}"

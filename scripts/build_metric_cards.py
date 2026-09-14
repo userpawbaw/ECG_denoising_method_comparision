@@ -47,7 +47,9 @@ OUT = ROOT / "results" / "metric_cards"
 # 색은 `make_slides.py` 와 **같은 값**을 쓴다. 두 산출물이 같은 자리에서
 # 같이 보이므로 방법 색이 다르면 그것부터 혼란이 된다.
 C = {"M01": "#2a78d6", "M04": "#eb6834", "M08": "#1baf7a",
-     "M05": "#eda100", "M_FE": "#e87ba4", "M02": "#7b53c1", "M06": "#184f95"}
+     # M05·M_FE 는 M04 주황과 정상시야 ΔE 15 미만이라 옮겼다 (UF-1 · UD-2).
+     # 검증: python3 scripts/validate_palette.py "<hex 목록>" --mode light
+     "M05": "#e4a824", "M_FE": "#e880b4", "M02": "#7b53c1", "M06": "#184f95"}
 CLEAN = "#b8b6ae"       # 참값: 뒤에 두껍게 — '목표' 로 읽히게
 BAD = "#d03b3b"         # 경계선·경고 (validate_palette.js light PASS)
 INK = "#1b1b1b"

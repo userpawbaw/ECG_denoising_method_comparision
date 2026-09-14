@@ -22,7 +22,8 @@
 | **실험 상세** | `03_metric_floor`\* · `04_snr_estimator_calibration`\* · `05_swt_tuning`\* · `06_sameni_diagnosis`\* · `07_safety_probe`\* · `10_loss_ablation` — 여섯 다 **두 축 짝**이 있다(D0 판은 접미사가 없는 것도 있다) | 본문이 한 문단으로 요약한 것의 전문. 축이 다르면 값도 결론도 다르다(F-16 · F-17) |
 | | `11_loss_by_noise`\* · `12_causal_fe`\* · `13_lookahead_fe`\* · `14_median_vs_zerophase`\* · `15_reference_and_training` · `16_fe_metric_audit` | EXP-G, 실시간 front-end 후보 네 판, 참조 정의 검토, 채점 기준 감사 |
 | **산출물·운영** | `90_results_d0`\* · `90_results_d1`\* · `92_axis_gap`\* | **모든 방법 × 모든 지표**의 자동 생성 결과표 (본문은 여기서 골라 싣는다) |
-| | `30_realtime_demo` · `31_demo_design_review` · `32_metric_cards`\* · `33_card_design_samples` · `93_slides`\* · `34_visual_plan` · `37_ui_system` | 시연 화면 · 지표 카드 · 발표 그림 — 8 장에 정리 |
+| | `30_realtime_demo` · `31_demo_design_review` · `32_metric_cards`\* · `33_card_design_samples` · `93_slides`\* · `34_visual_plan` | 시연 화면 · 지표 카드 · 발표 그림 — 8 장에 정리 |
+| | **`ui/00_index.md`** | **UI/UX 파트 — 별도 진입점.** 시연 화면의 디자인 시스템과 검증은 여기서 이어진다 (판단 기준이 달라 분리했다) |
 | | `08_acquisition` · `09_data_upload` · `35_external_compute` · `99_status` | 실측 수집 절차 · PhysioNet 데이터 공유 · **외부 GPU 에서 산포를 재는 판의 실행 안내**(F-40 · 5.10.7) · **현재 상태와 인수인계** |
 
 **모르는 용어를 만나면 `docs/18_glossary.md`** 를 먼저 본다 — 지표 정의, 약어,
@@ -3656,7 +3657,7 @@ F-22 는 특히 고약하다. **`p` 가 작을수록 더 그럴듯해 보였다*
 
 | 산출물 | 무엇인가 | 설계 논의 |
 |---|---|---|
-| **실시간 시연 화면** | 잡음 섞인 파형이 들어오고 방법별 출력이 나란히 그려진다. **실시간 front-end 세 모드를 화면에서 바꿔 볼 수 있다**(5.11.3) — 5.11 의 교환이 숫자가 아니라 눈으로 보인다 | `docs/30_realtime_demo.md`, 전송 방식은 D-18. **화면의 디자인 시스템을 다시 세우는 계획은 `docs/37_ui_system.md`**(D-29) — 값의 단일 출처와 화면을 자동으로 여는 검사 |
+| **실시간 시연 화면** | 잡음 섞인 파형이 들어오고 방법별 출력이 나란히 그려진다. **실시간 front-end 세 모드를 화면에서 바꿔 볼 수 있다**(5.11.3) — 5.11 의 교환이 숫자가 아니라 눈으로 보인다 | `docs/30_realtime_demo.md`, 전송 방식은 D-18. **화면의 디자인 시스템은 UI/UX 파트로 분리했다** — 진입점 `docs/ui/00_index.md`(D-29 → UD-1) |
 | **지표 카드 5 장** | «SNR 로는 비슷하거나 좋은데 이 지표로는 갈린다» 를 **다섯 번 같은 모양으로** 반복한다. 시연장에서 1 분 안에 「지표 하나로는 안 된다」(3.1)를 전한다 | `docs/32_metric_cards.md`\*, 외부 검토안을 우리 근거에 비춰 본 기록은 `docs/31_demo_design_review.md`, 카드 디자인 세 안의 비교는 `docs/33_card_design_samples.md` |
 | **발표 그림 17 장** (`S1`~`S14`) | 이 보고서 본문의 그림이 그대로 발표용이다. 방법을 6 개로 줄이고 차이가 보이는 −5 dB 를 주력으로 쓴다. **부제의 수치는 데이터에서 계산**한다(O-27) | 색인 `docs/93_slides.md`\*, 제작·배치 계획은 `docs/34_visual_plan.md` |
 | **자동 생성 결과표** | 모든 방법 × 모든 지표 × 두 축. **본문의 표는 전부 여기서 골라 실은 것**이고, 검사가 둘의 일치를 확인한다(O-16) | `docs/90_results_d0.md`\* · `docs/90_results_d1.md`\* · 두 축 대조 `docs/92_axis_gap.md`\* |

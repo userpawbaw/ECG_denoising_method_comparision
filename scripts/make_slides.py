@@ -43,8 +43,13 @@ C = {
     "M01": "#2a78d6",   # slot 1 blue    고전 bandpass
     "M04": "#eb6834",   # slot 2 orange  SWT thresholding
     "M08": "#1baf7a",   # slot 3 aqua    딥러닝 (wavelet U-Net)
-    "M05": "#eda100",   # slot 4 yellow  Sameni EKS
-    "M_FE": "#e87ba4",  # slot 5 magenta 공통 front-end 단독
+    "M05": "#e4a824",   # slot 4 yellow  Sameni EKS
+                        #   원래 #eda100. M04 주황과 정상시야 ΔE 13.7 로 붙어 있었다
+                        #   (UF-1). ΔE 2.0 만 옮겨 15.1 로 벌렸다 — 노랑은 노랑으로 남는다.
+    "M_FE": "#e880b4",  # slot 5 magenta 공통 front-end 단독
+                        #   원래 #e87ba4. docs/33 이 「네 번째를 얹으면 분리도가
+                        #   무너진다」며 카드에서 뺀 바로 그 색인데 슬라이드에는 남아
+                        #   있었다 (M04 와 ΔE 12.9). ΔE 2.2 만 옮겨 15.1 로 벌렸다.
 }
 # 손실 L1 -> L3 -> L6 은 **ordinal** 이다 — 순서를 바꾸면 의미가 달라진다
 # (개입이 점점 커진다). 그래서 방법용 categorical 슬롯이 아니라 **단일 색조
