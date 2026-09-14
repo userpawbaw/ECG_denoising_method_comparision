@@ -189,7 +189,14 @@ dialog form{text-align:right}
 .live ul{margin:10px 0 0;padding-left:18px}
 .live li{margin:5px 0;font-size:13.5px}
 .hide{display:none!important}
-@media (prefers-reduced-motion:reduce){canvas{animation:none}}
+/* 캔버스는 CSS 애니메이션이 아니라 requestAnimationFrame 으로 그린다 —
+   `canvas{animation:none}` 은 **아무 일도 하지 않는다**(검사가 잡아냈다).
+   실제로 줄여야 할 것은 전환과 스크롤이다. 재생은 기본이 «정지» 라
+   자동으로 도는 것은 없다. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
 </style>
 
 <header>

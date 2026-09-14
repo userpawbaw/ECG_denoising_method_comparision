@@ -1,0 +1,258 @@
+"""시연 화면을 **실제 브라우저로 열어서** 본다.
+
+## 왜 이 파일이 있나
+
+이 저장소의 UI 결함은 거의 전부 「화면을 열면 5 초에 보이는 것」이었는데, 여는
+장치가 없었다 — 그림은 `tests/test_figure_text.py` 가 보지만 HTML 은 아무도 안
+봤다. 그래서:
+
+* `docs/33` — 「세 안이 레인 렌더러를 공유한다」고 적힌 채 두 안이 **첫 판 그대로**
+  였다. 「문서가 코드보다 앞서 있었고, **화면을 열지 않으면 드러나지 않는다**」
+* U-1 ~ U-14 — 방법 색 없음 · 가로 넘침 · 호버 없음 · 범례 없음 · `@media` 0 개
+* UO-1 — 그림을 **열어 보지 않고** 저장해 tracked 산출물을 깨진 것으로 덮었다
+
+## 왜 기본 실행에서 빠져 있나 (`screens` 마커)
+
+브라우저를 띄우고 8.6 MB 짜리 은행을 파싱하므로 화면당 몇 초가 든다.
+`pytest tests/` 는 커밋 직전에 매번 도는 검사라 1 분 안에 끝나야 한다(`pytest.ini`).
+
+    pytest tests/ -m screens        # 화면 검사만
+    pytest tests/ -m ""             # 전부
+
+**화면을 고쳤으면 이것을 돌린다** — `docs/17_checklists.md` 에 트리거로 올려 뒀다.
+
+브라우저가 없는 환경에서는 **실패가 아니라 skip** 이다. 커밋을 막을 이유가 없다.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from _screens import (  # noqa: E402
+    SCREENS, WIDTHS, find_chromium, launch, new_page, settle,
+)
+
+pytestmark = pytest.mark.screens
+
+playwright = pytest.importorskip("playwright.sync_api",
+                                 reason="playwright 가 없다 (개발용 검증판)")
+CHROMIUM = find_chromium()
+if not CHROMIUM:
+    pytest.skip("Chromium 을 못 찾았다", allow_module_level=True)
+
+READY = [s for s in SCREENS if s.ready()]
+IDS = [s.name for s in READY]
+
+
+@pytest.fixture(scope="module")
+def browser():
+    with playwright.sync_playwright() as pw:
+        b = launch(pw, exe=CHROMIUM)
+        yield b
+        b.close()
+
+
+@pytest.fixture(scope="module")
+def loaded(browser):
+    """화면마다 **한 번만** 열어 두고 재사용한다 — 은행 파싱이 비싸다."""
+    pages = {}
+    for s in READY:
+        page = new_page(browser)
+        errors = settle_page(page, s)
+        pages[s.name] = (page, errors)
+    yield pages
+    for page, _ in pages.values():
+        page.close()
+
+
+def settle_page(page, screen):
+    page.goto(screen.url)
+    return settle(page, animated=screen.animated)
+
+
+def _screen(name):
+    return next(s for s in READY if s.name == name)
+
+
+# ------------------------------------------------------------------ 기본
+@pytest.mark.parametrize("name", IDS)
+def test_screen_loads_without_console_errors(loaded, name):
+    """콘솔에 오류가 없어야 한다. **화면이 조용히 반쯤 죽는 것**이 가장 흔한 실패다."""
+    s = _screen(name)
+    _, errors = loaded[name]
+    unexpected = [e for e in errors
+                  if not any(pat in e for pat in s.allow_console)]
+    assert not unexpected, f"{name}:\n  " + "\n  ".join(unexpected)
+
+
+@pytest.mark.parametrize("name", IDS)
+def test_screen_has_no_horizontal_overflow(browser, name):
+    """**확정된 세 폭에서** 가로 스크롤이 생기면 안 된다 (U-9 — `@media` 가 0 개였다).
+
+    1920 은 표시 장치, 1280 은 최소 방어폭이다 (`docs/ui/01_system.md` 7 절).
+    """
+    s = _screen(name)
+    bad = []
+    for w in WIDTHS:
+        page = new_page(browser, width=w)
+        settle_page(page, s)
+        sw = page.evaluate("document.documentElement.scrollWidth")
+        cw = page.evaluate("document.documentElement.clientWidth")
+        if sw > cw + 1:
+            bad.append(f"{w}px 에서 {sw} > {cw} ({sw - cw}px 넘침)")
+        page.close()
+    assert not bad, f"{name}: " + " · ".join(bad)
+
+
+@pytest.mark.parametrize("name", [s.name for s in READY if s.expect_canvas])
+def test_canvas_actually_drew_something(loaded, name):
+    """캔버스가 **실제로 그려졌는지** 본다 — 크기만 있고 빈 경우가 조용한 실패다."""
+    page, _ = loaded[name]
+    painted = page.evaluate("""() => {
+      const out = [];
+      for (const cv of document.querySelectorAll('canvas')) {
+        if (!cv.width || !cv.height) { out.push([cv.id || '(익명)', 0, 'w/h 가 0']); continue; }
+        const g = cv.getContext('2d');
+        const d = g.getImageData(0, 0, cv.width, cv.height).data;
+        let ink = 0;
+        for (let i = 3; i < d.length; i += 4 * 37) if (d[i] > 8) ink++;
+        out.push([cv.id || '(익명)', ink, '']);
+      }
+      return out;
+    }""")
+    assert painted, f"{name}: 캔버스가 하나도 없다"
+    empty = [f"{cid} ({note or '픽셀 0'})" for cid, ink, note in painted if ink == 0]
+    assert len(empty) < len(painted), (
+        f"{name}: 캔버스 {len(painted)} 개가 전부 비었다 — " + ", ".join(empty))
+
+
+@pytest.mark.parametrize("name", IDS)
+def test_text_does_not_spill_out_of_its_box(loaded, name):
+    """글자가 **자기 상자 밖으로 흘렀는지** 본다.
+
+    `docs/33` 이 겪은 결함 셋 중 둘이 이 종류였다 — 축 라벨이 화면 밖으로 나가고,
+    곡선이 그림 상자를 넘었다. 그때는 사람이 열어서 찾았다.
+    """
+    page, _ = loaded[name]
+    spills = page.evaluate("""() => {
+      const bad = [];
+      for (const el of document.querySelectorAll('body *')) {
+        const st = getComputedStyle(el);
+        if (st.overflow !== 'visible' || st.display === 'none') continue;
+        if (!el.firstElementChild && el.scrollWidth > el.clientWidth + 2
+            && el.clientWidth > 0) {
+          bad.push((el.tagName + '.' + (el.className || '')).slice(0, 48)
+                   + ` (${el.scrollWidth}>${el.clientWidth})`);
+        }
+      }
+      return bad.slice(0, 8);
+    }""")
+    assert not spills, f"{name}: 글이 상자 밖으로 흐른다 — " + ", ".join(spills)
+
+
+# ------------------------------------------------------------------ 규약
+@pytest.mark.parametrize("name", IDS)
+def test_animated_screens_respect_reduced_motion(browser, name):
+    """`prefers-reduced-motion: reduce` 를 켠 채 열고 **화면이 실제로 멈춰 있는지** 잰다.
+
+    `ui-ux-pro-max` 의 사전 인도 체크리스트: 「자동 회전 콘텐츠는 정지 수단이 있고
+    reduced-motion 에서 멈춘다」.
+
+    **소스에 문자열이 있는지로 재지 않는다.** `mockup_expo.html` 에는
+    `@media (prefers-reduced-motion:reduce){canvas{animation:none}}` 가 있지만
+    캔버스는 CSS 애니메이션이 아니라 `requestAnimationFrame` 으로 그리므로
+    **그 한 줄은 아무것도 하지 않는다.** 문자열 검사는 그런 것을 통과시킨다.
+    """
+    s = _screen(name)
+    if not s.animated:
+        pytest.skip("애니메이션이 없는 화면")
+
+    page = new_page(browser, reduced_motion="reduce")
+    settle_page(page, s)
+    snap = """() => {
+      const out = [];
+      for (const cv of document.querySelectorAll('canvas')) {
+        if (!cv.width || !cv.height) { out.push(''); continue; }
+        const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+        let h = 0;
+        for (let i = 0; i < d.length; i += 4 * 101) h = (h * 31 + d[i] + d[i+3]) | 0;
+        out.push(String(h));
+      }
+      return out.join('|');
+    }"""
+    before = page.evaluate(snap)
+    page.wait_for_timeout(1500)
+    after = page.evaluate(snap)
+    page.close()
+
+    assert before == after, (
+        f"{name}: reduced-motion 을 켰는데 캔버스가 계속 바뀐다 — "
+        "자동으로 도는 애니메이션을 멈춰야 한다")
+
+
+@pytest.mark.parametrize("name", [s.name for s in READY if s.expect_canvas])
+def test_identity_is_not_color_alone(loaded, name):
+    """**색만으로 신원을 알리면 안 된다** — 범례든 직접 라벨이든 글자가 있어야 한다.
+
+    `docs/33` 이 카드에 건 규칙(「aqua ↔ orange 의 tritan 분리도가 경고 대역이라
+    색만으로 신원을 알리면 안 된다」)을 **본 화면까지 넓힌 것**이다. 우리 팔레트에는
+    대비 3:1 을 못 넘는 색이 있고, 그 WARN 은 면제가 아니라 보조 부호 의무다.
+    """
+    page, _ = loaded[name]
+    labelled = page.evaluate("""() => {
+      const t = document.body.innerText || '';
+      const hits = (t.match(/\\bM(_FE|0\\d|\\d\\d)\\b|\\bB01\\b/g) || []);
+      return new Set(hits).size;
+    }""")
+    assert labelled >= 2, (
+        f"{name}: 화면에 방법 이름이 {labelled} 개뿐이다 — 색만으로 구분하게 된다")
+
+
+# ------------------------------------------------------------------ 테마
+@pytest.mark.parametrize("name", IDS)
+def test_dark_theme_does_not_leave_text_on_its_own_ground(browser, name):
+    """다크에서 **글자와 배경이 같은 쪽으로 붙지 않아야** 한다.
+
+    다크를 선언한 화면만 본다. 토큰의 유일한 정의가 다크 블록 안에 있으면
+    테마를 안 고른 사용자에게 한쪽 테마의 글자가 다른 쪽 배경 위에 얹힌다 —
+    `mockup_expo` 만 다크를 갖고 있고 나머지는 아직 라이트뿐이다.
+    """
+    s = _screen(name)
+    if "prefers-color-scheme" not in s.path.read_text(encoding="utf-8"):
+        pytest.skip("다크를 선언하지 않은 화면")
+    page = new_page(browser, theme="dark")
+    settle_page(page, s)
+    lum = page.evaluate("""() => {
+      const rgb = s => (s.match(/\\d+/g) || [0,0,0]).slice(0,3).map(Number);
+      const L = c => { const [r,g,b] = c.map(v => v/255);
+        return 0.2126*r + 0.7152*g + 0.0722*b; };
+      const st = getComputedStyle(document.body);
+      return [L(rgb(st.backgroundColor)), L(rgb(st.color))];
+    }""")
+    page.close()
+    bg, fg = lum
+    assert abs(fg - bg) > 0.2, (
+        f"{name}: 다크에서 글자({fg:.2f})와 배경({bg:.2f})의 밝기가 너무 가깝다")
+
+
+# ------------------------------------------------------------------ 갤러리
+GALLERY = ROOT / "demo" / "ui" / "gallery.html"
+
+
+def test_gallery_lists_every_screen():
+    """갤러리와 검사가 **같은 화면 목록**을 봐야 한다.
+
+    어긋나면 「갤러리에는 있는데 검사는 안 하는 화면」이나 그 반대가 생긴다.
+    이 저장소는 그 종류를 이미 겪었다 — `docs/33` 이 세 안이 공유한다고 적은 채
+    두 안이 첫 판 그대로였다.
+    """
+    if not GALLERY.exists():
+        pytest.skip("갤러리가 아직 없다")
+    src = GALLERY.read_text(encoding="utf-8")
+    missing = [s.name for s in SCREENS if s.name not in src]
+    assert not missing, f"갤러리가 안 싣는 화면: {missing}"

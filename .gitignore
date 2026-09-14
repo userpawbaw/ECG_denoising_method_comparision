@@ -101,3 +101,8 @@ results/**/_partial/
 # 업로드한 것을 커밋하지 않도록 여기서도 막는다. 수치는 summary.json/sweep.csv 에 있다.
 results/ext/**/best.pt
 results/ext/**/last.pt
+
+# 시연 화면 스크린샷 (scripts/shoot_screens.py). 화면이 바뀔 때마다 갱신되는
+# 이미지라 추적하면 커밋 잡음만 쌓인다 — results/logs/ 와 같은 이유다.
+# 보려고 찍는 것이고, 남길 근거가 있으면 문서에 인용한다.
+results/screens/

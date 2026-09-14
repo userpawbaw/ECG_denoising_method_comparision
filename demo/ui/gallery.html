@@ -1,0 +1,182 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>시연 화면 갤러리</title>
+<!--
+  화면을 **한 자리에서 열어 보는** 장치. docs/ui/01_system.md 6.2.
+
+  이 저장소의 UI 결함은 거의 전부 「화면을 열면 5 초에 보이는 것」이었는데 여는
+  장치가 없었다. docs/33 의 「문서가 코드보다 앞섰다」도, UO-1 도 같은 뿌리다.
+
+  서버 없이 file:// 로 열린다 — 시연 산출물과 같은 제약을 쓴다.
+  토큰은 tokens.css 에서 온다 (ui/palette.json 이 원본).
+
+  검사는 tests/test_demo_screens.py, 찍기는 scripts/shoot_screens.py.
+  **이 페이지는 사람이 보는 쪽이다** — 여백 리듬·타이포 위계처럼 잴 수 없는 것.
+-->
+<link rel="stylesheet" href="tokens.css">
+<style>
+  :root{
+    --g-bg:#f4f6f6; --g-surface:#fff; --g-sunk:#eceff0;
+    --g-ink:#15191b; --g-ink-2:#5b6467; --g-ink-3:#8b9497; --g-rule:#dfe4e5;
+    --g-accent:#0c4f52; --g-warn:#87590f;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --g-bg:#0f1213; --g-surface:#171b1c; --g-sunk:#1d2223;
+    --g-ink:#e9eded; --g-ink-2:#9aa4a6; --g-ink-3:#6c7679; --g-rule:#282e30;
+    --g-accent:#57cfc6; --g-warn:#d9a850;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px 20px 60px;background:var(--g-bg);color:var(--g-ink);
+    font:14px/1.6 var(--font-sans)}
+  .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+  header{max-width:1400px;margin:0 auto 18px;display:flex;flex-direction:column;gap:10px}
+  h1{margin:0;font-size:21px;font-weight:700;letter-spacing:-.015em}
+  .sub{margin:0;color:var(--g-ink-2);max-width:66ch}
+  .sub b{color:var(--g-ink)}
+
+  .bar{max-width:1400px;margin:0 auto 20px;display:flex;flex-wrap:wrap;gap:16px;
+    align-items:flex-end;padding:12px 14px;background:var(--g-surface);
+    border:1px solid var(--g-rule);border-radius:3px}
+  .grp{display:flex;flex-direction:column;gap:5px}
+  .grp>span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--g-ink-3)}
+  .chips{display:flex;gap:5px;flex-wrap:wrap}
+  button{font:inherit;font-size:12.5px;padding:5px 11px;border-radius:2px;cursor:pointer;
+    border:1px solid var(--g-rule);background:var(--g-surface);color:var(--g-ink-2)}
+  button[aria-pressed="true"]{background:var(--g-accent);border-color:var(--g-accent);
+    color:var(--g-bg);font-weight:600}
+  button:focus-visible{outline:2px solid var(--g-accent);outline-offset:2px}
+  .hint{margin-left:auto;font-size:12px;color:var(--g-ink-3);max-width:34ch}
+
+  main{max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+  .screen{background:var(--g-surface);border:1px solid var(--g-rule);border-radius:3px;
+    overflow:hidden}
+  .shead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:11px 14px;
+    background:var(--g-sunk);border-bottom:1px solid var(--g-rule)}
+  .shead h2{margin:0;font-size:14px;font-weight:600}
+  .shead .path{font-size:12px;color:var(--g-ink-3)}
+  .shead a{margin-left:auto;font-size:12px;color:var(--g-accent)}
+  .note{padding:9px 14px;font-size:12.5px;color:var(--g-warn);
+    border-bottom:1px solid var(--g-rule);background:var(--g-sunk)}
+  .frame{position:relative;background:var(--g-sunk);padding:10px;overflow-x:auto}
+  iframe{display:block;border:1px solid var(--g-rule);background:#fff;
+    /* 실제 폭으로 렌더하고 **축소해서 보여준다** — 1920 을 1400 자리에 넣으려면
+       가로 스크롤을 만들거나 줄여야 하는데, 줄이면 레이아웃이 그대로 보인다. */
+    transform-origin:0 0}
+  .missing{padding:26px 14px;color:var(--g-warn);font-size:13px}
+  .missing code{font-family:var(--font-mono)}
+  footer{max-width:1400px;margin:30px auto 0;padding-top:14px;
+    border-top:1px solid var(--g-rule);color:var(--g-ink-3);font-size:12.5px;
+    display:flex;flex-direction:column;gap:5px}
+  footer code{font-family:var(--font-mono);color:var(--g-ink-2)}
+</style>
+
+<header>
+  <h1>시연 화면 갤러리</h1>
+  <p class="sub">화면 여섯을 <b>한 자리에서</b> 연다. 폭과 테마를 바꿔 가며 보라 —
+  검사(<code class="mono">tests/test_demo_screens.py</code>)는 잴 수 있는 것만 재고,
+  <b>여백 리듬·타이포 위계·「이게 읽히나」는 사람이 봐야 한다.</b></p>
+</header>
+
+<div class="bar">
+  <div class="grp"><span>폭</span><div class="chips" id="widths"></div></div>
+  <div class="grp"><span>테마</span><div class="chips" id="themes"></div></div>
+  <div class="grp"><span>배율</span><div class="chips" id="zooms"></div></div>
+  <p class="hint">확정: 표시 장치 <b class="mono">1920×1080</b> ·
+    최소 방어폭 <b class="mono">1280×720</b></p>
+</div>
+
+<main id="main"></main>
+
+<footer>
+  <div>찍기 <code>python3 scripts/shoot_screens.py --all</code> ·
+       검사 <code>python3 -m pytest tests/ -m screens</code></div>
+  <div>토큰은 <code>tokens.css</code> 에서 오고 원본은 <code>ui/palette.json</code> 이다 —
+       고치면 <code>python3 scripts/build_tokens.py</code>.</div>
+</footer>
+
+<script>
+"use strict";
+/* 화면 목록은 scripts/_screens.py 의 SCREENS 와 같아야 한다. 둘이 어긋나면
+   「갤러리에는 있는데 검사는 안 하는 화면」이 생긴다 —
+   tests/test_demo_screens.py 의 test_gallery_lists_every_screen 이 붙들어 둔다. */
+const SCREENS = [
+  {path:"../index.html",           label:"모드 B — 방법 비교 (본 화면)"},
+  {path:"../live.html",            label:"모드 A — 실측",
+   note:"서버 없이 열면 «연결 끊김» 이 기본 상태다. D-18 이 «시연에서 실제로 일어난다» 고 적은 그 화면이라, 이 상태로 보는 것이 맞다."},
+  {path:"../mockup_expo.html",     label:"박람회 시안"},
+  {path:"../cards/A_monitor.html", label:"지표 카드 A — 임상 모니터"},
+  {path:"../cards/B_notebook.html",label:"지표 카드 B — 실험 노트"},
+  {path:"../cards/C_cardnews.html",label:"지표 카드 C — 카드뉴스"},
+];
+const WIDTHS = [1280, 1440, 1920];
+const ZOOMS  = [{k:0.5,n:"50 %"}, {k:0.7,n:"70 %"}, {k:1,n:"100 %"}];
+const HEIGHT = 900;
+
+const state = {w: 1920, theme: "light", zoom: 0.7};
+
+function chip(label, on, fn, title){
+  const b = document.createElement("button");
+  b.textContent = label; b.setAttribute("aria-pressed", String(on));
+  if (title) b.title = title;
+  b.onclick = () => { fn(); render(); };
+  return b;
+}
+
+function bar(){
+  const w = document.getElementById("widths"); w.replaceChildren(
+    ...WIDTHS.map(v => chip(v + " px", state.w === v, () => state.w = v,
+      v === 1280 ? "최소 방어폭" : v === 1920 ? "확정된 표시 장치" : "")));
+  const t = document.getElementById("themes"); t.replaceChildren(
+    ...[["light","라이트"],["dark","다크"]].map(([k,n]) =>
+      chip(n, state.theme === k, () => state.theme = k,
+        k === "dark" ? "다크를 선언한 화면만 실제로 바뀐다 — 나머지는 아직 라이트뿐이다" : "")));
+  const z = document.getElementById("zooms"); z.replaceChildren(
+    ...ZOOMS.map(o => chip(o.n, state.zoom === o.k, () => state.zoom = o.k,
+      "실제 폭으로 렌더하고 보이기만 줄인다 — 레이아웃은 그대로다")));
+}
+
+function render(){
+  bar();
+  document.documentElement.dataset.theme = state.theme;
+  const main = document.getElementById("main");
+  main.replaceChildren(...SCREENS.map(s => {
+    const box = document.createElement("section");
+    box.className = "screen";
+
+    const head = document.createElement("div");
+    head.className = "shead";
+    const h2 = document.createElement("h2"); h2.textContent = s.label;
+    const path = document.createElement("span");
+    path.className = "path mono"; path.textContent = s.path.replace("../", "demo/");
+    const open = document.createElement("a");
+    open.href = s.path; open.target = "_blank"; open.rel = "noopener";
+    open.textContent = "따로 열기 ↗";
+    head.append(h2, path, open);
+    box.append(head);
+
+    if (s.note){
+      const n = document.createElement("p");
+      n.className = "note"; n.textContent = s.note;
+      box.append(n);
+    }
+
+    const frame = document.createElement("div");
+    frame.className = "frame";
+    const f = document.createElement("iframe");
+    f.src = s.path + "?theme=" + state.theme;
+    f.width = state.w; f.height = HEIGHT;
+    f.loading = "lazy";
+    f.title = s.label;
+    f.style.transform = `scale(${state.zoom})`;
+    // 축소한 만큼 자리도 줄어야 아래 화면이 붙어 온다
+    frame.style.height = (HEIGHT * state.zoom + 20) + "px";
+    frame.style.width = (state.w * state.zoom + 20) + "px";
+    frame.style.maxWidth = "100%";
+    frame.append(f);
+    box.append(frame);
+    return box;
+  }));
+}
+
+render();
+</script>

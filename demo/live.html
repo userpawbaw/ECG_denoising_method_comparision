@@ -305,9 +305,14 @@ function drawOverlay(){
 }
 
 let dirty = false;
+/* 움직임을 줄이겠다고 한 사용자에게는 **커서를 매 프레임 돌리지 않는다.**
+   데이터가 올 때(`dirty`)만 그리므로 파형은 계속 갱신되지만 커서가 쉬지 않고
+   도는 일은 없어진다. 실시간 감시장치의 본질(흐르는 것)은 남기고 불필요한
+   재도색만 뺀 것이다. */
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 function frame(){
   // 스윕은 커서가 계속 도는 것이 보여야 하므로 **매 프레임** 다시 그린다.
-  if (dirty || play === 'sweep'){ dirty = false;
+  if (dirty || (play === 'sweep' && !REDUCED)){ dirty = false;
     mode === 'overlay' ? drawOverlay() : drawSplit(); }
   requestAnimationFrame(frame);
 }
