@@ -576,6 +576,35 @@ def test_trained_checkpoints_are_tracked_with_their_provenance():
     assert not bad, bad
 
 
+def test_sweep_runs_are_not_committed_while_still_running():
+    """seed sweep 산출물(`results/ext/`)도 **완주한 뒤에만** 커밋한다.
+
+    위 검사는 `results/d[01]/*/best.pt` 만 본다. 그런데 sweep 은 `results/ext/`
+    에 쓰고 **체크포인트를 남기지 않으므로**(`--keep-ckpt` 없이는 지운다) 그
+    닻이 없다. 596 개 파일이 추적되는데 **가드 밖**이었다.
+
+    여기서 완주 표식은 **`summary.json`** 이다 — `run_seed_sweep.py` 가 판 하나를
+    끝낸 뒤에 쓰고, 다시 돌릴 때 「이 판은 건너뛴다」의 근거로도 쓴다.
+
+    O-30 과 같은 판정이다: 도는 중인 것이 **추적됐는지**가 아니라 **지금
+    커밋하려고 올려 뒀는지**를 본다. 이미 커밋된 옛 완주본 위에 다시 돌리는
+    것은 결함이 아니다.
+    """
+    staged = _staged()
+    if not staged:
+        return                              # 올려 둔 것이 없으면 볼 것이 없다
+    bad = []
+    for d in sorted(ROOT.glob("results/ext/*/*/")):
+        if (d / "summary.json").exists():
+            continue
+        rel = d.relative_to(ROOT).as_posix().rstrip("/") + "/"
+        here = sorted(q for q in staged if q.startswith(rel))
+        if here:
+            bad.append(f"{rel}: 판이 아직 안 끝났는데 커밋하려고 올렸다 "
+                       f"({len(here)} 개). summary.json 이 없다 (O-30)")
+    assert not bad, bad
+
+
 def test_gitignore_never_reintroduces_a_blanket_results_rule():
     """`results/` 한 줄로 되돌리면 O-13 이 그대로 재발한다."""
     for line in (ROOT / ".gitignore").read_text().splitlines():
