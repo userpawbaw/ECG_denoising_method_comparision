@@ -103,11 +103,18 @@ def main() -> int:
     trainer = Trainer(model, loss_fn, tr, va, tcfg, out_dir=out,
                        device=args.device, num_workers=args.workers,
                        model_name=mcfg.get("name", "resunet1d"),
+                       # **실제로 돈 손잡이를 남긴다.** `seed` 는 `torch.manual_seed` 와
+                       # train/val 잡음 salt 를 동시에 정하므로 이 판을 재현하는 유일한
+                       # 열쇠이고, `ref_frontend` 는 「목표를 FE 통과분으로 두는가」라는
+                       # 실험의 정의 자체다. 둘 다 manifest 에 없었다 (F-46).
                        extra_manifest={"exp_id": exp_id, "source": src.kind,
                                        "source_requested": requested, "tag": tag,
                                        "loss": cfg.get("loss"),
+                                       "seed": int(cfg.get("seed", 0)),
+                                       "n_runs": 1,
                                        "pre_denoise": cfg.get("data", {}).get("pre_denoise"),
                                        "frontend": cfg.get("data", {}).get("frontend", True),
+                                       "ref_frontend": cfg.get("data", {}).get("ref_frontend", True),
                                        "model_kwargs": mcfg.get("kwargs") or {}})
     if args.resume and not trainer.try_resume():
         print("[resume] last.pt 가 없다. 처음부터 학습한다.")
