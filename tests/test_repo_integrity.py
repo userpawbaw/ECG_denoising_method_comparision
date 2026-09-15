@@ -108,6 +108,19 @@ def test_config_methods_are_registered(cfg_path: Path):
     assert not unknown, f"{cfg_path.name}: 미등록 방법 {unknown}"
 
 
+def _ckpt_run_stem(ckpt: str) -> str:
+    """이 체크포인트를 만든 **학습 config 의 이름**.
+
+    주 경로는 `results/{tag}/<run>/best.pt` 라 `<run>` 이 곧 config 이름이다.
+    sweep 은 `results/ext/<sweep>/<run>__s<seed>/best.pt` 로 **같은 config 을
+    seed 만 바꿔** 여러 번 돌린 것이므로 `__s<seed>` 를 떼면 config 이름이 된다.
+    「설정 하나 ↔ 체크포인트 하나」 가정이 sweep 에서만 깨지고, 재현 경로
+    자체는 그대로 있다 (config + seed).
+    """
+    run = Path(str(ckpt).replace("{tag}", "d0")).parent.name
+    return re.sub(r"__s\d+$", "", run)
+
+
 @pytest.mark.parametrize("cfg_path", CONFIGS, ids=lambda p: p.name)
 def test_dl_checkpoints_have_a_training_config(cfg_path: Path):
     """dl_methods 가 가리키는 체크포인트마다 그것을 만드는 학습 config 가 있어야 한다.
@@ -122,7 +135,7 @@ def test_dl_checkpoints_have_a_training_config(cfg_path: Path):
         ck = spec if isinstance(spec, str) else (spec or {}).get("ckpt")
         if not ck:
             continue
-        run = Path(str(ck).replace("{tag}", "d0")).parent.name
+        run = _ckpt_run_stem(ck)
         if not (ROOT / "configs" / f"{run}.yaml").exists():
             orphan.append(f"{mid} -> {ck} (configs/{run}.yaml 없음)")
     assert not orphan, f"{cfg_path.name}: 재현 불가능한 체크포인트 참조 {orphan}"
@@ -157,8 +170,11 @@ def test_training_runner_covers_every_referenced_checkpoint():
         for side in side_cmds:
             assert (ROOT / side.split()[1]).exists(), \
                 f"{p.name}: side_experiment 가 없는 스크립트를 가리킨다 ({side})"
-            for tok in side.split():
-                if (ROOT / "configs" / f"{tok}.yaml").exists():
+            # `--arms m06_l1,m06_l1_nofe` 처럼 **쉼표로 묶인** 형태도 푼다 —
+            # seed sweep 러너가 그렇게 받는다. 쉼표를 안 풀면 곁가지가 sweep 으로
+            # 학습하는 경우 「아무 config 도 학습하지 않는다」로 잘못 걸린다.
+            for tok in re.split(r"[\s,]+", side.strip()):
+                if tok and (ROOT / "configs" / f"{tok}.yaml").exists():
                     made_here.add(tok)
         if side_cmds:
             assert made_here, \
@@ -166,7 +182,10 @@ def test_training_runner_covers_every_referenced_checkpoint():
         for spec in (cfg.get("dl_methods") or {}).values():
             ck = spec if isinstance(spec, str) else (spec or {}).get("ckpt")
             if ck:
-                name = Path(str(ck).replace("{tag}", "d0")).parent.name
+                # **seed 접미사를 뗀다.** sweep 은 같은 config 을 seed 만 바꿔
+                # 여러 번 돌리므로 `m06_l1__s4` 를 만드는 것은 `m06_l1` 이다.
+                # 안 떼면 곁가지가 자기 sweep 명령을 적어 두고도 걸린다.
+                name = _ckpt_run_stem(ck)
                 if name not in made_here:
                     needed.add(name)
     assert not (needed - runs), \
@@ -257,9 +276,21 @@ def test_experiment_configs_use_tag_templated_checkpoints():
         cfg = yaml.safe_load(p.read_text()) or {}
         for mid, spec in (cfg.get("dl_methods") or {}).items():
             ck = spec if isinstance(spec, str) else (spec or {}).get("ckpt")
-            if ck and "{tag}" not in str(ck):
-                bad.append(f"{p.name}:{mid} -> {ck}")
+            if not ck or "{tag}" in str(ck):
+                continue
+            # **sweep 산출물은 경로에 축을 못 담는다** (`--out` 은 축과 무관하다).
+            # 대신 `run_exp.py` 가 실행 시 옆의 `manifest.json` 의 `source` 를
+            # 평가 축과 대조한다 — 철자가 아니라 **기록**을 보므로 더 강하다.
+            # 그 장치가 살아 있는 동안만 이 예외를 허용한다.
+            if str(ck).startswith("results/ext/"):
+                continue
+            bad.append(f"{p.name}:{mid} -> {ck}")
     assert not bad, f"데이터축이 고정된 체크포인트 경로: {bad}"
+    # 예외를 받쳐 주는 **실행 시 검사**가 실제로 있는지 본다. 빠지면 위
+    # `results/ext/` 면제가 맨 구멍이 된다.
+    src = (ROOT / "scripts" / "run_exp.py").read_text()
+    assert "축이 어긋난다" in src and 'manifest.json' in src, (
+        "run_exp.py 의 축 대조가 사라졌다 — results/ext/ 경로를 면제할 근거가 없다")
 
 
 def test_runner_scripts_require_an_explicit_data_axis():

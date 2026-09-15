@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import torch
 import pandas as pd
 import yaml
 
@@ -103,10 +104,35 @@ def build_methods(cfg: dict, tag: str = "") -> dict:
         if not ck.exists():
             print(f"[skip] {mid}: checkpoint not found -> {ck}")
             continue
+        # **추측하게 두지 않는다.** `DLDenoiser` 는 `frontend` 기록이 없으면
+        # 경고만 찍고 `False` 로 가정한다. 그 경고는 긴 로그의 둘째 줄에 묻히고,
+        # 평가는 끝까지 돌아 **그럴듯한 숫자**를 낸다 — FE 판이 nofe 로 평가되면
+        # 「FE 를 빼도 손해가 작다」는 틀린 결론이 조용히 나온다. 실제로 그
+        # 직전까지 갔다 (O-33). 보고서 숫자를 만드는 경로에서는 **모르면 멈춘다.**
+        # **축이 맞는지 provenance 로 확인한다.** `{tag}` 템플릿은 경로 «철자»로
+        # 축을 맞추는 장치인데, sweep 산출물(`results/ext/<sweep>/<arm>__s<seed>/`)
+        # 은 경로에 축이 안 들어간다. 그래서 더 강한 것으로 대신한다 —
+        # **옆에 있는 `manifest.json` 이 무엇으로 학습했다고 적었는지**를 본다.
+        # 철자가 아니라 기록이라, `{tag}` 를 쓴 경우에도 한 겹 더 막아 준다.
+        man = ck.parent / "manifest.json"
+        if man.exists():
+            trained = json.loads(man.read_text()).get("source")
+            want = {"d0": "synthetic", "d1": "mitdb"}.get(tag)
+            if trained and want and trained != want:
+                raise SystemExit(
+                    f"[{mid}] 축이 어긋난다: {ck} 는 '{trained}' 로 학습됐는데 "
+                    f"이 평가는 '{want}'({tag}) 다. D0 모델을 D1 평가에 먹이는 "
+                    f"사고가 이 검사가 막으려는 것이다.")
+        fe = spec.get("frontend")
+        if fe is None and "frontend" not in torch.load(
+                ck, map_location="cpu", weights_only=False):
+            raise SystemExit(
+                f"[{mid}] {ck} 에 frontend 기록이 없고 설정에도 안 적혀 있다. "
+                f"추측하면 FE 판을 nofe 로 평가할 수 있다 — dl_methods 에 "
+                f"`frontend: true|false` 를 명시하라 (O-33).")
         ms[mid] = DLDenoiser(ckpt=ck, name=mid, pre=spec.get("pre"),
                              batch=int(spec.get("batch", 32)),
-                             # 명시하지 않으면 체크포인트의 학습 설정을 따른다
-                             frontend=spec.get("frontend"))
+                             frontend=fe)
     return ms
 
 

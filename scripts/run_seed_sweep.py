@@ -280,6 +280,24 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
         "env": env_fingerprint(trainer.device, trainer.amp),
     }
     summary_p.write_text(json.dumps(rec, indent=2, ensure_ascii=False))
+
+    # **체크포인트에 학습 조건을 적어 둔다** — `scripts/train.py` 가 하는 일을
+    # 여기서도 한다. sweep 은 `Trainer` 를 직접 쓰느라 그 줄을 안 거쳤고,
+    # `--keep-ckpt` 로 남긴 체크포인트를 나중에 평가하면 `run_exp.py` 가
+    # front-end 여부를 **추측**했다. FE 판이 nofe 로 평가될 뻔했다 (O-33).
+    if keep_ckpt:
+        import torch as _torch
+        d = cfg.get("data", {})
+        for nm in ("best.pt", "last.pt"):
+            q = out / nm
+            if not q.exists():
+                continue
+            ckd = _torch.load(q, map_location="cpu", weights_only=False)
+            ckd["frontend"] = bool(d.get("frontend", True))
+            ckd["ref_frontend"] = bool(d.get("ref_frontend", d.get("frontend", True)))
+            ckd["pre_denoise"] = d.get("pre_denoise")
+            ckd["model_kwargs"] = (cfg.get("model", {}) or {}).get("kwargs") or {}
+            _torch.save(ckd, q)
     if not keep_ckpt:
         for nm in ("best.pt", "last.pt"):
             (out / nm).unlink(missing_ok=True)
