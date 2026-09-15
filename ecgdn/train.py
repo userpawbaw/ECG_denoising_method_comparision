@@ -59,6 +59,30 @@ class TrainState:
             self.history = []
 
 
+
+# 학습 산출물의 provenance 목록. **여기 없으면 `stale_sources` 가 못 본다.**
+#
+# F-9 가 정확히 이 지점에서 일어났다 — 데이터 파이프라인을 고치면 그 전에 학습한
+# 체크포인트가 전부 무효가 되는데, 체크포인트만 봐서는 드러나지 않는다.
+#
+# **그리고 목록에 두 구멍이 있었다** (F-47):
+#
+#   `data/synthetic.py` — **D0 의 데이터셋 자체**다. 이것이 바뀌어 D0 체크포인트가
+#     기록된 `best_metric` 을 재현하지 못하는데도(−1.33 dB) 「최신」으로 보였다.
+#   `models/*.py` — 구조가 바뀌면 state_dict 키가 달라져 **아예 안 열린다.**
+#     실제로 저장소의 모든 체크포인트가 안 열리게 됐는데 아무 검사도 안 울렸다.
+def _model_file(name: str) -> str:
+    """모델 이름이 사는 파일. **provenance 에 구조를 넣기 위한 것**이다 (F-47).
+
+    레지스트리의 생성자에서 끌어온다 — 손으로 적은 표는 모델이 늘면 낡는다.
+    """
+    try:
+        from .models import MODELS
+        mod = getattr(MODELS[name], "__module__", "")
+        return mod.rsplit(".", 1)[-1] + ".py"
+    except Exception:
+        return "__unknown__.py"
+
 class Trainer:
     def __init__(self, model: torch.nn.Module, loss_fn, train_ds, val_ds,
                  cfg: TrainCfg = TrainCfg(), out_dir: str | Path = "results/run",
@@ -98,12 +122,12 @@ class Trainer:
                              "n_params": sum(p.numel() for p in model.parameters()),
                              "device": self.device.type, "amp": self.amp,
                              **(extra_manifest or {})},
-                      # F-9 가 정확히 이 지점에서 일어났다 — 데이터 파이프라인을
-                      # 고치면 그 전에 학습한 체크포인트가 전부 무효가 되는데,
-                      # 체크포인트만 봐서는 드러나지 않는다.
+                      # F-9 가 정확히 이 지점에서 일어났다 (아래 SOURCES 주석).
                       sources=["ecgdn/train.py", "ecgdn/data/dataset.py",
-                               "ecgdn/data/sources.py", "ecgdn/methods/frontend.py",
-                               "ecgdn/models/losses.py"])
+                               "ecgdn/data/sources.py", "ecgdn/data/synthetic.py",
+                               "ecgdn/data/noise.py", "ecgdn/data/mixer.py",
+                               "ecgdn/methods/frontend.py", "ecgdn/models/losses.py",
+                               f"ecgdn/models/{_model_file(model_name)}"])
 
     # ---------------- 내부
     def _loader(self, ds, shuffle: bool):
