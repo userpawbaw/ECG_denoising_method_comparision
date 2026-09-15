@@ -2375,7 +2375,7 @@ F-12 의 결정적 측정:
 | **1** | D0 nofe 4 판 | `run_all_training.sh synthetic m06_l1_nofe m06_l6_nofe m08_l1_nofe m08_l6_nofe` | ✅ |
 | **1′** | **D0 FE 판 4 판도 다시** *(계획에 없던 것)* | `RESUME=0 run_all_training.sh synthetic m06_l1 m06_l6 m08_l1 m08_l6` | ✅ **F-47 이 강제했다** |
 | 1b | D0 평가 | `run_exp.py -c configs/exp_nofe.yaml --source synthetic` | ✅ **F-48 · `docs/15` §12** |
-| 2′ | D1 한 쌍 × seed 4~7 | `run_seed_sweep.py --arms m06_l1,m06_l1_nofe --seeds 4-7 --source mitdb` | **다음** |
+| 2′ | D1 한 쌍 × seed 4~7 | 아래 **두 단계** — sweep 만으로는 답이 안 나온다 | **진행 중** |
 | 3 | PTB-XL | `docs/09_data_upload.md` 경로 | **조건부 — 아래** |
 
 ### 1 번이 끝난 뒤의 판정 `[측정]`
@@ -2386,6 +2386,22 @@ F-12 의 결정적 측정:
 
 **결론(FE 유지)은 살았고 기제 설명 셋 중 둘이 무너졌다** (F-48 · §12).
 의심 ① 은 **결론이 아니라 기울기**를 설명한다.
+
+### 2′ 의 절차 — **sweep 의 지표로 빼면 안 된다** (O-32)
+
+처음에 `run_sweep_locked.sh --arms m06_l1,m06_l1_nofe 4-7` 하나로 끝낼 생각이었다.
+**틀렸다.** sweep 의 `fixed_snr_imp_scaled` 는 **그 arm 이 받은 입력** 대비
+개선이고, FE 판과 nofe 판은 입력이 다르다 — 실측으로 `fixed_snr_in` 이
+**+15.50 대 +7.50**, 8 dB 차다. 빼면 F-10 을 그대로 재현한다.
+
+F-41 의 「고정 평가」가 고정한 것은 **잡음 뽑기**이지 **입력의 정의**가 아니다.
+
+| 단계 | 무엇 | 왜 |
+|---|---|---|
+| **① 학습** | `run_sweep_locked.sh --arms m06_l1,m06_l1_nofe 4-7 --out results/ext/nofe_d1 **--keep-ckpt**` | `--keep-ckpt` 가 **필수**다. 없으면 체크포인트가 지워져 ② 를 할 수가 없다 |
+| **② 공통 평가** | 8 개 체크포인트를 **한 config 에 넣고** `run_exp.py` 를 **한 번** | 입력 `y = x_raw + 잡음`, 참조 `x = FE_off(x_raw)` 로 **분모가 같아진다**. 평가 세트는 학습 seed 와 무관하므로 한 번이면 된다 |
+
+그다음 seed 별 짝지은 Δ 를 낸다.
 
 **3 번(PTB-XL)의 조건을 다시 적는다.** 원래 조건은 「1 이 『FE 가 천장』으로
 나올 때만」이었고, **그렇게 안 나왔으므로 그 조건으로는 발동하지 않는다.**
