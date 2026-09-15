@@ -1,0 +1,103 @@
+{
+  "env": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v33-x86_64-with-glibc2.39",
+    "git": "25bcdce",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": "0.2.13",
+    "torch": "2.14.0+cu130"
+  },
+  "config": {
+    "exp_id": "exp_nofe_d1_s67",
+    "side_experiment": {
+      "train": "bash scripts/run_sweep_locked.sh --arms m06_l1,m06_l1_nofe 4-7 --out results/ext/nofe_d1 --keep-ckpt"
+    },
+    "frontend": true,
+    "mode": "snr",
+    "data": {
+      "source": "mitdb",
+      "split": "test",
+      "seg_s": 60.0,
+      "n_seg_per_record": 2,
+      "snr_grid": [
+        -5,
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "conditions": [
+        "mixed"
+      ],
+      "noise_split": "test",
+      "dur_s": 300.0,
+      "n_test": 22,
+      "seed": "eval_a"
+    },
+    "methods": [
+      "M00",
+      "M_FE"
+    ],
+    "dl_methods": {
+      "S6": {
+        "ckpt": "results/ext/nofe_d1/m06_l1__s6/best.pt",
+        "frontend": true
+      },
+      "S6n": {
+        "ckpt": "results/ext/nofe_d1/m06_l1_nofe__s6/best.pt",
+        "frontend": false
+      },
+      "S7": {
+        "ckpt": "results/ext/nofe_d1/m06_l1__s7/best.pt",
+        "frontend": true
+      },
+      "S7n": {
+        "ckpt": "results/ext/nofe_d1/m06_l1_nofe__s7/best.pt",
+        "frontend": false
+      }
+    },
+    "eval": {
+      "do_morph": true,
+      "do_spectral": true
+    },
+    "_swt_applied": {
+      "wavelet": "sym4",
+      "level": 5,
+      "sigma_source": "d1",
+      "k": [
+        0.6,
+        0.2,
+        0.1,
+        0.3,
+        0.3
+      ],
+      "mode": "hard",
+      "protect_qrs": false,
+      "protect_ms": 60.0,
+      "protect_rho": 0.3,
+      "threshold_approx": false
+    }
+  },
+  "sources": {
+    "scripts/run_exp.py": "1094d8fa41e2e0a2",
+    "ecgdn/data/dataset.py": "096a0be31d976980",
+    "ecgdn/methods/frontend.py": "f1806de8d2667faf",
+    "ecgdn/eval/engine.py": "191230413ed4946d",
+    "ecgdn/eval/signal_metrics.py": "2eef95f349c0e83c",
+    "ecgdn/eval/morphology.py": "81f09c5b706f4b72",
+    "ecgdn/eval/rpeak.py": "7fc1e662149e64c4"
+  },
+  "n_items": 264,
+  "methods": [
+    "M00",
+    "M_FE",
+    "S6",
+    "S6n",
+    "S7",
+    "S7n"
+  ]
+}
