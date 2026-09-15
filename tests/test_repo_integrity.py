@@ -502,16 +502,35 @@ def test_deployment_artifacts_are_tracked_by_git():
 
 
 def test_trained_checkpoints_are_tracked_with_their_provenance():
-    """체크포인트는 **출처와 함께** 추적해야 쓸모가 있다.
+    """체크포인트는 **출처와 함께**, 그리고 **완주한 뒤에만** 추적한다.
 
     `best.pt` 만 있고 `manifest.json`(학습 조건·코드 해시)이 없으면
     그 가중치가 어느 파이프라인의 산물인지 알 수 없다 (F-9).
+
+    **`history.json` 이 완주 표식이다** — `Trainer.fit` 이 epoch 루프를 빠져나온
+    **뒤에** 쓴다(`ecgdn/train.py`). 그것이 없는 폴더는 **지금 학습이 도는 중**
+    이고, 그 `best.pt` 는 결과가 아니라 중간 상태다. 돌고 있는 학습을
+    `git add -A` 로 쓸어 담아 **epoch 1 짜리 체크포인트를 완성된 결과처럼**
+    커밋한 적이 있다 (**O-30**).
+
+    그래서 두 방향을 다 본다:
+
+    * 완주한 폴더는 `best.pt` 와 `manifest.json` 이 **추적돼야** 한다
+    * 추적된 `best.pt` 는 **완주한 것이어야** 한다
     """
     tracked = _tracked()
     bad = []
     for p in sorted(ROOT.glob("results/d[01]/*/best.pt")):
         rel = p.relative_to(ROOT)
-        if str(rel) not in tracked:
+        done = (p.parent / "history.json").exists()
+        is_tracked = str(rel) in tracked
+        if not done:
+            # 도는 중이다. 커밋돼 있으면 **그것이 결함**이다.
+            if is_tracked:
+                bad.append(f"{rel} (학습이 아직 안 끝났는데 추적됐다 — "
+                           f"history.json 이 없다. O-30)")
+            continue
+        if not is_tracked:
             bad.append(f"{rel} (체크포인트 미추적)")
         elif str(rel.parent / "manifest.json") not in tracked:
             bad.append(f"{rel.parent}/manifest.json (출처 미추적)")
