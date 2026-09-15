@@ -79,6 +79,22 @@
     color:var(--bg);font-weight:600}
   button.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .chip .sw{width:10px;height:10px;border-radius:2px;flex:0 0 auto}
+  .chip .star{color:#c07a1f;font-size:11px}
+  .chip[aria-pressed="true"] .star{color:var(--bg)}
+  /* 레인의 «?» — 방법 설명. 색만으로 알리지 않는다는 규칙의 글자 쪽 짝이다. */
+  button.q{font:inherit;font-size:var(--t-tick);width:26px;height:26px;border-radius:50%;
+    border:1px solid var(--line);background:var(--panel);color:var(--ink-3);
+    cursor:pointer;line-height:1;padding:0;flex:0 0 auto}
+  button.q:hover{border-color:var(--accent);color:var(--accent)}
+  button.q:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  dialog{max-width:56ch;border:1px solid var(--line);border-radius:4px;
+    padding:var(--s6);background:var(--panel);color:var(--ink);
+    font-size:var(--t-body);line-height:1.6}
+  dialog::backdrop{background:rgba(0,0,0,.34)}
+  dialog h2{margin:0 0 var(--s3);font-size:var(--t-sub)}
+  dialog p{margin:0 0 var(--s4)}
+  dialog .meta{font-size:var(--t-tick);color:var(--ink-3)}
+  dialog form{text-align:right;margin-top:var(--s4)}
 
   details.secondary{border-bottom:1px solid var(--line);background:var(--panel)}
   details.secondary>summary{cursor:pointer;padding:var(--s2) var(--s6);
@@ -162,6 +178,8 @@
     <div class="chips" id="snr-chips"></div></div>
   <div class="grp"><label for="cmp-chips">비교</label>
     <div class="chips" id="cmp-chips"></div></div>
+  <div class="grp"><label for="play-chips">재생</label>
+    <div class="chips" id="play-chips"></div></div>
 </div>
 
 <details class="secondary">
@@ -170,6 +188,7 @@
     <div class="grp"><label>속도</label><div class="chips" id="speed-chips"></div></div>
     <div class="grp"><label>이득</label><div class="chips" id="gain-chips"></div></div>
     <div class="grp"><label>데이터</label><div class="chips" id="axis-chips"></div></div>
+    <div class="grp"><label>표시</label><div class="chips" id="opt-chips"></div></div>
   </div>
 </details>
 
@@ -187,6 +206,12 @@
 </footer>
 
 <div class="tip" id="tip"></div>
+<dialog id="dlg">
+  <h2 id="dlg-t"></h2>
+  <p id="dlg-b"></p>
+  <p class="meta" id="dlg-m"></p>
+  <form method="dialog"><button class="chip">닫기</button></form>
+</dialog>
 
 <script>
 "use strict";
@@ -222,6 +247,10 @@ const state = {
      우리 주장이 「이 조건에서는 고전이 이긴다」이므로 정확히 이 형식이다. */
   pair: ["M04", "M06"],
   speed: 50, gain: 10, start: 0,   // 은행이 10 s 라 50 이 거의 딱 맞는다
+  /* 재생. **기본은 정지**다 — 판단은 정지 화면에서 한다(docs/30 4.2).
+     배속(0.5·1·2×)은 두지 않는다: 속도를 mm/s 로 고정한 순간 **배속은 속도를
+     바꾸는 것과 같아져** 속도 칩과 중복이 된다. 1× 가 곧 그 mm/s 다. */
+  play: "off", showRef: true,
 };
 
 const scenes = () => B.scenes.filter(s => s.axis === state.axis);
@@ -256,9 +285,14 @@ function chip(label, on, fn, {title, swatch, disabled} = {}){
 }
 
 function buildControls(){
-  $("cond-chips").replaceChildren(...B.conds.map(c =>
-    chip(B.cond_label?.[c] || c, c === state.cond, () => state.cond = c,
-         {disabled: !has(c, state.snr)})));
+  $("cond-chips").replaceChildren(...B.conds.map(c => {
+    const star = scenes().some(s => s.cond === c && s.snr === state.snr && s.highlight);
+    const b = chip((star ? "★ " : "") + (B.cond_label?.[c] || c), c === state.cond,
+                   () => state.cond = c,
+                   {disabled: !has(c, state.snr),
+                    title: star ? "추천 조합 — 보고서의 결론 하나를 그대로 보인다" : c});
+    return b;
+  }));
   $("snr-chips").replaceChildren(...B.snrs.map(v =>
     chip(v + " dB", v === state.snr, () => state.snr = v,
          {disabled: !has(state.cond, v)})));
@@ -274,6 +308,18 @@ function buildControls(){
     chip(s.label, s.mm === state.speed, () => state.speed = s.mm, {title: s.note})));
   $("gain-chips").replaceChildren(...GAINS.map(g =>
     chip(g.label, g.mm === state.gain, () => state.gain = g.mm, {title: g.note})));
+  /* 재생 — **1 차에 둔다.** 관람객이 가장 먼저 누르는 것이고, 임팩트가 여기서 온다.
+     정지가 기본인 이유는 「비교는 정지 화면에서」(docs/30 4.2)이기 때문이다. */
+  $("play-chips").replaceChildren(...[
+    ["off",    "정지",   "구간 전체를 한 번에 — 방법 간 비교는 이 모드에서"],
+    ["sweep",  "스윕",   "감시장치처럼 커서가 좌→우로 지나가며 그린다. **커서 속도가 곧 위의 mm/s** 다"],
+    ["scroll", "스크롤", "파형이 오른쪽에서 들어와 왼쪽으로 흐른다"],
+  ].map(([k, n, tip]) => chip(n, state.play === k, () => {
+    state.play = k; resetAnim();
+  }, {title: tip})));
+  $("opt-chips").replaceChildren(
+    chip("참값 겹치기", state.showRef, () => state.showRef = !state.showRef,
+         {title: "각 출력 위에 참값(clean)을 회색으로 겹쳐 그린다 — 얼마나 다른지를 눈이 재게 한다"}));
   $("axis-chips").replaceChildren(...[["d0","합성 (McSharry)"],["d1","MIT-BIH + NSTDB"]]
     .filter(([a]) => B.scenes.some(s => s.axis === a))
     .map(([a, n]) => chip(n, a === state.axis, () => {
@@ -319,9 +365,19 @@ function layout(){
     const cross = document.createElement("div");
     cross.className = "cross";
     plot.append(cv, cross);
+    if (key !== "input"){
+      const q = document.createElement("button");
+      q.className = "q"; q.textContent = "?";
+      q.setAttribute("aria-label", key + " 설명");
+      q.onclick = () => explain(key);
+      b.append(q);
+    }
     lane.append(who, plot);
     lanes.append(lane);
-    return {key, cv, plot, cross};
+    // 디코드는 **여기서 한 번**. 재생 중 매 프레임 풀면 패널 수만큼 비용이 는다.
+    return {key, cv, plot, cross,
+            sig: decode(s.traces[key], s.scale),
+            ref: decode(s.traces.clean, s.scale)};
   });
   main.append(lanes);
 
@@ -346,7 +402,7 @@ function draw(){
   document.documentElement.style.setProperty("--bold", (5 * PX_MM).toFixed(2) + "px");
   document.documentElement.style.setProperty("--fine", PX_MM.toFixed(2) + "px");
 
-  const clean = decode(s.traces.clean, s.scale);
+  const clean = panels[0].ref;
   const dataSec = clean.length / B.fs;
   // 폭이 «보이는 시간» 을 정한다 — 속도를 고정했으므로 시간이 따라온다(UF-3).
   const avail = panels[0].plot.parentElement.clientWidth - 132 - 12;
@@ -369,7 +425,7 @@ function draw(){
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
 
-    const sig = decode(s.traces[p.key], s.scale).subarray(a, a + n);
+    const sig = p.sig.subarray(a, a + n);
     const ref = clean.subarray(a, a + n);
     // 세로: **mV → mm → px**. 화면 높이가 남으면 이득을 올려 채운다.
     const scaleY = Math.min(h / 2 / halfPx, 1) * state.gain * PX_MM;
@@ -383,12 +439,17 @@ function draw(){
       }
       g.stroke();
     };
-    line(ref, css("--role-clean"), 2.2);
+    if (state.showRef) line(ref, css("--role-clean"), 2.2);
     const emphasised = p.key === "input" || state.pair.includes(p.key);
     line(sig, emphasised
       ? (p.key === "input" ? css("--family-input") : methodColor(p.key))
       : css("--mute"), 1.2);
+    // 재생이 쓰는 좌표. 정지 그리기와 **같은 값**을 써야 모드를 바꿔도 안 튄다.
     p.pxPerSec = pxPerSec; p.n = n; p.a = a; p.mv = mv;
+    p.w = w; p.h = h; p.yAt = yAt; p.g = g; p.dpr = dpr;
+    p.color = emphasised
+      ? (p.key === "input" ? css("--family-input") : methodColor(p.key))
+      : css("--mute");
   }
 
   // 시간축 눈금 — 대칸(0.2 s@25 · 0.1 s@50)의 5 배마다 라벨
@@ -408,6 +469,81 @@ function draw(){
     `${state.speed} mm/s · ${state.gain} mm/mV · 대칸 ` +
     `${(5 / state.speed).toFixed(2)} s × 0.5 mV · 화면 ${visible.toFixed(1)} s ` +
     `/ 은행 ${dataSec.toFixed(0)} s · ±${mv} mV`;
+}
+
+/* ── 재생 ──────────────────────────────────────────────────────
+   **커서 속도가 곧 위에서 고른 mm/s 다.** 속도를 규약 값으로 고정한 순간
+   재생이 임의 연출이 아니라 «실제 기록 속도로 흐르는 것» 이 된다 — 감시장치가
+   하는 일이 정확히 그것이다. 그래서 배속을 따로 두지 않는다.
+
+   스윕은 **캔버스 내용이 곧 상태**다. 지운 과거는 다시 그릴 수 없으므로 설정이
+   바뀌면 한 바퀴를 처음부터 돈다(`resetAnim`). 바퀴가 넘어갈 때 캔버스를 지우지
+   않는 것도 감시장치와 같다 — 남은 꼬리가 «흐르고 있다» 는 인상을 만든다. */
+const ERASE = 0.5;                    // 커서 앞을 폭의 50 % 지운다
+let animT0 = 0, animIdx = 0, animRAF = 0;
+
+function resetAnim(){
+  if (animRAF) cancelAnimationFrame(animRAF);
+  animRAF = 0; animT0 = performance.now(); animIdx = 0;
+  for (const p of panels) p.fresh = true;
+  if (state.play !== "off") animRAF = requestAnimationFrame(tick);
+}
+
+function sweepPanel(p, i1, i0){
+  const g = p.g, w = p.w, h = p.h, n = p.n, total = p.sig.length;
+  if (p.fresh){ g.clearRect(0, 0, w, h); p.fresh = false; }
+  const seg = (v, col, lw) => {
+    if (!v) return;
+    g.beginPath(); g.strokeStyle = col; g.lineWidth = lw;
+    let pen = false;
+    for (let i = Math.max(i0 - 1, 0); i <= i1; i++){
+      const k = ((i % n) + n) % n;
+      const x = k * p.pxPerSec / B.fs;
+      const y = p.yAt(v[((i % total) + total) % total]);
+      if (!pen || k === 0){ g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+    }
+    g.stroke();
+  };
+  if (state.showRef) seg(p.ref, css("--role-clean"), 2.2);
+  seg(p.sig, p.color, 1.2);
+  // 커서 앞을 지운다. 오른쪽 끝을 넘으면 왼쪽으로 감아서 지운다.
+  const x1 = (((i1 % n) + n) % n) * p.pxPerSec / B.fs, e = ERASE * w;
+  g.clearRect(x1 + 1.5, 0, e, h);
+  if (x1 + e > w) g.clearRect(0, 0, x1 + e - w, h);
+}
+
+function tick(){
+  animRAF = 0;
+  if (state.play === "off" || !panels.length) return;
+  // **시각은 벽시계로 잰다.** 프레임 카운터로 진행하면 렌더가 밀릴 때 레인마다
+  // 다른 속도로 흘러 비교가 깨진다.
+  const el = (performance.now() - animT0) / 1000;
+  if (state.play === "scroll"){
+    const total = panels[0].sig.length, n = panels[0].n;
+    const max = Math.max(0, total - n);
+    state.start = max ? Math.round((el * B.fs) % (max + 1)) : 0;
+    draw();
+  } else {
+    const i1 = Math.floor(el * B.fs);
+    for (const p of panels) sweepPanel(p, i1, Math.max(animIdx, i1 - p.n));
+    animIdx = i1;
+  }
+  animRAF = requestAnimationFrame(tick);
+}
+
+/* 방법 설명 — 색만으로 신원을 알리지 않는다는 규칙의 **글자 쪽 짝**이다.
+   레인 라벨이 이름을 주고, 여기서 «그게 무엇인가» 를 준다. */
+function explain(key){
+  const info = B.method_info?.[key] || {};
+  const s = current();
+  $("dlg-t").textContent = key + (info.label ? ` — ${info.label}` : "");
+  $("dlg-b").textContent = info.note || "설명이 은행에 없다.";
+  const m = s.metrics?.[key];
+  $("dlg-m").textContent = m
+    ? `이 조건 SNR 개선 ${m.snr_imp >= 0 ? "+" : ""}${m.snr_imp.toFixed(2)} dB`
+      + (s.ref_mean?.[key] != null ? ` · 축 평균 ${s.ref_mean[key].toFixed(2)} dB` : "")
+    : "";
+  $("dlg").showModal();
 }
 
 function verdict(){
@@ -440,8 +576,7 @@ function hover(){
     const i = Math.round(x / p0.pxPerSec * B.fs);
     const s = current();
     const rows = panels.map(p => {
-      const sig = decode(s.traces[p.key], s.scale);
-      const v = sig[Math.min(p.a + i, sig.length - 1)];
+      const v = p.sig[Math.min(p.a + i, p.sig.length - 1)];
       return `${p.key === "input" ? "입력" : p.key} ${v.toFixed(3)} mV`;
     });
     tip.innerHTML = `<b class="mono">${(i / B.fs).toFixed(2)} s</b><br>`
@@ -468,9 +603,10 @@ function render(){
     return;
   }
   buildControls(); layout(); verdict();
-  requestAnimationFrame(draw);          // 레이아웃이 자리를 잡은 뒤에 그린다
+  requestAnimationFrame(() => { draw(); resetAnim(); });   // 레이아웃이 잡힌 뒤에
 }
 
-addEventListener("resize", () => panels.length && draw());
+// 크기가 바뀌면 스윕은 한 바퀴를 다시 돈다 — 캔버스 내용이 상태이기 때문이다.
+addEventListener("resize", () => { if (panels.length){ draw(); resetAnim(); } });
 render(); hover();
 </script>
