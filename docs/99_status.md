@@ -721,12 +721,23 @@ Routine 은 **깨울 일이 있을 때만 켠다.**
 > 없는 그 학습은 되살아나지 않는다.
 
 ```
-켜기   update_trigger(trigger_id="trig_01FmVcrnqGyQSQoMdG6v5Hbx", enabled=true,
-                      name="ECG 학습 watchdog (60분)")
-끄기   update_trigger(trigger_id="trig_01FmVcrnqGyQSQoMdG6v5Hbx", enabled=false,
-                      name="ECG 학습 watchdog (60분) — 대기 중")
-확인   list_triggers(enabled=true)   # 비어 있으면 대기 중이다
+지금 것  trig_01Gjws8KnUfSZ1uGP7yNGPD6   # D-30 1번. **켜져 있다.** 매시 :05
+예전 것  trig_01FmVcrnqGyQSQoMdG6v5Hbx   # 꺼진 채로 둔다 — 아래 참조
+
+켜기/끄기  update_trigger(trigger_id=..., enabled=true|false,
+                         name="... — 대기 중")
+확인      list_triggers(enabled=true)   # 비어 있으면 대기 중이다
 ```
+
+> **Routine 을 새로 만들어야 했다.** 예전 것은 **다른 세션**에 묶여 있어
+> (`persistent_session_id`) 이 세션에서 **프롬프트를 못 고친다** — 이름과
+> on/off 만 된다. 그런데 고쳐야 할 것이 바로 프롬프트였다(낡은 D-28 대기열).
+> 그래서 이 세션에 묶인 것을 새로 만들었고, **예전 것은 끈 채로 둔다.**
+> 둘 다 켜면 같은 판정을 두 세션이 하고 대기열이 충돌한다.
+>
+> 주의: 새 Routine 은 **connector(mcp) 도구를 저장하지 않았다**는 경고가 붙었다.
+> 이 세션에 깨움을 넣는 방식이라 실제로는 이 세션의 도구를 쓰지만, 확인된 것은
+> 아니다 — Routine 이 스스로 자기를 끄는 마지막 단계가 안 되면 **손으로 끈다.**
 
 이름 뒤의 **"— 대기 중"** 이 목록에서 상태를 바로 보이게 하는 표식이다.
 
