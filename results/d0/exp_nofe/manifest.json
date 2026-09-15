@@ -1,0 +1,117 @@
+{
+  "env": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v33-x86_64-with-glibc2.39",
+    "git": "dd11ff8",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": "0.2.13",
+    "torch": "2.14.0+cu130"
+  },
+  "config": {
+    "exp_id": "exp_nofe",
+    "side_experiment": {
+      "train": "bash scripts/run_one_training.sh mitdb m06_l1_nofe",
+      "train2": "bash scripts/run_one_training.sh mitdb m08_l6_nofe",
+      "train3": "bash scripts/run_all_training.sh mitdb m06_l6_nofe m08_l1_nofe"
+    },
+    "frontend": true,
+    "mode": "snr",
+    "data": {
+      "source": "synthetic",
+      "split": "test",
+      "seg_s": 60.0,
+      "n_seg_per_record": 2,
+      "snr_grid": [
+        -5,
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "conditions": [
+        "mixed"
+      ],
+      "noise_split": "test",
+      "dur_s": 300.0,
+      "n_test": 22,
+      "seed": "eval_a"
+    },
+    "methods": [
+      "M00",
+      "M_FE"
+    ],
+    "dl_methods": {
+      "M06L1": {
+        "ckpt": "results/{tag}/m06_l1/best.pt"
+      },
+      "M06L1n": {
+        "ckpt": "results/{tag}/m06_l1_nofe/best.pt"
+      },
+      "M06L6": {
+        "ckpt": "results/{tag}/m06_l6/best.pt"
+      },
+      "M06L6n": {
+        "ckpt": "results/{tag}/m06_l6_nofe/best.pt"
+      },
+      "M08L1": {
+        "ckpt": "results/{tag}/m08_l1/best.pt"
+      },
+      "M08L1n": {
+        "ckpt": "results/{tag}/m08_l1_nofe/best.pt"
+      },
+      "M08L6": {
+        "ckpt": "results/{tag}/m08_l6/best.pt"
+      },
+      "M08L6n": {
+        "ckpt": "results/{tag}/m08_l6_nofe/best.pt"
+      }
+    },
+    "eval": {
+      "do_morph": true,
+      "do_spectral": true
+    },
+    "_swt_applied": {
+      "wavelet": "sym4",
+      "level": 5,
+      "sigma_source": "d2",
+      "k": [
+        2.5,
+        2.0,
+        0.6,
+        0.4,
+        0.3
+      ],
+      "mode": "garrote",
+      "protect_qrs": true,
+      "protect_ms": 60.0,
+      "protect_rho": 0.3,
+      "threshold_approx": false
+    }
+  },
+  "sources": {
+    "scripts/run_exp.py": "8f8d2d42e02a32b7",
+    "ecgdn/data/dataset.py": "096a0be31d976980",
+    "ecgdn/methods/frontend.py": "f1806de8d2667faf",
+    "ecgdn/eval/engine.py": "191230413ed4946d",
+    "ecgdn/eval/signal_metrics.py": "2eef95f349c0e83c",
+    "ecgdn/eval/morphology.py": "81f09c5b706f4b72",
+    "ecgdn/eval/rpeak.py": "7fc1e662149e64c4"
+  },
+  "n_items": 264,
+  "methods": [
+    "M00",
+    "M_FE",
+    "M06L1",
+    "M06L1n",
+    "M06L6",
+    "M06L6n",
+    "M08L1",
+    "M08L1n",
+    "M08L6",
+    "M08L6n"
+  ]
+}

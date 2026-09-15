@@ -2313,7 +2313,7 @@ seed 4·5 모두 **여섯 열이 비트 단위로 일치**했다. FiLM 을 넣�
 | | |
 |---|---|
 | 시점 | 사용자가 「딥러닝 천장을 FE 가 막은 것 아닌가 · no-FE 검증이 정확했나」를 물어서 |
-| 상태 | **유효 — 이 항목이 이 캠페인의 기준선이다.** 1 번 실행 중 |
+| 상태 | **1 번 완료 → F-48 · `docs/15` §12.** 결론은 살고 **기제 설명 셋 중 둘이 무너졌다.** 2′ 대기 |
 
 ### 갈림길
 
@@ -2372,10 +2372,26 @@ F-12 의 결정적 측정:
 
 | 순 | 무엇 | 명령 | 상태 |
 |---:|---|---|---|
-| **1** | D0 nofe 4 판 | `bash scripts/run_all_training.sh synthetic m06_l1_nofe m06_l6_nofe m08_l1_nofe m08_l6_nofe` | **실행 중** |
-| 1b | D0 평가 | `exp_nofe` 를 `synthetic` 축으로 | 1 뒤 |
-| 2′ | D1 한 쌍 × seed 4~7 | `run_seed_sweep.py --arms m06_l1,m06_l1_nofe --seeds 4-7 --source mitdb` | 1 판정 뒤 |
-| 3 | PTB-XL | `docs/09_data_upload.md` 경로 | **조건부** |
+| **1** | D0 nofe 4 판 | `run_all_training.sh synthetic m06_l1_nofe m06_l6_nofe m08_l1_nofe m08_l6_nofe` | ✅ |
+| **1′** | **D0 FE 판 4 판도 다시** *(계획에 없던 것)* | `RESUME=0 run_all_training.sh synthetic m06_l1 m06_l6 m08_l1 m08_l6` | ✅ **F-47 이 강제했다** |
+| 1b | D0 평가 | `run_exp.py -c configs/exp_nofe.yaml --source synthetic` | ✅ **F-48 · `docs/15` §12** |
+| 2′ | D1 한 쌍 × seed 4~7 | `run_seed_sweep.py --arms m06_l1,m06_l1_nofe --seeds 4-7 --source mitdb` | **다음** |
+| 3 | PTB-XL | `docs/09_data_upload.md` 경로 | **조건부 — 아래** |
+
+### 1 번이 끝난 뒤의 판정 `[측정]`
+
+**「4 판 · 2 시간」으로 잡았던 견적이 「8 판 · 4 시간」이 됐다.** D0 의 FE 판이
+이미 있다는 전제가 F-47 로 깨졌다 — 안 열렸고, 재사상해도 데이터가 달라져
+비교가 성립하지 않았다.
+
+**결론(FE 유지)은 살았고 기제 설명 셋 중 둘이 무너졌다** (F-48 · §12).
+의심 ① 은 **결론이 아니라 기울기**를 설명한다.
+
+**3 번(PTB-XL)의 조건을 다시 적는다.** 원래 조건은 「1 이 『FE 가 천장』으로
+나올 때만」이었고, **그렇게 안 나왔으므로 그 조건으로는 발동하지 않는다.**
+다만 1 번이 **답하지 못한다고 미리 적어 둔 것**(0.5 Hz 고역차단이 실제 ECG 의
+ST 준위를 버리는가)은 그대로 열려 있다. 그것을 물을 거면 3 번이지만,
+**그건 이 과제의 연구 질문이 아니라 임상 대역 선택의 문제**다 — 순위는 낮다.
 
 **설정 파일을 새로 만들지 않는다** — `run_one_training.sh`/`run_all_training.sh`
 가 첫 인자로 축을 받아 `train.py --source` 로 넘기고, 산출물은
