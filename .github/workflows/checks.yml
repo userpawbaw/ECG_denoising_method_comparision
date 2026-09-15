@@ -1,0 +1,124 @@
+# 검사 자동화 — `pytest tests/` 와 화면 검사, 그리고 **스크린샷 업로드**.
+#
+# ## 왜 있나
+#
+# 이 저장소의 검사는 이미 충분한데 **돌아가는 시점이 사람 기억에 달려 있었다.**
+# CI 는 검사 능력을 늘리지 않는다 — 아래 두 job 은 개발 머신에서 돌리는 것과
+# **똑같은 명령**을 돌린다. 늘어나는 것은 **빈도**(매 push)와 **머신의 다양성**
+# (한글 폰트·브라우저 빌드 가정이 드러난다, UO-1)이다.
+#
+# ## 이것이 못 잡는 것 — 미리 적어 둔다
+#
+# **「미감적으로 별로」는 한 건도 안 잡힌다.** 이 UI/UX 파트가 시작된 이유가
+# 그것이었고, 그때도 기계적 검사는 전부 통과하고 있었다. 최근만 해도 델타 바가
+# 높이 0 으로 그려지는 동안 44 개 검사가 전부 초록이었다 — **스크린샷을 눈으로
+# 봐서** 찾았다. 그래서 `screens` job 은 검사만 하지 않고 **스크린샷을 찍어
+# 올린다.** 보는 일을 없애지는 못하지만 **보는 비용을 0 으로 만든다.**
+name: checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# 같은 브랜치에 연달아 push 하면 앞의 실행을 취소한다 — 러너를 아끼고,
+# 「마지막 커밋의 결과」만 남아 헷갈리지 않는다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # 1. 빠른 검사 — 커밋 직전에 돌리는 그것. 기록 무결성 검사가 여기 있다.
+  # ─────────────────────────────────────────────────────────────────────
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      # `results/`(289 MB)와 `data/raw/`(121 MB)가 필요하다 — 무결성 검사가
+      # 추적된 산출물을 대조하고, 일부 검사가 MIT-BIH 를 읽는다.
+      # `fetch-depth: 1` 로 이력만 줄인다.
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 1}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # **CPU 휠을 쓴다.** 기본 인덱스는 CUDA 를 끌고 와 2 GB 가 넘는데
+      # 러너에는 GPU 가 없다.
+      - name: 의존성
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: pytest tests/
+        run: pytest tests/ -q
+
+      # 기록 규약은 `pytest` 안에도 있지만, 깨졌을 때 **무엇이 빠졌는지**는
+      # 이 스크립트가 훨씬 또렷하게 찍는다.
+      - name: 기록 규약
+        if: always()
+        run: python3 scripts/check_records.py
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 2. 화면 검사 + 스크린샷
+  # ─────────────────────────────────────────────────────────────────────
+  screens:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # **성긴 체크아웃.** 화면 경로가 읽는 것은 `demo/`(화면과 8.3 MB 은행),
+      # `scripts/_screens.py`, `tests/` 뿐이다 — `results/`(289 MB)와
+      # `data/raw/`(121 MB)를 안 받아도 된다.
+      #
+      # **cone 모드를 쓴다**(기본값). 루트의 파일(`pytest.ini` 등)이 자동으로
+      # 딸려 오고, 패턴 해석이 `--no-cone` 의 gitignore 문법보다 단순하다.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            demo
+            scripts
+            tests
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # **한글 폰트를 깐다.** 없으면 스크린샷의 한글이 전부 두부(□)로 찍혀
+      # 「눈으로 보는」 목적이 사라진다. UO-1 이 정확히 그 사고였다.
+      - name: 한글 폰트
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-nanum
+          fc-cache -f
+
+      - name: playwright + Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install "playwright>=1.40" "pytest>=7.4"
+          playwright install --with-deps chromium
+
+      # `CI` 는 GitHub 가 자동으로 켠다. 그것이 켜져 있으면
+      # `tests/test_demo_screens.py` 는 **브라우저가 없을 때 skip 이 아니라
+      # 실패**한다 — 0 개를 검사하고 초록으로 끝나는 것을 막는다.
+      - name: 화면 검사
+        run: pytest tests/test_demo_screens.py -m screens -q
+
+      # **검사가 실패해도 찍는다** (`if: always()`). 깨진 화면일수록 봐야 한다.
+      - name: 스크린샷
+        if: always()
+        run: python3 scripts/shoot_screens.py --all
+
+      - name: 스크린샷 올리기
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screens-${{ github.sha }}
+          path: results/screens/
+          if-no-files-found: error      # 0 장인데 성공으로 끝나지 않게
+          retention-days: 14

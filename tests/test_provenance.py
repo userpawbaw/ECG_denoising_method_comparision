@@ -210,3 +210,43 @@ def test_calibration_doc_reports_the_measured_ceiling():
               "04_snr_estimator_calibration_d1.md"):
         t = (ROOT / "docs" / f).read_text()
         assert "추정기의 천장" in t, f"{f} 에 천장 절이 없다"
+
+
+# ------------------------------------------------------------------ CI
+WORKFLOW = ROOT / ".github" / "workflows" / "checks.yml"
+
+
+def test_ci_cannot_go_green_without_actually_running_the_screen_checks():
+    """CI 워크플로가 **초록인데 아무것도 안 한** 상태가 되지 않게 막는다.
+
+    `tests/test_demo_screens.py` 는 브라우저가 없으면 파일째 skip 되고 pytest 는
+    **0 으로 끝난다** — 「1 skipped」에 초록불이다. 개발 머신에서는 그게 맞지만
+    CI 에서는 「검사했다」가 거짓이 된다.
+
+    막는 장치가 둘이고 **둘 다 있어야** 한다:
+
+    * 검사 쪽 — `CI` 가 켜져 있으면 skip 대신 **실패**한다 (그 파일의 `_no_browser`)
+    * 워크플로 쪽 — Chromium 을 실제로 설치하고, 스크린샷이 0 장이면 실패한다
+
+    이 저장소는 「검사가 있는데 아무 일도 안 한다」를 이미 여러 번 겪었다 —
+    UF-2 · O-30. 그래서 **검사를 검사한다.**
+    """
+    if not WORKFLOW.exists():
+        pytest.skip("CI 워크플로가 아직 없다")
+    src = WORKFLOW.read_text(encoding="utf-8")
+    missing = []
+    if "playwright install" not in src:
+        missing.append("Chromium 설치 단계 (`playwright install`)")
+    if "-m screens" not in src:
+        missing.append("화면 검사 실행 (`-m screens`)")
+    if "if-no-files-found: error" not in src:
+        missing.append("스크린샷 0 장일 때 실패 (`if-no-files-found: error`)")
+    if "shoot_screens.py" not in src:
+        missing.append("스크린샷 단계 (`shoot_screens.py`)")
+    assert not missing, f"CI 워크플로에서 빠진 안전장치: {missing}"
+
+    # 검사 쪽 장치도 같이 본다 — 둘 중 하나만 남으면 구멍이 생긴다.
+    screens = (ROOT / "tests" / "test_demo_screens.py").read_text(encoding="utf-8")
+    assert '_CI' in screens and 'os.environ.get("CI"' in screens, (
+        "tests/test_demo_screens.py 가 CI 에서 skip 을 금지하지 않는다 — "
+        "브라우저가 없으면 0 개를 검사하고 초록으로 끝난다")

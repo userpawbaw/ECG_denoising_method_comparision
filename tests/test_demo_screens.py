@@ -25,6 +25,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -39,14 +40,43 @@ from _screens import (  # noqa: E402
 
 pytestmark = pytest.mark.screens
 
-playwright = pytest.importorskip("playwright.sync_api",
-                                 reason="playwright 가 없다 (개발용 검증판)")
+# **CI 에서는 건너뛰기를 금지한다.**
+#
+# 브라우저가 없으면 이 파일은 통째로 skip 되고 pytest 는 **0 으로 끝난다** —
+# 「1 skipped」에 초록불이다. 개발 머신에서는 그게 맞다(브라우저 없다고 커밋을
+# 막을 이유가 없다). **CI 에서는 정반대다**: 검사하라고 만든 것이 아무것도
+# 검사하지 않은 채 통과하면, 없느니만 못한 「검사가 있다」는 착각만 남는다.
+#
+# 이 저장소는 그 형태를 이미 여러 번 겪었다 — UF-2(아무 일도 안 하는 줄이
+# 검사를 통과했다), O-30(가드가 `NameError` 를 삼켜 중간 체크포인트를 올려
+# 둬도 통과했다). 그래서 `CI` 가 켜져 있으면 **skip 이 아니라 실패**다.
+_CI = os.environ.get("CI", "").lower() in ("1", "true", "yes")
+
+
+def _no_browser(msg: str):
+    if _CI:
+        raise RuntimeError(
+            f"CI 인데 화면 검사를 돌릴 수 없다: {msg}. "
+            "CI 에서 이 파일이 skip 되면 «검사했다» 가 거짓이 된다 — "
+            "워크플로가 playwright 와 Chromium 을 설치하는지 본다.")
+    pytest.skip(msg, allow_module_level=True)
+
+
+try:
+    import playwright.sync_api as playwright        # noqa: F401
+except ImportError:
+    _no_browser("playwright 가 없다 (개발용 검증판)")
 CHROMIUM = find_chromium()
 if not CHROMIUM:
-    pytest.skip("Chromium 을 못 찾았다", allow_module_level=True)
+    _no_browser("Chromium 을 못 찾았다")
 
 READY = [s for s in SCREENS if s.ready()]
 IDS = [s.name for s in READY]
+if _CI and not IDS:
+    raise RuntimeError(
+        "CI 인데 검사할 화면이 하나도 없다 — `demo/demo_bank.js` 같은 "
+        "`needs` 파일이 체크아웃에 없는 것이다. 그대로 두면 0 개를 검사하고 "
+        "초록으로 끝난다.")
 
 
 @pytest.fixture(scope="module")
