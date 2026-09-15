@@ -501,39 +501,78 @@ def test_deployment_artifacts_are_tracked_by_git():
         f"디스크에 있으나 git 에 없는 배포 산출물: {missing}")
 
 
+def _run_finished(d: Path) -> bool:
+    """이 학습 폴더가 **완주했나**.
+
+    `history.json` 의 항목 수와 `log.csv` 의 epoch 행 수가 같아야 한다.
+    있는지만 보면 **재학습 중인 폴더가 지난 판의 표식으로 완주처럼 보인다**.
+    """
+    import csv as _csv
+    import json as _json
+    h, lg = d / "history.json", d / "log.csv"
+    if not (h.exists() and lg.exists()):
+        return False
+    try:
+        hist = _json.loads(h.read_text())
+        with lg.open() as f:
+            rows = sum(1 for _ in _csv.DictReader(f))
+    except Exception:
+        return False
+    return isinstance(hist, list) and len(hist) == rows and rows > 0
+
+
+def _staged() -> set[str]:
+    """지금 **커밋하려고 올려 둔** 경로. git 이 없으면 빈 집합.
+
+    `import` 를 **함수 안에** 둔다. 모듈 위에 없는 이름을 쓰면 아래 `except`
+    가 `NameError` 를 삼켜 **아무 일도 안 하는 검사**가 된다 — 이 가드를 처음
+    쓸 때 실제로 그렇게 됐고, 중간 체크포인트를 올려 두고 돌려도 통과했다.
+    검사를 넣었으면 **물리는지 확인한다** (UF-2 와 같은 자리).
+    """
+    import subprocess
+    try:
+        out = subprocess.run(["git", "diff", "--cached", "--name-only"],
+                             cwd=ROOT, capture_output=True, text=True, check=True)
+    except Exception:
+        return set()
+    return {ln for ln in out.stdout.splitlines() if ln}
+
+
 def test_trained_checkpoints_are_tracked_with_their_provenance():
-    """체크포인트는 **출처와 함께**, 그리고 **완주한 뒤에만** 추적한다.
+    """체크포인트는 **출처와 함께**, 그리고 **완주한 뒤에만** 커밋한다.
 
     `best.pt` 만 있고 `manifest.json`(학습 조건·코드 해시)이 없으면
     그 가중치가 어느 파이프라인의 산물인지 알 수 없다 (F-9).
 
-    **`history.json` 이 완주 표식이다** — `Trainer.fit` 이 epoch 루프를 빠져나온
-    **뒤에** 쓴다(`ecgdn/train.py`). 그것이 없는 폴더는 **지금 학습이 도는 중**
-    이고, 그 `best.pt` 는 결과가 아니라 중간 상태다. 돌고 있는 학습을
-    `git add -A` 로 쓸어 담아 **epoch 1 짜리 체크포인트를 완성된 결과처럼**
-    커밋한 적이 있다 (**O-30**).
+    **완주 표식은 `history.json` 이다** — `Trainer.fit` 이 epoch 루프를 빠져나온
+    **뒤에** 쓴다(`ecgdn/train.py`). 돌고 있는 학습을 `git add -A` 로 쓸어 담아
+    **epoch 1 짜리 체크포인트를 완성된 결과처럼** 커밋한 적이 있다 (**O-30**).
 
-    그래서 두 방향을 다 본다:
+    **있는지만 보면 안 된다.** 같은 폴더를 **다시** 학습하면 지난 판의
+    `history.json` 이 그대로 남아, 도는 중인데도 완주로 보인다 — D-30 에서
+    D0 의 FE 판 넷을 다시 학습할 때 실제로 그 상태가 됐다. 그래서 **길이를 맞춘다**:
+    둘 다 epoch 하나당 한 줄이므로, 도는 중이면 어긋나고 완주했으면 같다.
 
-    * 완주한 폴더는 `best.pt` 와 `manifest.json` 이 **추적돼야** 한다
-    * 추적된 `best.pt` 는 **완주한 것이어야** 한다
+    그리고 **재학습 중이라는 것 자체는 결함이 아니다.** 이미 커밋돼 있는 옛
+    완주본은 그대로 두고 새 판을 덮어쓰는 중일 뿐이다. 결함은 **그 중간 상태를
+    커밋하려고 올릴 때** 생긴다 — 그래서 「추적됐나」가 아니라 **「지금 올려
+    뒀나」**를 본다.
     """
-    tracked = _tracked()
+    tracked, staged = _tracked(), _staged()
     bad = []
     for p in sorted(ROOT.glob("results/d[01]/*/best.pt")):
-        rel = p.relative_to(ROOT)
-        done = (p.parent / "history.json").exists()
-        is_tracked = str(rel) in tracked
-        if not done:
-            # 도는 중이다. 커밋돼 있으면 **그것이 결함**이다.
-            if is_tracked:
-                bad.append(f"{rel} (학습이 아직 안 끝났는데 추적됐다 — "
-                           f"history.json 이 없다. O-30)")
+        rel = str(p.relative_to(ROOT))
+        if not _run_finished(p.parent):
+            # 도는 중이다. **올려 둔 것이 있으면** 그것이 결함이다.
+            here = sorted(q for q in staged if q.startswith(rel.rsplit("/", 1)[0] + "/"))
+            if here:
+                bad.append(f"{rel}: 학습이 아직 안 끝났는데 커밋하려고 올렸다 "
+                           f"({len(here)} 개). history.json 이 log.csv 와 안 맞는다 (O-30)")
             continue
-        if not is_tracked:
+        if rel not in tracked:
             bad.append(f"{rel} (체크포인트 미추적)")
-        elif str(rel.parent / "manifest.json") not in tracked:
-            bad.append(f"{rel.parent}/manifest.json (출처 미추적)")
+        elif str(Path(rel).parent / "manifest.json") not in tracked:
+            bad.append(f"{Path(rel).parent}/manifest.json (출처 미추적)")
     assert not bad, bad
 
 
