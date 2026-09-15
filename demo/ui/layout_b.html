@@ -32,14 +32,28 @@
     --line:#dfe3e4; --accent:#0c4f52;
     --grid-fine:#eceff0; --grid-bold:#dce1e2;
     --mute:#a8afb0;             /* emphasis 에서 물러난 계열 */
+    --dark:0;                   /* 테마 판별의 유일한 출처 — 아래 isDark() */
   }
+  /* 다크는 **두 군데**에 적어야 한다. 매체 질의만 두면 「OS 는 라이트인데
+     화면에서 다크를 고른」 사람에게 다크 방법색이 라이트 배경 위에 얹힌다 —
+     `tokens.css` 는 두 벌을 갖고 있었는데 이 파일은 한 벌뿐이었다.
+     **두 벌은 같은 값이어야 한다.** `tests/test_demo_screens.py` 가 대조한다. */
   @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --dark:1;
     --bg:#0f1213; --panel:#171b1c; --sunk:#1d2223;
     --ink:#e9eded; --ink-2:#99a3a5; --ink-3:#6b7578;
     --line:#272d2f; --accent:#57cfc6;
     --grid-fine:#1e2425; --grid-bold:#283032;
     --mute:#4c5456;
   }}
+  :root[data-theme="dark"]{
+    --dark:1;
+    --bg:#0f1213; --panel:#171b1c; --sunk:#1d2223;
+    --ink:#e9eded; --ink-2:#99a3a5; --ink-3:#6b7578;
+    --line:#272d2f; --accent:#57cfc6;
+    --grid-fine:#1e2425; --grid-bold:#283032;
+    --mute:#4c5456;
+  }
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.01ms!important;
       transition-duration:.01ms!important}
@@ -79,6 +93,53 @@
     color:var(--bg);font-weight:600}
   button.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .chip .sw{width:10px;height:10px;border-radius:2px;flex:0 0 auto}
+
+  /* ① 세그먼트 컨트롤 — **SNR 에만** 쓴다. SNR 은 순서가 있는 축이고,
+     하나의 트랙에서 인디케이터가 미끄러지면 「연속된 값을 고른다」가 형태로 읽힌다.
+     잡음 종류는 순서가 없으므로 칩 그대로 둔다 — 축인 것만 축처럼 보이게 한다. */
+  .seg{position:relative;display:flex;gap:0;padding:3px;border-radius:5px;
+    background:var(--sunk);border:1px solid var(--line)}
+  .seg .ind{position:absolute;top:3px;bottom:3px;border-radius:3px;
+    background:var(--accent);transition:transform .22s cubic-bezier(.4,0,.2,1),
+      width .22s cubic-bezier(.4,0,.2,1);pointer-events:none}
+  .seg button{position:relative;z-index:1;font:inherit;font-size:var(--t-tick);
+    min-height:38px;padding:0 var(--s3);border:0;background:none;cursor:pointer;
+    color:var(--ink-2);border-radius:3px;transition:color .18s}
+  .seg button[aria-pressed="true"]{color:var(--bg);font-weight:600}
+  .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .seg button[disabled]{opacity:.3;cursor:not-allowed}
+
+  /* ② 깊이 — emphasis 가 색만으로 오지 않게. **그림자를 파형 위에 드리우지
+     않는다**: 대비를 해치면 규약 검증이 깨진다. 표면과 테두리만 쓴다. */
+  .lane .plot{transition:border-color .18s, background .18s}
+  .lane.dim .plot{background:var(--sunk)}
+  .lane.dim .who{opacity:.72}
+  .lane:hover .plot,.lane:focus-within .plot{border-color:var(--ink-3)}
+  .lane.on .plot{border-color:var(--line)}
+
+  /* ③ 델타 바 — 숫자에 형태를 준다. **0 에서 시작하고 값에 비례**한다:
+     축을 잘라 차이를 부풀리면 이 과제가 경계하는 바로 그 왜곡이다. */
+  .delta{display:flex;flex-direction:column;gap:4px;flex:0 0 300px}
+  .delta .row{display:flex;align-items:center;gap:var(--s2);
+    font-size:var(--t-tick);white-space:nowrap}
+  .delta .row .nm{width:52px;flex:0 0 52px;text-align:right;color:var(--ink-2)}
+  .delta .track{display:block;flex:1 1 auto;height:9px;border-radius:2px;
+    background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line);
+    overflow:hidden;min-width:60px}
+  /* **`display:block` 이 없으면 막대가 안 나온다** — `span` 은 인라인이라
+     `width`/`height` 가 먹지 않는다. `.track` 은 flex 아이템이라 저절로
+     블록이 되지만 그 안의 `.fill` 은 아니다. 한 번 당했다. */
+  .delta .fill{display:block;height:100%;border-radius:2px;min-width:2px;
+    transition:width .3s cubic-bezier(.4,0,.2,1)}
+  /* 폭은 **가장 긴 값**에 맞춘다 — `+19.4 dB` 가 58px 를 5px 넘겨서
+     글자가 상자 밖으로 흘렀다. 9 ch 는 `-100.0 dB` 까지 받는다. */
+  .delta .row .v{width:9ch;flex:0 0 9ch;color:var(--ink-2)}
+  .delta .row.win .nm,.delta .row.win .v{color:var(--ink);font-weight:600}
+
+  /* ④ 전환 — 갈아끼우지 말고 옮겨가게. **파형 모양은 보간하지 않는다**:
+     두 신호 사이를 이어 그리면 없는 신호를 만들어 낸다. 투명도만 건드린다. */
+  .plot canvas{transition:opacity .16s ease-out}
+  .plot.swap canvas{opacity:0}
   .chip .star{color:#c07a1f;font-size:11px}
   .chip[aria-pressed="true"] .star{color:var(--bg)}
   /* 레인의 «?» — 방법 설명. 색만으로 알리지 않는다는 규칙의 글자 쪽 짝이다. */
@@ -113,7 +174,7 @@
   .verdict .num{font-size:var(--t-num);font-weight:700;letter-spacing:-.02em}
   .verdict .who{font-size:var(--t-body);color:var(--ink-2)}
   .verdict .why{font-size:var(--t-tick);color:var(--ink-3);margin-left:auto;
-    text-align:right;max-width:52ch}
+    text-align:right;max-width:46ch;flex:1 1 auto;min-width:0}
 
   /* ── 파형: 남는 세로를 전부 먹는다 (U-3 · R-D Critical) ── */
   main{flex:1;min-height:0;display:flex;flex-direction:column;
@@ -141,6 +202,20 @@
       repeating-linear-gradient(to right,var(--grid-fine) 0 1px,transparent 1px var(--fine)),
       repeating-linear-gradient(to bottom,var(--grid-fine) 0 1px,transparent 1px var(--fine))}
   canvas{position:relative;display:block;width:100%;height:100%}
+
+  /* ⑤ 미니맵 — 은행 전체에서 «지금 어디를 보나」와 재생 커서. 빈 자리를
+     장식으로 채우는 게 아니라 **필요한 것을 그 자리에** 둔다. */
+  .minimap{display:grid;grid-template-columns:132px minmax(0,1fr);gap:var(--s3);
+    align-items:center}
+  .minimap .lbl{font-size:var(--t-tick);color:var(--ink-3);text-align:right}
+  .minimap .mwrap{position:relative;height:30px;border:1px solid var(--line);
+    border-radius:2px;background:var(--panel);overflow:hidden;cursor:pointer}
+  .minimap canvas{position:absolute;inset:0;width:100%;height:100%}
+  .minimap .win{position:absolute;top:0;bottom:0;background:var(--accent);
+    opacity:.13;border-left:1px solid var(--accent);border-right:1px solid var(--accent);
+    transition:transform .18s cubic-bezier(.4,0,.2,1),width .18s}
+  .minimap .cur{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);
+    opacity:0}
 
   /* 시간축 (U-13) — 마지막 레인 아래에만 */
   .xaxis{display:grid;grid-template-columns:132px minmax(0,1fr);gap:var(--s3)}
@@ -174,8 +249,8 @@
 <div class="primary">
   <div class="grp"><label for="cond-chips">잡음</label>
     <div class="chips" id="cond-chips"></div></div>
-  <div class="grp"><label for="snr-chips">입력 SNR</label>
-    <div class="chips" id="snr-chips"></div></div>
+  <div class="grp"><label for="snr-seg">입력 SNR</label>
+    <div class="seg" id="snr-seg"><span class="ind" id="snr-ind"></span></div></div>
   <div class="grp"><label for="cmp-chips">비교</label>
     <div class="chips" id="cmp-chips"></div></div>
   <div class="grp"><label for="play-chips">재생</label>
@@ -195,6 +270,7 @@
 <div class="verdict">
   <span class="num mono" id="v-num"></span>
   <span class="who" id="v-who"></span>
+  <div class="delta" id="v-delta"></div>
   <span class="why" id="v-why"></span>
 </div>
 
@@ -293,9 +369,23 @@ function buildControls(){
                     title: star ? "추천 조합 — 보고서의 결론 하나를 그대로 보인다" : c});
     return b;
   }));
-  $("snr-chips").replaceChildren(...B.snrs.map(v =>
-    chip(v + " dB", v === state.snr, () => state.snr = v,
-         {disabled: !has(state.cond, v)})));
+  /* ① SNR 은 **축**이므로 세그먼트 컨트롤이다. 인디케이터가 선택된 칸으로
+     미끄러지고, reduced-motion 이면 CSS transition 이 꺼져 즉시 옮겨간다. */
+  const seg = $("snr-seg"), ind = $("snr-ind");
+  seg.replaceChildren(ind, ...B.snrs.map(v => {
+    const b = document.createElement("button");
+    b.textContent = v + " dB";
+    b.setAttribute("aria-pressed", String(v === state.snr));
+    if (!has(state.cond, v)){ b.disabled = true; }
+    else b.onclick = () => { state.snr = v; render(); };
+    return b;
+  }));
+  requestAnimationFrame(() => {
+    const on = seg.querySelector('button[aria-pressed="true"]');
+    if (!on) return;
+    ind.style.width = on.offsetWidth + "px";
+    ind.style.transform = `translateX(${on.offsetLeft - 3}px)`;
+  });
   $("cmp-chips").replaceChildren(...B.methods
     .filter(m => current().traces[m])
     .map(m => chip(m, state.pair.includes(m), () => {
@@ -315,7 +405,7 @@ function buildControls(){
     ["sweep",  "스윕",   "감시장치처럼 커서가 좌→우로 지나가며 그린다. **커서 속도가 곧 위의 mm/s** 다"],
     ["scroll", "스크롤", "파형이 오른쪽에서 들어와 왼쪽으로 흐른다"],
   ].map(([k, n, tip]) => chip(n, state.play === k, () => {
-    state.play = k; resetAnim();
+    state.play = k;      // resetAnim 은 render() 가 layout·draw 뒤에 부른다
   }, {title: tip})));
   $("opt-chips").replaceChildren(
     chip("참값 겹치기", state.showRef, () => state.showRef = !state.showRef,
@@ -341,7 +431,8 @@ function layout(){
   lanes.className = "lanes";
   panels = series.map(key => {
     const lane = document.createElement("div");
-    lane.className = "lane";
+    // ② emphasis 를 **표면으로도** 전한다 — 색만으로 오지 않게.
+    lane.className = "lane " + (key === "input" || state.pair.includes(key) ? "on" : "dim");
     const who = document.createElement("div");
     who.className = "who";
     const b = document.createElement("b");
@@ -380,6 +471,29 @@ function layout(){
             ref: decode(s.traces.clean, s.scale)};
   });
   main.append(lanes);
+
+  // ⑤ 미니맵 — 시간축 바로 위
+  const mm = document.createElement("div");
+  mm.className = "minimap";
+  const lbl = document.createElement("span");
+  lbl.className = "lbl"; lbl.id = "mini-lbl";
+  const mwrap = document.createElement("div");
+  mwrap.className = "mwrap";
+  const mcv = document.createElement("canvas"); mcv.id = "mini-cv";
+  const mwin = document.createElement("span"); mwin.className = "win"; mwin.id = "mini-win";
+  const mcur = document.createElement("span"); mcur.className = "cur"; mcur.id = "mini-cur";
+  mwrap.append(mcv, mwin, mcur);
+  // 클릭한 자리로 창을 옮긴다 — 정지 모드에서 구간을 고르는 길이다.
+  mwrap.onclick = ev => {
+    if (state.play !== "off" || !panels.length) return;
+    const r = mwrap.getBoundingClientRect();
+    const frac = Math.max(0, Math.min((ev.clientX - r.left) / r.width, 1));
+    const total = panels[0].sig.length, n = panels[0].n;
+    state.start = Math.round(Math.max(0, Math.min(frac * total - n / 2, total - n)));
+    draw();
+  };
+  mm.append(lbl, mwrap);
+  main.append(mm);
 
   // 시간축은 **맨 아래 한 번만** (U-13)
   const ax = document.createElement("div");
@@ -465,6 +579,7 @@ function draw(){
     }
   }
 
+  drawMini(visible, dataSec, a, n);
   $("f-scale").textContent =
     `${state.speed} mm/s · ${state.gain} mm/mV · 대칸 ` +
     `${(5 / state.speed).toFixed(2)} s × 0.5 mV · 화면 ${visible.toFixed(1)} s ` +
@@ -479,8 +594,51 @@ function draw(){
    스윕은 **캔버스 내용이 곧 상태**다. 지운 과거는 다시 그릴 수 없으므로 설정이
    바뀌면 한 바퀴를 처음부터 돈다(`resetAnim`). 바퀴가 넘어갈 때 캔버스를 지우지
    않는 것도 감시장치와 같다 — 남은 꼬리가 «흐르고 있다» 는 인상을 만든다. */
-const ERASE = 0.5;                    // 커서 앞을 폭의 50 % 지운다
+/* 커서 바로 앞의 빈칸. 감시장치의 «지움 막대» 에 해당하는 좁은 띠이고, 새 파형과
+   지난 바퀴가 한 픽셀에서 겹치지 않도록 확실히 끊어 주는 것이 이것의 일이다.
+   **지우는 일 자체는 아래 페이드가 한다** — 여기서 넓게 잘라 버리면 페이드가
+   칠할 것이 남지 않는다(두 번 당했다: 처음엔 50 %, 다음엔 22 %). */
+const GAP = 0.012;
+/* 커서 주변의 잔광 — 감시장치의 형광체가 하는 일을 그대로 흉내 낸다.
+
+   **앞쪽(곧 지워질 과거)**: 딱 잘라 지우지 않고 그라디언트로 투명해진다.
+   매 프레임 겹쳐 칠해지므로 지수 감쇠가 되는데, 그것이 잔광의 실제 물리다.
+
+   **뒤쪽(막 그려진 자리)**: 커서에 가까울수록 «강하고» 멀어지면 평소 색으로
+   돌아온다. **«강하다» 의 방향은 테마가 정한다** — 다크는 CRT 형광체라 밝아지고,
+   라이트는 차트지에 스타일러스가 지나간 자리라 **진해진다.** 라이트에서 흰색으로
+   톤업하면 패널(#fff)과 같아져 파형이 **사라진다.**
+
+   꼬리는 **매 프레임 다시 그린다.** 증분만 그리면 밝게 칠한 픽셀이 그대로 굳어
+   멀어져도 원래 색으로 안 돌아온다.
+
+   강도는 보수적으로 잡았다 — 과하면 잔여 잡음의 질감(임펄스·고주파)이 묻힌다.
+   참값(회색)에는 주지 않는다: 목표로 뒤에 깔리는 것이 발광하면 주객이 바뀐다. */
+const TAIL_S = 0.42;                 // 커서 뒤 잔광 길이 (초)
+/* 톤업 강도. **라이트를 더 약하게** 잡는다 — 검정 쪽으로 섞이므로 같은 값이어도
+   훨씬 강하게 먹고, 커서 근처에서 잔여 잡음의 질감이 먼저 묻힌다. */
+const GLOW_DARK = 0.42, GLOW_LIGHT = 0.26;
+const FADE = 0.16;                   // 커서 앞 페이드 길이 (화면 폭 비율)
 let animT0 = 0, animIdx = 0, animRAF = 0;
+
+/* **CSS 에 묻는다.** `matchMedia` 로 직접 따지면 OS 선호와 `data-theme` 의
+   네 조합을 JS 가 또 한 번 재현해야 하고, 실제로 한쪽이 틀어져 있었다 —
+   「OS 라이트 + 화면에서 다크 선택」에서 잔광이 검정 쪽으로 섞였다.
+   `--dark` 는 위 세 블록이 정하므로 CSS 와 어긋날 수가 없다. */
+const isDark = () =>
+  getComputedStyle(document.documentElement)
+    .getPropertyValue("--dark").trim() === "1";
+
+/* hex 를 흰색/검정 쪽으로 섞는다. 테마가 방향을 정한다. */
+function tone(hex, amt){
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const v = parseInt(m[1], 16);
+  const to = isDark() ? 255 : 0;                 // 밝게 / 진하게
+  const mix = c => Math.round(c + (to - c) * amt);
+  return "#" + [(v >> 16) & 255, (v >> 8) & 255, v & 255]
+    .map(c => mix(c).toString(16).padStart(2, "0")).join("");
+}
 
 function resetAnim(){
   if (animRAF) cancelAnimationFrame(animRAF);
@@ -492,29 +650,78 @@ function resetAnim(){
 function sweepPanel(p, i1, i0){
   const g = p.g, w = p.w, h = p.h, n = p.n, total = p.sig.length;
   if (p.fresh){ g.clearRect(0, 0, w, h); p.fresh = false; }
-  const seg = (v, col, lw) => {
+  const pps = p.pxPerSec / B.fs;                  // 표본 하나가 차지하는 px
+  const xOf = i => (((i % n) + n) % n) * pps;
+  const x1 = xOf(i1);
+
+  const seg = (v, style, lw, from) => {
     if (!v) return;
-    g.beginPath(); g.strokeStyle = col; g.lineWidth = lw;
+    g.beginPath(); g.strokeStyle = style; g.lineWidth = lw;
     let pen = false;
-    for (let i = Math.max(i0 - 1, 0); i <= i1; i++){
+    for (let i = Math.max(from, 0); i <= i1; i++){
       const k = ((i % n) + n) % n;
-      const x = k * p.pxPerSec / B.fs;
       const y = p.yAt(v[((i % total) + total) % total]);
-      if (!pen || k === 0){ g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+      if (!pen || k === 0){ g.moveTo(k * pps, y); pen = true; }
+      else g.lineTo(k * pps, y);
     }
     g.stroke();
   };
-  if (state.showRef) seg(p.ref, css("--role-clean"), 2.2);
-  seg(p.sig, p.color, 1.2);
-  // 커서 앞을 지운다. 오른쪽 끝을 넘으면 왼쪽으로 감아서 지운다.
-  const x1 = (((i1 % n) + n) % n) * p.pxPerSec / B.fs, e = ERASE * w;
-  g.clearRect(x1 + 1.5, 0, e, h);
-  if (x1 + e > w) g.clearRect(0, 0, x1 + e - w, h);
+
+  // ── 잔광 꼬리: 커서 뒤 TAIL 구간을 **지우고 다시** 그린다 ──────────
+  const tailN = Math.round(TAIL_S * B.fs);
+  const xTail = x1 - tailN * pps;
+  if (xTail >= 0){
+    // 감기지 않은 보통의 경우에만 꼬리를 다시 칠한다. 감기는 프레임은 한 번뿐이라
+    // 그냥 증분으로 두는 편이 깜빡임이 없다.
+    g.clearRect(xTail, 0, x1 - xTail + 2, h);
+    if (state.showRef) seg(p.ref, css("--role-clean"), 2.2, i1 - tailN);
+    const grad = g.createLinearGradient(xTail, 0, x1, 0);
+    grad.addColorStop(0, p.color);                // 멀리 = 평소 색
+    grad.addColorStop(1, tone(p.color, isDark() ? GLOW_DARK : GLOW_LIGHT));
+    seg(p.sig, grad, 1.2, i1 - tailN);
+  } else {
+    if (state.showRef) seg(p.ref, css("--role-clean"), 2.2, i0 - 1);
+    seg(p.sig, p.color, 1.2, i0 - 1);
+  }
+
+  /* ── 커서 앞: 좁은 빈칸, 그 너머는 다가올수록 투명해진다 ──────────────
+     **순서가 전부다.** 지움 막대를 페이드 «바깥쪽» 에 두면, 어떤 픽셀이든
+     커서가 닿기 한참 전에 이미 통째로 지워져 있어 페이드가 칠할 것이 없다.
+     화면에는 딱 잘린 경계만 남는다 — 실제로 그렇게 짜여 있었다.
+     그러니 빈칸은 커서 «바로 앞» 뿐이고, 그 너머의 지난 바퀴는 손대지 않는다.
+
+     지우는 일은 페이드가 한다. 같은 픽셀이 매 프레임 다시 칠해지고 커서가
+     가까워질수록 계수가 커지므로 곱이 지수로 떨어진다 — 커서가 닿을 때쯤엔
+     남는 것이 없다. 딱 잘라 지우는 것과 결과는 같고 경계만 없다. */
+  const fadePx = FADE * w, gapPx = GAP * w;
+
+  // 캔버스를 한 바퀴 감아 도는 띠. 넘치는 만큼은 왼쪽 끝에서 이어 칠한다.
+  const band = (from, len, paint) => {
+    const a = ((from % w) + w) % w;
+    paint(a, Math.min(len, w - a), 0);
+    if (a + len > w) paint(0, a + len - w, w - a);
+  };
+
+  band(x1 + 1.5, gapPx, (x, len) => g.clearRect(x, 0, len, h));
+
+  g.save();
+  g.globalCompositeOperation = "destination-out";
+  band(x1 + 1.5 + gapPx, fadePx, (x, len, done) => {
+    /* `done` 은 이 조각이 띠의 어디서 시작하는지다. 감겨서 왼쪽으로 이어지는
+       조각은 그라디언트도 이어받아야 한다 — 0 부터 다시 시작하면 커서에서
+       먼 자리가 갑자기 진하게 삭는다. */
+    const grd = g.createLinearGradient(x - done, 0, x - done + fadePx, 0);
+    grd.addColorStop(0, "rgba(0,0,0,0.5)");       // 커서에 가장 가까운 쪽
+    grd.addColorStop(1, "rgba(0,0,0,0)");         // 아직 멀어서 그대로
+    g.fillStyle = grd;
+    g.fillRect(x, 0, len, h);
+  });
+  g.restore();
 }
 
 function tick(){
   animRAF = 0;
-  if (state.play === "off" || !panels.length) return;
+  if (state.play === "off" || !panels.length || !panels[0].g) return;
   // **시각은 벽시계로 잰다.** 프레임 카운터로 진행하면 렌더가 밀릴 때 레인마다
   // 다른 속도로 흘러 비교가 깨진다.
   const el = (performance.now() - animT0) / 1000;
@@ -527,6 +734,11 @@ function tick(){
     const i1 = Math.floor(el * B.fs);
     for (const p of panels) sweepPanel(p, i1, Math.max(animIdx, i1 - p.n));
     animIdx = i1;
+    const cur = $("mini-cur"), total = panels[0].sig.length;
+    if (cur){
+      cur.style.opacity = 1;
+      cur.style.left = ((i1 % total) / total * 100) + "%";
+    }
   }
   animRAF = requestAnimationFrame(tick);
 }
@@ -546,6 +758,37 @@ function explain(key){
   $("dlg").showModal();
 }
 
+/* 미니맵: 참값 전체를 얇게 깔고 그 위에 현재 창을 표시한다.
+   **비교용이 아니라 위치용**이므로 진폭은 규약과 무관하게 칸에 맞춘다. */
+function drawMini(visible, dataSec, a, n){
+  const cv = $("mini-cv"); if (!cv || !panels.length) return;
+  const wrap = cv.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)){
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const ref = panels[0].ref, total = ref.length;
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < total; i += 7){ const v = ref[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+  const span = (hi - lo) || 1;
+  g.beginPath(); g.strokeStyle = css("--ink-3"); g.lineWidth = 1; g.globalAlpha = .5;
+  for (let x = 0; x < w; x++){
+    const i = Math.floor(x / w * total);
+    const y = h - 2 - (ref[i] - lo) / span * (h - 4);
+    x ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke(); g.globalAlpha = 1;
+
+  const win = $("mini-win");
+  win.style.width = (n / total * w) + "px";
+  win.style.transform = `translateX(${a / total * w}px)`;
+  $("mini-lbl").textContent = `은행 ${dataSec.toFixed(0)} s 중 ${visible.toFixed(1)} s`;
+}
+
 function verdict(){
   const s = current();
   const [a, b] = state.pair;
@@ -557,6 +800,32 @@ function verdict(){
   } else {
     $("v-num").textContent = "—";
     $("v-who").textContent = "비교할 방법 둘을 고르라";
+  }
+  /* ③ 숫자에 형태를 준다. 막대는 **0 에서 시작하고 값에 비례**한다 —
+     축을 잘라 차이를 부풀리는 것이 이 과제가 가장 경계하는 왜곡이다. */
+  const box = $("v-delta");
+  box.replaceChildren();
+  if (a && b && ma != null && mb != null){
+    const top = Math.max(ma, mb, 1);
+    for (const m of [a, b]){
+      const val = s.metrics[m].snr_imp;
+      const row = document.createElement("div");
+      row.className = "row" + (val === Math.max(ma, mb) ? " win" : "");
+      const nm = document.createElement("span");
+      nm.className = "nm mono"; nm.textContent = m;
+      const track = document.createElement("span");
+      track.className = "track";
+      const fill = document.createElement("span");
+      fill.className = "fill";
+      fill.style.width = Math.max(0, val / top * 100) + "%";
+      fill.style.background = methodColor(m);
+      track.append(fill);
+      const v = document.createElement("span");
+      v.className = "v mono";
+      v.textContent = (val >= 0 ? "+" : "") + val.toFixed(1) + " dB";
+      row.append(nm, track, v);
+      box.append(row);
+    }
   }
   $("v-why").textContent = s.claim || "";
   $("sub").textContent =
@@ -596,6 +865,7 @@ function hover(){
   $("main").addEventListener("pointerleave", leave);
 }
 
+let lastScene = null;
 function render(){
   if (!B || !B.scenes?.length){
     $("main").innerHTML = '<p class="empty">은행이 없다 — '
@@ -603,7 +873,15 @@ function render(){
     return;
   }
   buildControls(); layout(); verdict();
-  requestAnimationFrame(() => { draw(); resetAnim(); });   // 레이아웃이 잡힌 뒤에
+  // ④ 장면이 바뀐 프레임에만 페이드인. **모양을 보간하지 않는다** — 투명도만.
+  const id = current().id, swapped = lastScene !== null && lastScene !== id;
+  lastScene = id;
+  if (swapped) for (const p of panels) p.plot.classList.add("swap");
+  requestAnimationFrame(() => {
+    draw(); resetAnim();
+    if (swapped) requestAnimationFrame(() =>
+      panels.forEach(p => p.plot.classList.remove("swap")));
+  });
 }
 
 // 크기가 바뀌면 스윕은 한 바퀴를 다시 돈다 — 캔버스 내용이 상태이기 때문이다.

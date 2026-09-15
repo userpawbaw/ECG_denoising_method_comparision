@@ -240,6 +240,122 @@ def test_dark_theme_does_not_leave_text_on_its_own_ground(browser, name):
         f"{name}: 다크에서 글자({fg:.2f})와 배경({bg:.2f})의 밝기가 너무 가깝다")
 
 
+# ------------------------------------------------------------------ 테마 두 벌
+@pytest.mark.parametrize("name", IDS)
+def test_explicit_dark_choice_darkens_the_page(browser, name):
+    """**OS 는 라이트인데 화면에서 다크를 고른** 경우를 따로 본다.
+
+    다크를 매체 질의에만 적어 두면 이 조합에서 다크 토큰 일부(다른 파일에서 온
+    방법 색)만 바뀌고 배경은 라이트로 남는다 — `layout_b.html` 이 실제로 그랬다.
+    `tokens.css` 는 두 벌을 갖고 있었으므로 **한 화면 안에서 두 테마가 섞였다**.
+    """
+    s = _screen(name)
+    src = s.path.read_text(encoding="utf-8")
+    if 'data-theme="dark"' not in src and "prefers-color-scheme" not in src:
+        pytest.skip("테마를 선언하지 않은 화면")
+    page = new_page(browser, theme="light")          # OS 는 라이트
+    settle_page(page, s)
+    page.evaluate("() => document.documentElement.dataset.theme = 'dark'")
+    page.wait_for_timeout(300)
+    lum = page.evaluate("""() => {
+      const rgb = s => (s.match(/\\d+/g) || [255,255,255]).slice(0,3).map(Number);
+      const L = c => { const [r,g,b] = c.map(v => v/255);
+        return 0.2126*r + 0.7152*g + 0.0722*b; };
+      const st = getComputedStyle(document.body);
+      return [L(rgb(st.backgroundColor)), L(rgb(st.color))];
+    }""")
+    page.close()
+    bg, fg = lum
+    assert bg < 0.25, (
+        f"{name}: data-theme=\"dark\" 인데 배경이 아직 밝다 (L={bg:.2f}) — "
+        "다크가 매체 질의에만 적혀 있다")
+    assert fg - bg > 0.3, f"{name}: 다크에서 글자({fg:.2f})가 배경({bg:.2f}) 에 묻힌다"
+
+
+# ------------------------------------------------------------------ 스윕
+SWEEP = "ui/layout_b.html"
+
+# 커서 앞 잉크량을 열 단위로 재는 탐침. **알파로 가중한다** — `destination-out` 은
+# RGB 를 그대로 두고 알파만 깎으므로, RGB 만 보면 완전히 지워진 픽셀도 «순백» 으로
+# 읽힌다. 처음 이 검사를 쓸 때 그 함정에 그대로 걸렸다.
+_INK_JS = """() => {
+  const p = panels[1];
+  const cv = document.querySelectorAll('.lane .plot canvas')[1];
+  const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  const col = [];
+  for (let x = 0; x < cv.width; x++){
+    let s = 0;
+    for (let y = 0; y < cv.height; y++){
+      const o = (y * cv.width + x) * 4;
+      const L = 0.2126*d[o] + 0.7152*d[o+1] + 0.0722*d[o+2];
+      if (L > 80) s += d[o+3] / 255;
+    }
+    col.push(s);
+  }
+  const x1 = Math.round((((animIdx % p.n) + p.n) % p.n) * (p.pxPerSec / B.fs));
+  return {x1: x1, w: cv.width, col: col};
+}"""
+
+
+def _sweep_ink(browser):
+    """스윕을 **두 바퀴째까지 돌려** 커서 기준 잉크 단면을 얻는다.
+
+    첫 바퀴에는 커서 앞이 원래 비어 있어서 페이드가 지울 것이 없다. 이 효과는
+    지난 바퀴의 파형이 남아 있어야 보이므로 한 바퀴를 넘겨야 한다.
+    """
+    s = _screen(SWEEP)
+    page = new_page(browser, theme="dark")
+    settle_page(page, s)
+    page.get_by_role("button", name="스윕", exact=True).click()
+    page.wait_for_timeout(13_000)
+    r = page.evaluate(_INK_JS)
+    page.close()
+    return r
+
+
+@pytest.mark.skipif(SWEEP not in IDS, reason="스윕 화면이 아직 없다")
+def test_sweep_fades_into_the_cursor_instead_of_cutting(browser):
+    """커서 앞의 지난 파형은 **다가올수록 옅어져야** 한다 — 딱 잘리면 안 된다.
+
+    두 번 같은 자리에서 틀렸다. 페이드 자체는 처음부터 있었는데, 커서 앞을 통째로
+    비우는 «지움 막대» 를 페이드 **바깥쪽**에 두는 바람에 어느 픽셀이든 커서가
+    닿기 한참 전에 이미 지워져 있었다. 페이드는 칠할 것이 없었고 화면에는 딱
+    잘린 경계만 남았다. 폭을 50 % → 22 % 로 줄여 봐도 순서가 그대로라 그대로였다.
+
+    그래서 **폭이 아니라 모양을 잰다**: 커서 바로 앞은 비어 있고, 멀어질수록
+    잉크가 늘어나며, 그 사이가 계단이 아니라 경사여야 한다.
+    """
+    r = _sweep_ink(browser)
+    col, w, x1 = r["col"], r["w"], r["x1"]
+    band = lambda a, b: sum(col[(x1 + k) % w] for k in range(a, b))
+
+    near, mid, far = band(10, 90), band(150, 230), band(300, 380)
+    assert near < far * 0.15, (
+        f"커서 바로 앞이 안 비었다 — 가까이 {near:.0f} vs 멀리 {far:.0f}")
+    assert far > 20, f"커서 앞 멀리에 지난 바퀴가 안 남았다 ({far:.0f})"
+    # 계단이 아니라 경사: 중간 띠가 양 끝 **사이**에 있어야 한다. 딱 잘라 지우면
+    # 중간은 near 나 far 중 한쪽에 붙는다.
+    assert near < mid < far, (
+        f"페이드가 경사가 아니라 계단이다 — 가까이 {near:.0f} · 중간 {mid:.0f} · "
+        f"멀리 {far:.0f}")
+
+
+@pytest.mark.skipif(SWEEP not in IDS, reason="스윕 화면이 아직 없다")
+def test_sweep_glows_behind_the_cursor(browser):
+    """커서 **뒤**는 밝게 톤업됐다가 멀어지며 원래 색으로 돌아와야 한다.
+
+    감시장치 형광체를 흉내 낸 것이다. 밝기가 오르면 밝은 픽셀이 늘어나므로
+    같은 탐침으로 잡힌다 — 커서 바로 뒤 띠가 그보다 앞선 띠보다 진해야 한다.
+    """
+    r = _sweep_ink(browser)
+    col, w, x1 = r["col"], r["w"], r["x1"]
+    band = lambda a, b: sum(col[(x1 + k) % w] for k in range(a, b))
+
+    hot, cool = band(-60, -10), band(-180, -130)
+    assert hot > cool, (
+        f"커서 뒤 잔광이 없다 — 바로 뒤 {hot:.0f} 가 먼 쪽 {cool:.0f} 보다 진하지 않다")
+
+
 # ------------------------------------------------------------------ 갤러리
 GALLERY = ROOT / "demo" / "ui" / "gallery.html"
 
