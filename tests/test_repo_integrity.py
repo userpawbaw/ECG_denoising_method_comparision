@@ -81,6 +81,13 @@ def test_doc_code_references_resolve(doc: Path):
     planned = set(re.findall(
         r"\(계획\)\s*`((?:scripts|ecgdn|configs|tests|demo|firmware)/[\w./{}, -]+?)`",
         text))
+    # **일부러 없는 경로**를 이야기하는 문서가 있다 — 검사가 무는지 확인하려고
+    # 주입했던 가짜 경로를 사례로 인용하는 경우다(`docs/40`). `(계획)` 과 같은
+    # 방식으로 **명시**하게 한다: 표식이 없으면 그냥 오타로 취급한다.
+    absent = set(re.findall(
+        r"\(없음\)\s*`((?:scripts|ecgdn|configs|tests|demo|firmware)/[\w./{}, -]+?)`",
+        text))
+    planned |= absent
     refs = set(re.findall(r"`((?:scripts|ecgdn|configs|tests)/[\w./{}, ]+?)`", text))
     missing = []
     for r in refs - planned:
