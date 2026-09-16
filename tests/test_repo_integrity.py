@@ -589,6 +589,51 @@ def test_rule_docs_cite_records_that_exist(doc: Path):
     assert not missing, f"{doc.name} 이 없는 기록을 가리킨다: {missing}"
 
 
+# 규칙이 **인용한** 번호가 실재하는지는 위에서 봤다. 그런데 **인용을 안 하면
+# 아무 일도 일어나지 않았다** — 근거 없는 규칙 줄을 얼마든지 얹을 수 있었다.
+# 실제로 「항상」 6 줄이 전부 그랬다. 「있는 기록이 잘 쓰였나」에서 「없는
+# 기록을 잡는다」로 한 칸 올린 것(19 §10)과 같은 동작을 규칙 쪽에도 한다.
+#
+# **근거는 세 종류다.** 기록에서 나온 규칙만 있는 게 아니라서, 하나로 묶으면
+# 「칸을 채우려는 압력」이 생겨 없는 기록을 지어내게 된다(R-1). 그래서 **어떤
+# 종류의 근거인지를 밝히게** 한다 — `기록 없음`·`(계획)`·`(없음)` 과 같은 설계다.
+GROUNDING = (
+    r"[FDOR]-\d+",                  # ① 기록에서 나온 규칙
+    r"docs/[0-9A-Za-z_]+\.md",      # ② 규약·설계 문서에 근거가 있는 규칙
+    r"\[사용자 지시\]",              # ③ 사용자가 정한 제약 — 기록이 없는 게 정상이다
+)
+
+
+def test_placard_rules_name_their_grounding():
+    """명판 「항상」 절의 **모든 규칙 줄이 근거의 종류를 밝혀야** 한다.
+
+    이 저장소의 기록 체계 자체가 네 번에 걸쳐 만들어졌는데 **그중 하나만
+    D 로 남았다**(D-21). 나머지는 규약 문서를 쓰는 것으로 「적었다」고 여겼고,
+    그래서 **기각한 대안**(외부 AI 의 12 단계 템플릿 등)이 3 주 동안 어디에도
+    없었다. 규칙을 얹을 때 근거를 요구하면 그 순간 D 를 쓰게 된다.
+    """
+    text = PLACARD.read_text(encoding="utf-8")
+    body = text.split("## 항상", 1)[1].split("\n## ", 1)[0]
+    bare = [ln.strip() for ln in body.splitlines()
+            if ln.startswith("- ")
+            and not any(re.search(g, ln) for g in GROUNDING)]
+    assert not bare, (
+        "명판 규칙이 근거를 안 밝힌다:\n  " + "\n  ".join(bare)
+        + "\n\n셋 중 하나를 달 것 — F/D/O/R 번호 · `docs/….md` 절 · `[사용자 지시]`.\n"
+          "기록이 없는 사용자 제약이면 `[사용자 지시]` 가 정답이다. "
+          "없는 기록을 지어내지 마라(R-1).")
+
+
+def test_checklist_sections_name_their_grounding():
+    """L2 각 절도 마찬가지 — 어떤 사고·발견에서 나온 절인지 제목에 적는다."""
+    heads = [ln for ln in CHECKLISTS.read_text(encoding="utf-8").splitlines()
+             if ln.startswith("## §")]
+    assert heads, "L2 에 § 절이 없다"
+    bare = [h for h in heads if not any(re.search(g, h) for g in GROUNDING)
+            and not re.search(r"`[^`]*\d+\s*회[^`]*`", h)]   # 「3 회」 같은 횟수 근거
+    assert not bare, f"근거를 안 밝히는 체크리스트 절: {bare}"
+
+
 def test_placard_triggers_resolve_to_checklist_sections():
     """명판의 트리거 표가 가리키는 절이 L2 에 실제로 있어야 한다.
 
