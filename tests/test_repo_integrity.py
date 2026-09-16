@@ -794,6 +794,8 @@ REPORT_EXEMPT: dict[str, str] = {
         "만들어졌는지를 남긴 것이라 보고서 본문에 들어가지 않는다.",
     "41_ai_collaboration_transcript.md":
         "위 문서의 부록(발화 전문). 같은 이유.",
+    "42_ai_collaboration_case_en.md":
+        "위 문서의 영문 1 장 요약. 같은 이유.",
 }
 
 
