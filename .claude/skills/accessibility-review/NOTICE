@@ -1,0 +1,17 @@
+accessibility-review
+Copyright Anthropic PBC.
+
+이 디렉터리의 `SKILL.md` 는 Anthropic 의 `design` 플러그인에서 **고치지 않고 그대로**
+가져왔다 (Apache License 2.0, 같은 폴더 `LICENSE`).
+
+  출처   https://github.com/anthropics/knowledge-work-plugins
+         design/skills/accessibility-review/SKILL.md
+  판     플러그인 design 1.2.0
+  받은 날 2026-09-17
+
+**고친 곳은 없다.** 그래서 본문의 `../../CONNECTORS.md` 링크는 **여기 없다** — 플러그인의
+커넥터 안내 문서는 가져오지 않았다. 이 프로젝트에서 무엇이 연결돼 있는지는
+`docs/ui/04_tools.md` 1 절이다.
+
+**이 플러그인의 MCP 서버 9 개는 켜지 않았다** — 이유는 UD-8. 스킬만 가져온 것이다.
+고쳐 쓰게 되면 Apache 2.0 §4(b) 에 따라 **바꾼 파일에 바꿨다고 적는다.**

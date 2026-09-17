@@ -46,7 +46,7 @@ UI 결정이 연구 결론에 영향을 주면(예: 그림 색이 바뀌면 보�
 |---|---|---|
 | **발산** (Creative Art Director) | 후보 **5 개 이상**, 구역을 붙여, UD 「검토한 선택지」 표 형식으로. 결정권 없음 | `.claude/skills/expo-ui-art-director` |
 | **데이터 스토리** | 한 문장 insight → 관계(rank · slope · trade-off · before/after) → 표현 후보. **순서와 전환**이 우리에게 빈 능력이다(UR-1) | `dataviz` · Flourish(초안) — `04_tools.md` |
-| **검증** (Validator) | KEEP / TUNE / REJECT + 되돌릴 조건. 「취향」은 이유가 아니다 | `.claude/skills/ecg-ui-validator` · `motion-review` |
+| **검증** (Validator) | KEEP / TUNE / REJECT + 되돌릴 조건. 「취향」은 이유가 아니다 | `.claude/skills/ecg-ui-validator` · `motion-review` · `design-critique` · `accessibility-review` |
 | **구현** | 승인 범위만. 무빌드 시연판을 유지한다(UD-1) | 이 세션 · `pytest tests/ -m screens` · CI |
 
 ### 구역 — 대담함은 HIGH 에, 절제는 LOW 에
@@ -100,7 +100,7 @@ L0 IDEA → L1 SOURCE(코드·명세) → **L2 STATIC**(`scripts/shoot_screens.p
 | 3 | 레이아웃 재설계 (경로 둘로 짝지어 비교) | **경로 B ✅** `demo/ui/layout_b.html` (미감 개선 ①~⑤ · 스윕 잔광/페이드 포함) · 경로 A(Figma) 착수 |
 | 4 | 실패 상태 화면 · 색각 이상 검증 | 대기 |
 | 체계 | 외부 시스템 이식(UD-5) — 운영 절 · `04_tools` · UR · 검사 · 로컬 스킬 셋 | **✅ 끝** |
-| 도구 | 발산 스킬·커넥터 들이기 (UD-7) | **✅ 끝** — 공식 `frontend-design` 을 **Apache 2.0 이라 `.claude/skills/` 에 그대로 복제**했다(설치·네트워크 불필요). Flourish·MDN 커넥터 켜짐. 플러그인 경로는 `04_tools.md` 6 절에 기록만 |
+| 도구 | 스킬·커넥터 들이기 (UD-7 · UD-8) | **✅ 끝** — 공식 스킬 셋(`frontend-design` · `design-critique` · `accessibility-review`)을 **Apache 2.0 이라 그대로 복제**했다. 설치·네트워크 불필요. **플러그인의 MCP 9 개는 안 켰다**(UD-8). Figma·Flourish·MDN 커넥터 켜짐 |
 | 시운전 | 두 시안 기준선 → 발산 7 → 검증 → 후보 넷 (UD-6) | **✅ 후보 확정 · 구현 전.** 1 순위 묶음 「계측기 + 한 숫자 + 렌즈 + 기울기」(`layout_b`) · 2 순위 attract(v2) |
 
 **경로 B 를 눌러 볼 수 있다** — `https://claude.ai/artifact/8k1bdcp4EEGfRjj5Cvvnuh`

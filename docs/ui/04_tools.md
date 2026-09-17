@@ -23,7 +23,7 @@
 | | **MDN** (MCP, 무인증) | **켜짐** — 사용자가 연결했다 | 2026-09-17 · 이 세션의 도구 목록 | CSS·Canvas API·호환성 사실 확인 |
 | | `modern-web-guidance` (Google Chrome 플러그인) | 켜야 함 (선택) | 2026-09-17 · 카탈로그 | scroll-driven · view transitions · anchor 등 HIGH 구역 전환 |
 | **VALIDATION** | `ecg-ui-validator` | **로컬** | 2026-09-17 | KEEP/TUNE/REJECT · 증거 레벨 |
-| | **`design`** (Anthropic 플러그인: `design-critique` · `accessibility-review`) | **보류** — 플러그인이 **MCP 서버 9 개**를 끌고 온다(§6). 사용자 판단 대기 | 2026-09-17 · `.mcp.json` 실측 `[코드]` | 스크린샷 입력 → 위계·일관성 비평 · WCAG 2.1 AA |
+| | `design-critique` · `accessibility-review` | **로컬 (복제)** — `design` 플러그인의 스킬 둘만. **MCP 9 개는 안 켰다**(UD-8). Apache 2.0 | 2026-09-17 · `diff -q` 동일 확인 `[테스트]` | 다섯 축 비평(첫 축이 **2 초 첫인상**) · **WCAG 2.1 AA 조항 대조표** |
 | | `scripts/validate_palette.py` · `tests/test_demo_screens.py` | 켜짐 | 항상 | 정량 검증 — ΔE·명도대·색각 / 콘솔·넘침·색만으로 신원·reduced-motion·다크 |
 | | `ui-ux-pro-max` (`nextlevelbuilder/…` `15de38f`) | 참조 (선택) | 2026-09-17 · upstream HEAD 일치 | 패턴/안티패턴 **검색만**. 디자인 시스템 생성기는 안 쓴다(docs/22 §6 · UD-1). 스크립트는 세션 밖에서 |
 | | `design-taste` (`arez-xd/…` `a5c03fb`) | 참조 → 흡수 뒤 정리 | 2026-09-17 · upstream HEAD 일치 · **1 star** | motion·polish 참고 문서 두 개를 `02_benchmark` 에 흡수하면 의존을 끊는다 |
@@ -45,6 +45,8 @@ Mobbin(UD-1) · Magic Patterns · Canva(UI) · HyperFrames · Anthropic `data` �
 | `motion-review` | 모션 후보 검토 | 외부 동명 스킬(`62b65b1`) + `03_MOTION_AND_POLISH` Scorecard | 스윕 계약을 **UF-4 현행**(지우기 경계 페이드 + 선단 톤업)으로. 알파 가중 측정 함정 명시 |
 | `ecg-ui-validator` | KEEP/TUNE/REJECT 판정 | 외부 `04_VALIDATION_AND_GUARDRAILS` + `ecg-ui-design` | 계약을 이 저장소 문서(`docs/21` §7 계열 · `02_benchmark`)로, 검증 명령을 우리 것으로 |
 | `frontend-design` | 발산의 방법 — 2 패스 · 클리셰 목록 · 「대담함은 한 곳에」 | **Anthropic 공식**, `anthropics/claude-plugins-official` `plugins/frontend-design/skills/frontend-design/` · 판 `1.1.0` / `1aa8f02ec832` · **Apache 2.0** | **아무것도 안 바꿨다** — `SKILL.md`·`LICENSE.txt` 바이트 단위 동일. 출처·판·「고친 곳 없음」은 같은 폴더 `NOTICE` 에 |
+| `design-critique` | 다섯 축 비평틀 — 2 초 첫인상 · 사용성 · 위계 · 일관성 · 접근성 | **Anthropic**, `anthropics/knowledge-work-plugins` `design/skills/design-critique/` · 플러그인 판 `1.2.0` · **Apache 2.0** | **안 바꿨다.** 본문의 `../../CONNECTORS.md` 링크는 여기 없다(플러그인 문서를 안 가져왔다) — `NOTICE` 에 적었다 |
+| `accessibility-review` | WCAG 2.1 AA 조항 대조표 + 흔한 실패 8 · 검사 순서 | 같은 저장소 `design/skills/accessibility-review/` · 같은 판 · **Apache 2.0** | **안 바꿨다.** 위와 같다 |
 
 외부 `project-capability-audit` 는 스킬이 아니라 아래 3 절이 됐다.
 
@@ -116,20 +118,41 @@ claude plugin install <plugin>@claude-plugins-official --scope user
 `{"source":"url"|"github"|"npm", …}` 이면 **외부**다. 예: `frontend-design` 은 동봉,
 `modern-web-guidance` · `figma` 는 외부다 `[코드]`.
 
-### `design` 플러그인을 아직 안 넣은 이유
+### `design` 플러그인 — **스킬 둘만 가져왔고 MCP 아홉은 안 켰다** (UD-8)
 
-`design` 은 스킬 일곱(`design-critique` · `accessibility-review` · `design-system` ·
-`design-handoff` · `ux-copy` · `user-research` · `research-synthesis`)을 주지만
-`.mcp.json` 에 **MCP 서버 9 개**가 들어 있다 `[코드]`:
+플러그인을 통째로 켜면 `.mcp.json` 의 **MCP 서버 9 개**가 따라온다 `[코드]`. 세어 보면:
 
-`slack` · `figma` · `linear` · `asana` · `atlassian` · `notion` · `intercom`, 그리고
-**`google calendar` · `gmail` 은 URL 이 빈 문자열이다.**
+| MCP | 이 프로젝트에서 |
+|---|---|
+| `figma` | **이미 커넥터로 켜져 있다** — 중복 |
+| `slack` · `asana` · `atlassian` · `linear` · `notion` · `intercom` | 쓸 자리가 없다 — 팀 이슈추적기·워크스페이스가 없다 |
+| `google calendar` · `gmail` | **URL 이 빈 문자열**이라 안 붙는다 |
 
-우리가 원한 것은 스킬 둘인데 대가로 인증이 필요한 서버 아홉이 매 세션 붙는다. 클라우드
-세션은 **MCP 로그인을 기다리는 동안 유휴로 세어 만료**될 수 있다 `[문헌]`. 이 플러그인은
-**Apache 2.0 인지 확인되지 않았으니** 복제하지 말고, 넣기로 하면 설정 스크립트에:
+**플러그인이 들고 오는 MCP 만 끄는 설정 키는 없다** — `disabledMcpjsonServers` 는
+**프로젝트 `.mcp.json`** 대상이다 `[문헌]`. 그래서 스킬 둘만 복제했다(2 절).
 
-```bash
-claude plugin marketplace add anthropics/knowledge-work-plugins
-claude plugin install design@knowledge-work-plugins --scope user
-```
+필요한 MCP 가 생기면 **플러그인 묶음이 아니라 커넥터 하나**로 켠다 — Figma · Flourish ·
+MDN 이 그렇게 켜져 있다(1 절).
+
+### claude.ai 에서 켠 플러그인은 여기 오나 — **이 세션에는 안 왔다** `[테스트]`
+
+`~/.claude/plugins/synced/` 에 버킷이 있는데 **비어 있고 날짜가 컨테이너가 뜬 날**이다.
+동기화는 **세션이 시작될 때** 한 번 돌므로, 그 뒤에 claude.ai 에서 켠 것은 **그 세션에
+안 내려온다.** 새 세션이면 내려올 수 있고, v2.1.273 이상은 `claude plugin list` 에
+`synced` 로 뜬다 `[문헌]` (여기는 2.1.274).
+
+**복제한 스킬은 이 문제가 아예 없다** — 저장소에 있으니 클론하는 순간 있다.
+
+### 「MCP 로그인 대기 중 유휴」가 무슨 뜻인가 — 재로그인 요청이 아니다
+
+공식 문서 그대로 `[문헌]`:
+
+> A session counts as inactive while it waits for you to approve an MCP connector
+> tool call or to sign in to an MCP server, and it can expire during that wait.
+> Reopen the session from claude.ai/code to provision a fresh VM with your
+> conversation history restored.
+
+즉 **승인·로그인을 기다리는 시간이 「활동」으로 안 세어져** 비활동 타이머가 돈다는 뜻이다.
+오래 방치하면 **VM 이 회수**되고, 다시 열면 **대화 기록은 살아 있는 채 새 VM** 이 뜬다.
+사람이 옆에 있으면 몇 초 만에 승인하니 실제 위험은 낮다 — **자리를 비운 사이**가 문제다.
+회수되면 그때 돌던 백그라운드 작업(서브에이전트·셸 명령)은 복구되지 않는다.
