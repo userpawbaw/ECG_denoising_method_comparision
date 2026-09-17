@@ -31,6 +31,7 @@ UI 결정이 연구 결론에 영향을 주면(예: 그림 색이 바뀌면 보�
 | `docs/ui/12_incidents.md` | UO 기록 |
 | `demo/ui/layout_b.html` | **3 단계 레이아웃 시안 — 경로 B**(직접 구현). 갤러리에서 열린다 |
 | `docs/ui/02_benchmark.md` | **레퍼런스 분석** — 표시 규약 · 비교 UI · 레이아웃 · 타이포 · 반응형, 그리고 **빌리지 않기로 한 것** |
+| `docs/ui/03_external_system_review.md` | **외부 UI/UX 시스템 이식 검토** — `userpawbaw/ecg-gui-design-review` 의 오케스트레이션 계층을 판정하고, 이식 시 충돌 지점과 **도구 조합 최종 추천**을 적었다. 사용자 결정 대기 |
 
 네 기록 파일이 모두 있다.
 
