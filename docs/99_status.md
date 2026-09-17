@@ -766,8 +766,8 @@ Routine 은 **깨울 일이 있을 때만 켠다.**
 > 없는 그 학습은 되살아나지 않는다.
 
 ```
-지금 것  trig_01Gjws8KnUfSZ1uGP7yNGPD6   # D-30 1번. **켜져 있다.** 매시 :05
-예전 것  trig_01FmVcrnqGyQSQoMdG6v5Hbx   # 꺼진 채로 둔다 — 아래 참조
+지금 것  trig_01Gjws8KnUfSZ1uGP7yNGPD6   # 이 세션에 묶임. **꺼져 있다.** 매시 :05
+예전 것  trig_01FmVcrnqGyQSQoMdG6v5Hbx   # 다른 세션에 묶임 + 낡은 대기열. 꺼진 채로 둔다
 
 켜기/끄기  update_trigger(trigger_id=..., enabled=true|false,
                          name="... — 대기 중")
@@ -786,8 +786,8 @@ Routine 은 **깨울 일이 있을 때만 켠다.**
 
 이름 뒤의 **"— 대기 중"** 이 목록에서 상태를 바로 보이게 하는 표식이다.
 
-**지금은 켜 둔 상태다** — **D-30 1 번**(D0 nofe 4 판, 약 2 시간)을 띄웠다.
-끝나면 대기로 되돌린다.
+**지금은 대기 상태다** — **D-30 이 1·2′ 둘 다 끝났다**(2026-09-15). 예정된
+무인 작업이 없다.
 
 > **Routine 의 프롬프트를 이 캠페인 것으로 갈아 끼웠다.** 예전 프롬프트에는
 > D-28 대기열이 들어 있었는데, 내 큐가 끝나 `idle` 이 되면 감시자가 **그 낡은
@@ -812,3 +812,43 @@ python3 scripts/watchdog.py            # 판정만
 python3 scripts/watchdog.py --report   # 그동안 무슨 일이 있었나
 python3 scripts/exp_is_current.py exp_a d1   # 이 실험이 지금 설정 그대로인가
 ```
+
+---
+
+## 10. 인수인계 — **대화에만 있던 것을 여기 옮긴다** (2026-09-15)
+
+이 절은 세션 컨텍스트가 압축·소실돼도 남아야 하는 것들이다. 아래를 제외한
+이 세션의 산출물은 **전부 저장소 안에 있다**(F-46~F-49 · O-30~O-33 ·
+`docs/15` §12·§13 · 보고서 5.7.1 · `.github/workflows/checks.yml` ·
+`configs/exp_nofe_d1_s{45,67}.yaml`).
+
+### 10.1 저장소 밖에만 있는 것
+
+| 무엇 | 어디 | 잃으면 |
+|---|---|---|
+| **시연 화면 아티팩트** | `https://claude.ai/artifact/8k1bdcp4EEGfRjj5Cvvnuh` | **링크가 사라진다.** `demo/ui/layout_b.html` 을 다시 올리면 되지만 **URL 이 바뀐다** — 휴대폰에서 눌러 보려고 만든 것이다 (`docs/ui/00_index.md` 참조) |
+| **watchdog Routine** | `trig_01Gjws8KnUfSZ1uGP7yNGPD6` (이 세션에 묶임, 꺼짐) | 새로 만들면 된다. 프롬프트 본문은 Routine 안에만 있다 |
+| `results/ext/nofe_d1/*/best.pt` 8 개 | **컨테이너 디스크에만** (`.gitignore:102` 가 sweep 체크포인트를 무시한다) | **이제 안 잃어도 된다** — ② 의 parquet 둘이 커밋돼 있어 숫자는 보존됐다. 체크포인트가 필요한 새 질문이 생기면 ①을 다시 돌려야 한다(8 판 ≈ 4 h) |
+| `results/screens/` 스크린샷 42 장 | gitignore | **재생성된다** — `python3 scripts/shoot_screens.py --all` |
+| scratchpad 의 중간 스크린샷·로그 | `/tmp/.../scratchpad/` | 재생성되거나, 결론이 이미 기록에 있다 |
+
+### 10.2 이 세션이 **범위를 벗어났다**
+
+원래 이 세션은 **UI/UX 개선만** 하기로 한 것이었고 연구(ECG 잡음 제거)는 별도
+세션 몫이었다. 그런데 사용자가 딥러닝 쪽 의문을 물으면서 **D-30 캠페인이 통째로
+여기서 돌았다** — 결과물 자체는 정상이고 기록도 규약대로 남았지만, **두 파트가
+한 세션에 섞였다.**
+
+> **다음부터: 세션의 주제와 다른 파트로 넘어갈 때 먼저 알린다.**
+> 「이건 연구 파트인데 여기서 할까, 다른 세션으로 옮길까」를 **작업 전에** 묻는다.
+> CLAUDE.md 「항상」에 한 줄로 올렸다.
+
+### 10.3 다음에 할 수 있는 것
+
+| 파트 | 다음 |
+|---|---|
+| **UI/UX** | 3 단계 **경로 A(Figma)** — 파일은 만들어 뒀다(`JfqoomCRqepHsDDpLkVlk5`). 경로 B 와 짝지어 사용자가 고른다 · 4 단계(실패 상태 화면 · 색각 검증) |
+| **UI/UX** | 시안에 아직 없는 것: **한 박동 렌즈 · 표 뷰 · 해상도 띠** (`docs/ui/01_system.md` 의 기능 대조표) |
+| 연구 | **D-30 은 닫혔다.** 3(PTB-XL)은 조건 불성립으로 발동 안 함 |
+| 연구 | D-28 미완: `results/ext/condpert` 가 4 판 중 3 판 (위 watchdog 절 참조) |
+| 연구 | `ui/palette.json` 의 방법별 다크 색이 아직 `null` — 다크 표면 기준으로 다시 골라야 한다 |
