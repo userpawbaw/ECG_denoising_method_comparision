@@ -80,7 +80,7 @@ MCP 레지스트리 검색 7 회 · 스킬 검색 4 회(결과 0) · 이 세션�
 | 3 | Data Storyteller · Flourish (D-003) | **△ 변형** | 여기서는 **`dataviz` 스킬이 이미 DATA 계층**이다 — `validate_palette.py` 의 원형이 거기서 나왔다(UD-1). 스토리 후보는 보고서 그림 S1~S6(`docs/34`) 에 있다. Flourish 는 OPTIONAL |
 | 4 | Chat / GitHub / Work 3 분할 (D-004) | **△ 변형** | 이 세션(Claude Code web)은 브레인과 실행이 **한 곳**이다 — Chromium·pytest·CI·아티팩트 발행이 다 있다. 둘로 접는다: **세션 ↔ GitHub**. handoff/return packet 형식은 세션 압축·인수인계(`99_status` §10)에 그대로 쓴다 — 그 부분은 채택 |
 | 5 | 작업 6 분류 라우팅 (D-005) | **✓ 채택 · 재접지** | 분류는 좋다. 도구 열은 **전부 다시 쓴다**(6·7 절) |
-| 6 | F/D/O/R + CASE (D-006) | **✓ 채택 · 변형** | **R 은 새 종류**다 → `UR-n` (`docs/ui/13_ai_collaboration.md`). CASE 는 링크. **ID 충돌**: 외부 `F-001`~`F-003`, `D-001`~`D-006`, `O-001`, `R-001`~`R-005` 는 연구 파트 번호와 겹친다 → 들여온다면 전부 `UF/UD/UO/UR`. 검사기는 **하나만** — `check_records.py` 확장. Python 저장소에 Node 검사기를 두 번째로 들이지 않는다 |
+| 6 | F/D/O/R + CASE (D-006) | **✓ 채택 · 변형** | **R 은 새 종류**다 → `UR-n` (가칭 `13_ai_collaboration.md`). CASE 는 링크. **ID 충돌**: 외부 `F-001`~`F-003`, `D-001`~`D-006`, `O-001`, `R-001`~`R-005` 는 연구 파트 번호와 겹친다 → 들여온다면 전부 `UF/UD/UO/UR`. 검사기는 **하나만** — `check_records.py` 확장. Python 저장소에 Node 검사기를 두 번째로 들이지 않는다 |
 | 7 | 증거 레벨 L0~L4 | **✓ 채택** | 「태그는 출처 축, L 은 깊이 축」이라는 구분이 정확하다. 매핑: **L2 = `shoot_screens.py`**, **L3 = `test_demo_screens.py`**(Playwright), **L4 = 노트북 1920×1080 실기**(UD-1 규격) |
 | 8 | Motion Scorecard 10 항 | **✓ 채택** | 비교 도구로만. 「data-integrity critical FAIL 은 총점 무관」 조항 포함 |
 | 9 | 03 §2 스윕 계약 · docs/21 §7.9 | **✗ 낡았다** | 외부: 「선단 glow 는 후보, blanket 승인 아님」「페이드는 지우기 경계에만」. 여기: **UF-4 로 둘 다 구현·실측** — 페이드 + 선단 톤업, 알파 가중 프로브로 측정. 그대로 옮기면 **출하된 것을 미승인으로 되돌린다.** 계약을 UF-4 기준으로 다시 쓴다 |
@@ -292,8 +292,8 @@ Anthropic 자체 것을 못 봤다.
 | 1 | **UD-5** — 이 문서를 근거로 ①②③ 의 답과 이식 범위를 적는다 | `docs/ui/10_decisions.md` |
 | 2 | 브랜치 정리(②) | 합쳐진 브랜치 · D 번호 이관 표시 |
 | 3 | `docs/ui/00_index.md` 에 **6 분류 라우팅 · L0~L4 · 구역표** · CLAUDE.md 한 줄 | 진입점 |
-| 4 | **UR** 문서 + `check_records.py` 확장 — UR 필수 절(AI 가 내놓은 것 / 사람이 문제 삼은 것 / 검증 / **재사용 규칙**) · 스킬 provenance · **`SCREENS`→UD 유도**(4-D) | `docs/ui/13_ai_collaboration.md` · 검사 |
-| 5 | 외부 01+02+03 → `docs/ui/04_creative_data_motion.md`(스윕 계약은 UF-4 기준) · 04+08 → `05_validation.md` · 05+06+07+09 → `06_tools.md`(6·7 절 표) | 문서 셋 |
+| 4 | **UR** 문서 + `check_records.py` 확장 — UR 필수 절(AI 가 내놓은 것 / 사람이 문제 삼은 것 / 검증 / **재사용 규칙**) · 스킬 provenance · **`SCREENS`→UD 유도**(4-D) | 가칭 `13_ai_collaboration.md` · 검사 |
+| 5 | 외부 01+02+03 → 가칭 `04_creative_data_motion.md`(스윕 계약은 UF-4 기준) · 04+08 → `05_validation.md` · 05+06+07+09 → `06_tools.md`(6·7 절 표) | 문서 셋 |
 | 6 | `.claude/skills/` — `frontend-design`(vendored · SHA) · `expo-ui-art-director` · `motion-review` · `ecg-ui-validator` | 스킬 넷 + provenance |
 | 7 | `design` 플러그인 · MDN MCP 켜기 → 첫 사용을 **UR-1** 로 | 도구 셋 |
 | 8 | 첫 실전: **4 단계(실패 상태 화면 · 색각 검증)** 를 새 라우팅으로 돌려 본다 — 시스템의 첫 시운전 | UF/UD + L2/L3 근거가 붙은 첫 기록 |
