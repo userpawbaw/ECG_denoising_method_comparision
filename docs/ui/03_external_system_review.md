@@ -23,7 +23,7 @@
 | **그대로 옮기면 충돌하는 곳 넷** | ① 기술 기준선(React vs **무빌드 — UD-1 과 정면 충돌**) · ② 기록 ID(외부 `F-001`~ 이 연구 파트 `F-1..49` 와 **충돌**) · ③ 모션 계약(외부 문서는 이 저장소가 **이미 구현·실측한 UF-4 보다 뒤**에 있다) · ④ 도구 목록(외부가 「설치 확인」한 8 개 중 이 세션에 켜진 것은 **Figma 하나**) |
 | **시스템 자체의 상태** | **설계됐고 시운전은 안 됐다.** 기록 15 건의 근거 태그가 전부 `[대화]`·`[추론]`·`[커밋]`·`[코드]`·`[플러그인]` 이고 **`[캡처]`·`[런타임]`·`[테스트]` 가 0** 이다 `[측정]`. 검증 계층(04·08)이 한 번도 작동한 적이 없다 — CASE 「한계」가 이를 인정한다 |
 | **도구 조합** | 외부안이 창의 발산에 지목한 「Creative Production · Product Design」은 이 조직 카탈로그에 **없다**. 그 역할에는 외부안이 놓친 **Anthropic 공식 `frontend-design`** 이 맞다. 검증 역할에는 공식 **`design`** 플러그인(critique · accessibility). 최종 조합은 7 절 |
-| **이식 전 사용자 결정 셋** | 어느 시안이 박람회 화면인가 · 브랜치 둘을 어떻게 합치나 · 외부 기록을 옮기나 인용하나 — 8 절 |
+| **이식 전 사용자 결정 셋** | 어느 시안이 박람회 화면인가 · 브랜치 둘을 어떻게 합치나 · 외부 기록을 옮기나 인용하나 — 8 절. **→ 결정됨: 둘 다 · 합친다 · 인용 (UD-5)** |
 
 ---
 
@@ -80,7 +80,7 @@ MCP 레지스트리 검색 7 회 · 스킬 검색 4 회(결과 0) · 이 세션�
 | 3 | Data Storyteller · Flourish (D-003) | **△ 변형** | 여기서는 **`dataviz` 스킬이 이미 DATA 계층**이다 — `validate_palette.py` 의 원형이 거기서 나왔다(UD-1). 스토리 후보는 보고서 그림 S1~S6(`docs/34`) 에 있다. Flourish 는 OPTIONAL |
 | 4 | Chat / GitHub / Work 3 분할 (D-004) | **△ 변형** | 이 세션(Claude Code web)은 브레인과 실행이 **한 곳**이다 — Chromium·pytest·CI·아티팩트 발행이 다 있다. 둘로 접는다: **세션 ↔ GitHub**. handoff/return packet 형식은 세션 압축·인수인계(`99_status` §10)에 그대로 쓴다 — 그 부분은 채택 |
 | 5 | 작업 6 분류 라우팅 (D-005) | **✓ 채택 · 재접지** | 분류는 좋다. 도구 열은 **전부 다시 쓴다**(6·7 절) |
-| 6 | F/D/O/R + CASE (D-006) | **✓ 채택 · 변형** | **R 은 새 종류**다 → `UR-n` (가칭 `13_ai_collaboration.md`). CASE 는 링크. **ID 충돌**: 외부 `F-001`~`F-003`, `D-001`~`D-006`, `O-001`, `R-001`~`R-005` 는 연구 파트 번호와 겹친다 → 들여온다면 전부 `UF/UD/UO/UR`. 검사기는 **하나만** — `check_records.py` 확장. Python 저장소에 Node 검사기를 두 번째로 들이지 않는다 |
+| 6 | F/D/O/R + CASE (D-006) | **✓ 채택 · 변형** | ~~**R 은 새 종류**다~~ **정정(UD-5)**: R 은 연구 파트에 **이미 있다** — `docs/23_ai_review.md` R-1~5, D-34(옛 D-31). `19` §1 제목 「세 종류」에 속아 표를 안 세었다. UR 은 그 다섯 절을 따른다 → `docs/ui/13_ai_collaboration.md`. CASE 는 링크. **ID 충돌**: 외부 `F-001`~`F-003`, `D-001`~`D-006`, `O-001`, `R-001`~`R-005` 는 연구 파트 번호와 겹친다 → 들여온다면 전부 `UF/UD/UO/UR`. 검사기는 **하나만** — `check_records.py` 확장. Python 저장소에 Node 검사기를 두 번째로 들이지 않는다 |
 | 7 | 증거 레벨 L0~L4 | **✓ 채택** | 「태그는 출처 축, L 은 깊이 축」이라는 구분이 정확하다. 매핑: **L2 = `shoot_screens.py`**, **L3 = `test_demo_screens.py`**(Playwright), **L4 = 노트북 1920×1080 실기**(UD-1 규격) |
 | 8 | Motion Scorecard 10 항 | **✓ 채택** | 비교 도구로만. 「data-integrity critical FAIL 은 총점 무관」 조항 포함 |
 | 9 | 03 §2 스윕 계약 · docs/21 §7.9 | **✗ 낡았다** | 외부: 「선단 glow 는 후보, blanket 승인 아님」「페이드는 지우기 경계에만」. 여기: **UF-4 로 둘 다 구현·실측** — 페이드 + 선단 톤업, 알파 가중 프로브로 측정. 그대로 옮기면 **출하된 것을 미승인으로 되돌린다.** 계약을 UF-4 기준으로 다시 쓴다 |
@@ -161,6 +161,8 @@ merge-base `be3c7d8` 에서 그 브랜치 +11, 이 브랜치 +32. 그 브랜치�
 기준을 정해야 한다 — `test_ui_records_use_their_own_numbering` 이 막으려는 것과 같은
 종류의 단절이다.
 
+**→ 합쳤다** (UD-5 ②, 병합 커밋 `56c824f`): A 의 D-29·30·31 → **D-32·33·34**, A 의 F-46 → **F-50**. 각 항목에 「번호 이력」을 남겼고 전사 `docs/41` 은 글자 그대로다. A 가 커밋한 `condpert8` 학습 둘은 완주 확인(history 47/47 · 44/44) 뒤 들어왔다.
+
 ---
 
 ## 5. 이 세션이 외부 시스템에 더 줄 수 있는 것
@@ -194,7 +196,7 @@ INSTALL / OPTIONAL / REDUNDANT / REJECT 를 그대로 쓴다.
 
 | 후보 | 실측 | 판정 |
 |---|---|---|
-| Flourish (외부안) | MCP 존재 · 미설치 · `list_templates` / `create_visualisation` / `update_visualisation_data_bindings` | OPTIONAL — 인터랙티브 후보 탐색이 실제로 필요할 때. 값 왜곡 검사(외부 `02` §6 REJECT 기준) 전제 |
+| Flourish (외부안) | MCP 존재 · 미설치 · `list_templates` / `create_visualisation` / `update_visualisation_data_bindings` | ~~OPTIONAL — 인터랙티브 후보 탐색이 실제로 필요할 때~~ **→ 스토리 초안 도구로 올림 (UR-1)** — 사용자가 잡았다: 우리에게 빈 것은 차트가 아니라 **순서·전환**이고 `dataviz` 는 그것을 주지 않는다. 외부 R-003 이 경고한 자리에서 같은 실수를 했다. 원판정은 지우지 않는다. 값 왜곡 검사 전제는 그대로 |
 | **`dataviz`** (세션 내장) | **이미 이 저장소의 DATA 계층** — 색 검증기의 원형(UD-1), 형태 휴리스틱·마크 규격·팔레트 검증 | **KEEP** (이미 쓴다) |
 | Anthropic `data` 플러그인 | create-viz · build-dashboard · SQL/웨어하우스 지향 | REDUNDANT |
 | 보고서 그림 S1~S6 | `docs/34_visual_plan.md` 가 이미 「가장 설득력 있는 그림」을 골랐다(S5 crossover) | 스토리 후보의 **출발점** |
@@ -255,15 +257,15 @@ INSTALL / OPTIONAL / REDUNDANT / REJECT 를 그대로 쓴다.
 | 역할 | 1 순위 | 보조 (필요할 때) | 쓰지 않는다 |
 |---|---|---|---|
 | **CREATIVE** | **`frontend-design`**(공식 · 로컬 · SHA 고정) + `expo-ui-art-director`(재작성) | `algorithmic-art`(attract 모티프) | Creative Production · Product Design(카탈로그에 없음) |
-| **DATA** | **`dataviz`**(내장) + 보고서 그림 | Flourish MCP | `data` 플러그인 |
+| **DATA** | **`dataviz`**(내장) + **Flourish — 스토리 초안**(UR-1 로 올림) + 보고서 그림 | — | `data` 플러그인 |
 | **MOTION** | `motion-review`(재작성 · UF-4 반영) + **MDN MCP** | `modern-web-guidance` · `figma-use-motion`(경로 A) | Context7 · Motion AI Kit |
 | **VALIDATION** | **`design`** 플러그인(critique · accessibility) + `validate_palette.py` + `test_demo_screens.py` | ui-ux-pro-max **검색만**(세션 밖) | design-taste(흡수 뒤) · Canva |
 | **IMPLEMENTATION / QA** | 이 세션 + `pytest -m screens` + CI 스크린샷 + 아티팩트 | Playwright 플러그인(대화형) | TinyFish · browser-use · Vercel |
 | **RESEARCH** | WebSearch/WebFetch + `chrome --screenshot` | — | Mobbin(UD-1) · Magic Patterns |
 | **DESIGN SYSTEM** | **Figma MCP**(연결됨) + `ui/palette.json` | `figma` 플러그인 | HyperFrames |
 
-**실제로 새로 들이는 것은 셋뿐이다**: `frontend-design`(project-local) ·
-`design` 플러그인(카탈로그에서 켠다) · MDN MCP(authless). 나머지는 이미 있거나 안 쓴다.
+**실제로 새로 들이는 것은 넷이다**: `frontend-design`(방법만 로컬 스킬에 — 원문은 「All rights reserved」) ·
+`design` 플러그인(카탈로그에서 켠다) · MDN MCP(authless) · **Flourish**(커넥터, UR-1). **현행 대장은 `docs/ui/04_tools.md` 다** — 이 절은 그날의 판정이다. 나머지는 이미 있거나 안 쓴다.
 **설치는 UD-5 뒤에**, 외부 `07` §4 절차(inventory → gap → 후보 → 중복 → scripts/권한 →
 분류 → local 먼저) 그대로. 첫 사용 결과를 **UR-1** 로 남긴다.
 
@@ -281,11 +283,15 @@ Anthropic 자체 것을 못 봤다.
 | ② | **브랜치** — `b5wjvj`(`docs/40~42` · 소급 D-29~31) 와 이 브랜치(`docs/ui` · D-30 캠페인) | 합친다 / 이 브랜치를 기준으로 40~42 만 가져온다 / 둔다 | **합친다** — 연구 파트 D 번호가 갈라진 채 두면 커밋 역추적이 끊긴다. 충돌하는 D-29~31 은 한쪽을 다시 번호 매기고 이관 표시 |
 | ③ | **외부 기록을 옮기나 인용하나** | UR 새로 시작 + CASE 링크 + 외부 기록은 인용만 / 외부 F/D/O/R 15 건을 UF/UD/UO/UR 로 번호 바꿔 들여온다 | **전자** — 외부 기록의 근거가 그 저장소의 대화이고 여기서 재검증할 수 없다. 들여온다면 전부 `[재구성]` 이 붙어야 하고, 그러면 값이 떨어진다. 그 저장소가 그 대화의 canonical 기록으로 남는 것이 맞다 |
 
+**답 (2026-09-17, UD-5)**: ① 둘 다 · ② 합친다 · ③ 인용. 그리고 사용자가 넷째를 더했다 — UI 문서 위치 → `docs/ui/` 유지, 외부 문서는 복제하지 않는다(UD-5 ④).
+
 ---
 
 ## 9. 결정 뒤 이식 순서 — 초안
 
 앞 단계 산출물이 있을 때만 다음으로 (UD-1 의 순서 규칙과 같다).
+
+**진행 (2026-09-17)**: 1 UD-5 ✅ · 2 병합 `56c824f` ✅ · 3 `00_index` 운영 절 ✅ · 4 `13`(UR-1) + `check_records` 확장 ✅ · 5 는 UD-5 ④ 「체계만」으로 **축소** — 외부 문서 복제 대신 `00_index` 운영 절 + `04_tools` · 6 로컬 스킬 셋 ✅(`frontend-design` 은 방법만) · 7 `design` · MDN · Flourish 는 **사용자가 켠다** · 8 첫 시운전 → 다음.
 
 | 순 | 무엇 | 산출물 |
 |---:|---|---|

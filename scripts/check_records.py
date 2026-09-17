@@ -362,6 +362,35 @@ def main() -> int:
             print("  ✗", b)
         problems += r_bad
 
+    # UI 파트의 UR 은 R 과 같은 규격이다 (docs/ui/00_index.md · UD-5). 필수 절 넷.
+    urp = d / "ui" / "13_ai_collaboration.md"
+    if urp.exists():
+        ur_required = ("### AI 가 내놓은 것", "### 사람이 문제 삼은 것",
+                       "### 검증 방법과 결과", "### 재사용 규칙")
+        ur_items = _blocks(urp, r"UR-\d+")
+        ur_bad = [f"{rid}: {h[4:]} 없음" for rid, body in ur_items
+                  for h in ur_required if h not in body]
+        print("\n[UI AI 검토] ui/13_ai_collaboration.md — %d 항목" % len(ur_items))
+        for b in ur_bad:
+            print("  ✗", b)
+        problems += ur_bad
+
+    # 로컬 스킬은 출처가 대장에 있어야 한다 (docs/ui/04_tools.md 2 절). 외부 검사기는
+    # 문서 전체 문자열 포함으로 봤는데 그러면 아무 데나 이름이 있어도 통과한다 —
+    # **2 절 표 안**에서만 찾는다.
+    skills = ROOT / ".claude" / "skills"
+    ledger_path = d / "ui" / "04_tools.md"
+    if skills.exists():
+        ledger = ledger_path.read_text() if ledger_path.exists() else ""
+        sec = ledger.split("\n## 2.", 1)[1].split("\n## ", 1)[0] if "\n## 2." in ledger else ""
+        dirs = sorted(s for s in skills.iterdir() if s.is_dir() and (s / "SKILL.md").exists())
+        sk_bad = [f".claude/skills/{s.name}: docs/ui/04_tools.md 2 절 표에 출처가 없다"
+                  for s in dirs if f"| `{s.name}` |" not in sec]
+        print("\n[스킬 출처] .claude/skills — %d 개" % len(dirs))
+        for b in sk_bad:
+            print("  ✗", b)
+        problems += sk_bad
+
     print("\n" + "=" * 60)
     if problems:
         print(f"규약 미충족 {len(problems)}건:")

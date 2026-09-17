@@ -1037,10 +1037,41 @@ def test_ui_records_use_their_own_numbering():
     """
     import re as _re
     for path, good, bad in ((UI_DOCS / "10_decisions.md", "UD-", r"^## D-\d"),
-                            (UI_DOCS / "11_findings.md", "UF-", r"^## F-\d")):
+                            (UI_DOCS / "11_findings.md", "UF-", r"^## F-\d"),
+                            (UI_DOCS / "13_ai_collaboration.md", "UR-", r"^## R-\d")):
         if not path.exists():
             continue
         body = path.read_text(encoding="utf-8")
         assert good in body, f"{path.name} 에 {good} 기록이 없다"
         stray = _re.findall(bad, body, _re.M)
         assert not stray, f"{path.name} 이 연구 파트 번호를 쓴다: {stray}"
+
+
+# 화면 레지스트리에서 **없는 UD** 를 유도한다 (UD-5 · docs/ui/03 4-D).
+# 외부 시스템은 registry 가 없어 「없는 기록」 탐지를 포기했는데, 여기는
+# `scripts/_screens.py` 의 SCREENS 가 그 registry 다 — 연구 파트가 `MODELS` 에서
+# D 의무를 유도하는 것과 같은 장치. 파트 이전에 만든 화면은 설계 문서를 여기
+# 적는다 — **빈칸 대신 이유**다. 새 화면이 UD 없이 들어오면 여기서 잡힌다.
+SCREENS_BEFORE_THE_PART: dict[str, str] = {
+    "mockup_expo.html": "docs/31_demo_design_review.md — UI 파트 이전의 박람회 시안",
+    "cards/A_monitor.html": "docs/33_card_design_samples.md — 카드 세 안",
+    "cards/B_notebook.html": "docs/33_card_design_samples.md",
+    "cards/C_cardnews.html": "docs/33_card_design_samples.md",
+    "ui/layout_b.html": "UD-1 §6.3 이 «경로 B» 로 **계획만** 적었다. 구현 결정(미감 개선 "
+                        "①~⑤ · 스윕 페이드/톤업)의 UD 는 **기록 없음** — UF-4 · UF-5 가 "
+                        "그 뒤의 발견이다. 다음 갈림길부터는 UD 를 먼저 적는다",
+}
+
+
+def test_every_registered_screen_has_a_decision():
+    """SCREENS 의 화면은 UD 가 이름을 부르거나, 위 표에 이유가 있어야 한다."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from _screens import SCREENS  # noqa: E402
+    decisions = (UI_DOCS / "10_decisions.md").read_text(encoding="utf-8")
+    missing = [s.name for s in SCREENS
+               if s.name not in decisions and s.name not in SCREENS_BEFORE_THE_PART]
+    assert not missing, (
+        f"화면 레지스트리에 UD 없는 화면: {missing} — docs/ui/10_decisions.md 에 그 화면을 "
+        "올리기로 한 결정을 적거나, 파트 이전 화면이면 SCREENS_BEFORE_THE_PART 에 이유를 적을 것")
+    stale = sorted(k for k in SCREENS_BEFORE_THE_PART if k not in {s.name for s in SCREENS})
+    assert not stale, f"레지스트리에 없는 화면이 예외표에 남았다: {stale}"
