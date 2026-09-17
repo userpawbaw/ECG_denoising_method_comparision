@@ -46,54 +46,55 @@
 
 ### 2.0 다음 두 판 — 순서대로
 
-**분담은 그대로다** — Colab 이 seed 0~3, 이 컨테이너가 4·5.
-**한 seed 의 모든 arm 은 반드시 같은 환경에서** 돈다(F-41). 그 대가로 환경이
-seed 묶음과 겹쳐 **환경×arm 상호작용을 못 가르는데**(F-44), 이 컨테이너가
-`overlap` 판으로 그것을 따로 재고 있다.
+> **받은 것**: 깊이(D-27 · F-44) · 조건화(D-28 2 · **F-45**) · 블록(D-28 5).
+> 셋 다 K=6 으로 닫혔다. 아래가 남은 둘이다.
 
-먼저 한 번(세션마다):
-
+```python
+import os
+from google.colab import userdata
+os.environ["HF_TOKEN"] = userdata.get("HF_TOKEN")     # 🔑 Secrets 에 넣어 둔 것
+```
 ```bash
 !pip -q install -U huggingface_hub
-!huggingface-cli whoami          # 토큰 확인. 없으면 §4.2 를 본다
+!hf auth whoami || huggingface-cli whoami
 ```
 
-**① D-28 2 번 조건화** (arm 2 개 × seed 0~3 = 8 판)
+**분담은 그대로다** — Colab 이 seed 0~3, 이 컨테이너가 4·5.
+
+**① D-28 3 번 2×2** (4 arm × seed 0~3 = 12 판) — **이쪽이 우선이다**
 
 ```bash
-!python scripts/run_seed_sweep.py --arms m06_l1,m06_cond --seeds 0-3 \
-    --out /content/ecgdn_sweep/cond \
+!python scripts/run_seed_sweep.py --stage l6cond --seeds 0-3 \
+    --out /content/ecgdn_sweep/l6cond \
     --hf-repo userpaw/ecg_data --hf-every 10
-!python scripts/analyze_seed_sweep.py /content/ecgdn_sweep/cond
+!python scripts/analyze_seed_sweep.py /content/ecgdn_sweep/l6cond
 ```
 
-이 컨테이너 몫(seed 4·5)은 끝났고 **총합 +0.801 · 15~20 대역 +2.51** 이다.
-K=6 이 되면 **손실 이후 처음으로 유의가 나올 만한 판**이다.
+네 칸은 `m06_l1`(둘 다 없음) · `m06_l6`(손실만) · `m06_cond`(조건만) ·
+`m06_cond_l6`(둘 다). 묻는 것은 **「조건화가 있으면 `L6` 의 이득이 줄어드는가」**
+이고, 그것이 **동등성 주장**이라 마진을 사전에 선언해 뒀다 — **|Δ| < 0.5 dB**.
+동등성은 차이보다 비싸서 **K=8 이 필요하다.** 이 컨테이너 몫(seed 4·5)에서는
+상호작용 −0.883 이 나왔지만 그 seed 들에서 과장되는 값이라 판정 전이다.
 
-**② D-28 5 번 블록** (arm 3 개 × seed 0~3 = 12 판)
+**② D-28 4 번 조건 교란** (1 arm × seed 0~3 = 4 판)
 
 ```bash
-!python scripts/run_seed_sweep.py --stage blocks --seeds 0-3 \
-    --out /content/ecgdn_sweep/blocks \
+!python scripts/run_seed_sweep.py --arms m06_cond --seeds 0-3 \
+    --out /content/ecgdn_sweep/condpert8 \
+    --cond-perturb --cond-offsets=-8,-5,-2,2,5,8 \
     --hf-repo userpaw/ecg_data --hf-every 10
-!python scripts/analyze_seed_sweep.py /content/ecgdn_sweep/blocks
 ```
 
-**폭을 고정하고 깊이만 늘린다 — 파라미터가 함께 는다.** D-27 과 짝이다.
+> `--cond-offsets` 앞의 **`=` 를 빼면 안 된다.** 값이 `-` 로 시작해서
+> argparse 가 옵션으로 읽는다.
 
-| arm | 레벨당 블록 | 폭 | params |
-|---|---:|---|---:|
-| `m06_l1` (기준) | 1 | (24,32,48,64,96) | 976,489 |
-| `m06_l1_nb2` | 2 | **그대로** | 1,266,505 (×1.30) |
-| `m06_l1_nb4` | 4 | **그대로** | 1,846,537 (×1.89) |
-
-F-44 의 손해가 **「깊어서」인지 「좁아서」인지** 를 가른다. 사전 예측은
-`docs/21` D-28 — **저 SNR 손해가 사라질 것으로 본다. 남으면 깊이 자체가
-저 SNR 에 해롭다는 뜻이고, 그쪽이 더 흥미롭다.**
+**학습을 다시 하는 게 아니라** 같은 가중치를 **틀린 조건값**으로도 평가한다.
+묻는 것은 「조건 오차 X dB → 손실 Y dB」이고, 거기에 F-13 의 추정기 편향
+(**+7.59 dB, 과대추정**)을 대입하면 추정 SNR 의 실무 비용이 나온다.
+격자를 ±8 까지 넓힌 이유가 그 지점이다.
 
 **끊기면 같은 명령을 그대로 다시 실행한다.** `--hf-repo` 를 주면 `/content` 가
-비어 있어도 된다 — 시작할 때 받아 와서, 끝난 판은 건너뛰고 끊긴 판은 올라가
-있던 epoch 에서 이어 간다(**§4.2**). Drive 를 쓰고 싶으면 §4.1.
+비어 있어도 된다(**§4.2**).
 
 ### 2.1 끝난 판 — D-27 깊이 (기록)
 
