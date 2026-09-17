@@ -102,6 +102,7 @@ L0 IDEA → L1 SOURCE(코드·명세) → **L2 STATIC**(`scripts/shoot_screens.p
 | 체계 | 외부 시스템 이식(UD-5) — 운영 절 · `04_tools` · UR · 검사 · 로컬 스킬 셋 | **✅ 끝** |
 | 도구 | 스킬·커넥터 들이기 (UD-7 · UD-8) | **✅ 끝** — 공식 스킬 셋(`frontend-design` · `design-critique` · `accessibility-review`)을 **Apache 2.0 이라 그대로 복제**했다. 설치·네트워크 불필요. **플러그인의 MCP 9 개는 안 켰다**(UD-8). Figma·Flourish·MDN 커넥터 켜짐 |
 | 시운전 | 두 시안 기준선 → 발산 7 → 검증 → 후보 넷 (UD-6) | **✅ 후보 확정 · 구현 전.** 1 순위 묶음 「계측기 + 한 숫자 + 렌즈 + 기울기」(`layout_b`) · 2 순위 attract(v2) |
+| 시운전 2 | `frontend-design` 으로 재질·색·서체 축 발산 (UD-9) | **✅ 후보 확정 · 구현 전.** UD-6 은 이 스킬이 실리기 전 판이었다. **먼저 UF-6 — 의도한 서체가 한 번도 실린 적이 없다**(한글 굵기 위계가 없다). 그 다음 「기록지 레인 · 흑연 데크 · 무채색 크롬」이 UD-6 #1 과 한 번에 간다 |
 
 **경로 B 를 눌러 볼 수 있다** — `https://claude.ai/artifact/8k1bdcp4EEGfRjj5Cvvnuh`
 (비공개. 휴대폰에서도 열린다. 뷰포트를 1280 으로 고정해 **설계된 폭 그대로**
