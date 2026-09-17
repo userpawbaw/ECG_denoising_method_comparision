@@ -100,6 +100,7 @@ L0 IDEA → L1 SOURCE(코드·명세) → **L2 STATIC**(`scripts/shoot_screens.p
 | 3 | 레이아웃 재설계 (경로 둘로 짝지어 비교) | **경로 B ✅** `demo/ui/layout_b.html` (미감 개선 ①~⑤ · 스윕 잔광/페이드 포함) · 경로 A(Figma) 착수 |
 | 4 | 실패 상태 화면 · 색각 이상 검증 | 대기 |
 | 체계 | 외부 시스템 이식(UD-5) — 운영 절 · `04_tools` · UR · 검사 · 로컬 스킬 셋 | **✅ 끝** |
+| 도구 | 발산 스킬·커넥터 들이기 (UD-7) | **✅ 끝** — 공식 `frontend-design` 을 **Apache 2.0 이라 `.claude/skills/` 에 그대로 복제**했다(설치·네트워크 불필요). Flourish·MDN 커넥터 켜짐. 플러그인 경로는 `04_tools.md` 6 절에 기록만 |
 | 시운전 | 두 시안 기준선 → 발산 7 → 검증 → 후보 넷 (UD-6) | **✅ 후보 확정 · 구현 전.** 1 순위 묶음 「계측기 + 한 숫자 + 렌즈 + 기울기」(`layout_b`) · 2 순위 attract(v2) |
 
 **경로 B 를 눌러 볼 수 있다** — `https://claude.ai/artifact/8k1bdcp4EEGfRjj5Cvvnuh`
@@ -140,4 +141,5 @@ python3 -m pytest tests/test_palette.py
 | **화면을 더 인상적으로 만들고 싶다** | `expo-ui-art-director` 로 발산 → **UD 먼저** → `ecg-ui-validator` 로 판정. 위 「운영」 절 |
 | **AI/도구의 제안이 판단을 바꿨다** | UR 후보 — `docs/ui/13_ai_collaboration.md` |
 | **새 도구·스킬을 들이고 싶다** | `docs/ui/04_tools.md` 3 절. 카탈로그를 **실제로** 검색한다(UR-1) |
+| **플러그인이 안 보인다** | `docs/ui/04_tools.md` 6 절 — 이 환경엔 `/plugin` UI 가 없다. **라이선스가 허락하면 스킬로 복제하는 것이 제일 낫다**(UD-7) |
 | **검사와 커밋을 한 줄로 잇는다** | `\| tail` 뒤에 `&&` 를 두지 않는다 — 종료 코드를 직접 받는다(UO-2) |

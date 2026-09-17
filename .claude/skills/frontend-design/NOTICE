@@ -1,0 +1,17 @@
+frontend-design
+Copyright Anthropic PBC.
+
+이 디렉터리의 `SKILL.md` 와 `LICENSE.txt` 는 Anthropic 의 공식 Claude Code 플러그인
+`frontend-design` 에서 **고치지 않고 그대로** 가져왔다 (Apache License 2.0).
+
+  출처   https://github.com/anthropics/claude-plugins-official
+         plugins/frontend-design/skills/frontend-design/
+  판     plugin.json version 1.1.0 · 마켓플레이스 판 1aa8f02ec832
+  받은 날 2026-09-17
+
+**고친 곳은 없다.** 이 프로젝트의 계약(구역 · 파형/축/단위 보존 · 무빌드 시연)은
+`docs/ui/00_index.md` 와 `.claude/skills/expo-ui-art-director` 에 따로 있고,
+LOW 구역에는 이 스킬을 쓰지 않는다 (UD-7).
+
+상류를 갱신할 때는 위 출처에서 두 파일을 다시 받아 덮고 이 파일의 「판·받은 날」을
+고친다. 고쳐 쓰게 되면 Apache 2.0 §4(b) 에 따라 **바꾼 파일에 바꿨다고 적는다.**

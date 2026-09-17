@@ -15,15 +15,15 @@
 | 역할 | 도구 | 상태 | 확인 | 무엇에 |
 |---|---|---|---|---|
 | **CREATIVE** 발산 | `expo-ui-art-director` | **로컬** | 2026-09-17 · 이 세션 | 5 개 이상 후보를 UD 「검토한 선택지」 형식으로 |
-| | 공식 `frontend-design` (`anthropics/claude-code` `plugins/frontend-design`) | **참조** — 원문은 「All rights reserved」(`LICENSE.md`)라 복제하지 않고 방법만 우리 말로 로컬 스킬에 담았다. 고정 SHA `68ac8bb` | 2026-09-17 · raw fetch | 2 패스(계획 → brief 대조 자기 비판) · 클리셰 목록 · 「대담함은 한 곳에」 |
+| | 공식 **`frontend-design`** | **로컬 (복제)** — `.claude/skills/frontend-design/`. **Apache 2.0** 이라 그대로 가져왔다(UD-7 추기). 플러그인 판은 안 쓴다 | 2026-09-17 · `diff -q` 동일 확인 `[테스트]` | 2 패스(계획 → brief 대조 자기 비판) · 클리셰 목록 · 「대담함은 한 곳에」 |
 | | `algorithmic-art` (세션 내장 스킬) | 켜짐 | 2026-09-17 | HIGH 구역 attract 의 ECG 모티프 실험 |
 | **DATA** 스토리 | `dataviz` (세션 내장 스킬) | 켜짐 | 2026-09-17 | 그리기 규격 · 팔레트 검증(`validate_palette.py` 의 원형) |
-| | **Flourish** (MCP 커넥터) | **켜야 함** — 레지스트리에 있음, 미연결 | 2026-09-17 · `SearchMcpRegistry` | **스토리 초안** — 한 문장 insight 마다 표현 후보를 빠르게 만든다. MCP 는 단일 시각화 생성·데이터 바인딩·설정 편집까지이고 **Stories(순서·전환)는 Flourish 편집기에서** 만든다 `[문헌]`. 결과는 무빌드 시연에 그대로 못 들어간다(외부 임베드) — 채택안은 Canvas/SVG 로 재구현하거나 내보낸다 |
+| | **Flourish** (MCP 커넥터) | **켜짐** — 사용자가 연결했다 | 2026-09-17 · 이 세션의 도구 목록 | **스토리 초안** — 한 문장 insight 마다 표현 후보를 빠르게 만든다. MCP 는 단일 시각화 생성·데이터 바인딩·설정 편집까지이고 **Stories(순서·전환)는 Flourish 편집기에서** 만든다 `[문헌]`. 결과는 무빌드 시연에 그대로 못 들어간다(외부 임베드) — 채택안은 Canvas/SVG 로 재구현하거나 내보낸다 |
 | **MOTION** | `motion-review` | **로컬** | 2026-09-17 | Scorecard 10 항 · 현행 스윕 계약(UF-4) |
-| | **MDN** (MCP, 무인증) | **켜야 함** | 2026-09-17 · 레지스트리 | CSS·Canvas API·호환성 사실 확인 |
+| | **MDN** (MCP, 무인증) | **켜짐** — 사용자가 연결했다 | 2026-09-17 · 이 세션의 도구 목록 | CSS·Canvas API·호환성 사실 확인 |
 | | `modern-web-guidance` (Google Chrome 플러그인) | 켜야 함 (선택) | 2026-09-17 · 카탈로그 | scroll-driven · view transitions · anchor 등 HIGH 구역 전환 |
 | **VALIDATION** | `ecg-ui-validator` | **로컬** | 2026-09-17 | KEEP/TUNE/REJECT · 증거 레벨 |
-| | **`design`** (Anthropic 플러그인: `design-critique` · `accessibility-review`) | **켜야 함** — 카탈로그에 있음, 미활성 | 2026-09-17 · `SearchPlugins` | 스크린샷 입력 → 위계·일관성 비평 · WCAG 2.1 AA |
+| | **`design`** (Anthropic 플러그인: `design-critique` · `accessibility-review`) | **보류** — 플러그인이 **MCP 서버 9 개**를 끌고 온다(§6). 사용자 판단 대기 | 2026-09-17 · `.mcp.json` 실측 `[코드]` | 스크린샷 입력 → 위계·일관성 비평 · WCAG 2.1 AA |
 | | `scripts/validate_palette.py` · `tests/test_demo_screens.py` | 켜짐 | 항상 | 정량 검증 — ΔE·명도대·색각 / 콘솔·넘침·색만으로 신원·reduced-motion·다크 |
 | | `ui-ux-pro-max` (`nextlevelbuilder/…` `15de38f`) | 참조 (선택) | 2026-09-17 · upstream HEAD 일치 | 패턴/안티패턴 **검색만**. 디자인 시스템 생성기는 안 쓴다(docs/22 §6 · UD-1). 스크립트는 세션 밖에서 |
 | | `design-taste` (`arez-xd/…` `a5c03fb`) | 참조 → 흡수 뒤 정리 | 2026-09-17 · upstream HEAD 일치 · **1 star** | motion·polish 참고 문서 두 개를 `02_benchmark` 에 흡수하면 의존을 끊는다 |
@@ -44,6 +44,7 @@ Mobbin(UD-1) · Magic Patterns · Canva(UI) · HyperFrames · Anthropic `data` �
 | `expo-ui-art-director` | 발산 — 후보 5 개 이상, UD 표 형식 | 외부 `ecg-gui-design-review` 의 동명 스킬(`62b65b1`) + 공식 `frontend-design` 의 방법(`68ac8bb`) | 경로를 이 저장소로, 팔레트는 `ui/palette.json` 을 통해서만, 시안 둘(v2 · `layout_b`) 표시 |
 | `motion-review` | 모션 후보 검토 | 외부 동명 스킬(`62b65b1`) + `03_MOTION_AND_POLISH` Scorecard | 스윕 계약을 **UF-4 현행**(지우기 경계 페이드 + 선단 톤업)으로. 알파 가중 측정 함정 명시 |
 | `ecg-ui-validator` | KEEP/TUNE/REJECT 판정 | 외부 `04_VALIDATION_AND_GUARDRAILS` + `ecg-ui-design` | 계약을 이 저장소 문서(`docs/21` §7 계열 · `02_benchmark`)로, 검증 명령을 우리 것으로 |
+| `frontend-design` | 발산의 방법 — 2 패스 · 클리셰 목록 · 「대담함은 한 곳에」 | **Anthropic 공식**, `anthropics/claude-plugins-official` `plugins/frontend-design/skills/frontend-design/` · 판 `1.1.0` / `1aa8f02ec832` · **Apache 2.0** | **아무것도 안 바꿨다** — `SKILL.md`·`LICENSE.txt` 바이트 단위 동일. 출처·판·「고친 곳 없음」은 같은 폴더 `NOTICE` 에 |
 
 외부 `project-capability-audit` 는 스킬이 아니라 아래 3 절이 됐다.
 
@@ -71,3 +72,64 @@ Mobbin(UD-1) · Magic Patterns · Canva(UI) · HyperFrames · Anthropic `data` �
 - **`data/arduino/`** — 개인 생체정보. Flourish · Figma · Canva 어디에도 올리지 않는다 `[사용자 지시]`.
 - 스토리 재료는 **집계 지표**(`results/` 의 요약 · 보고서 표)로 한정한다. 원 파형이 필요하면 D0 합성 또는 MIT-BIH 공개 기록만.
 - 프로젝트 공개는 사용자가 허용했다(「공개로 해도 상관없다」 `[사용자 지시]`) — 그래도 위 둘은 예외다.
+
+## 6. 플러그인을 어떻게 들이나 — 이 환경에는 `/plugin` UI 가 없다
+
+**결론부터: 우리는 플러그인을 안 쓴다.** `frontend-design` 은 **Apache 2.0** 이라
+`.claude/skills/frontend-design/` 에 그대로 복제했고, 그게 첫 세션부터 실리는 유일한
+방법이다 (UD-7 추기). 아래는 **다른 플러그인이 필요해질 때**를 위한 기록이다.
+
+근거와 기각한 안은 **UD-7**, AI 협업 교훈은 **UR-2**, 사고는 **UO-3**.
+
+### 무엇이 되고 무엇이 안 되나 `[테스트]`
+
+| 방법 | 마켓플레이스 등록 | 플러그인 설치 | **그 세션에 스킬이 실리나** |
+|---|---|---|---|
+| `.claude/settings.json` `extraKnownMarketplaces` | **✓** | — | — |
+| 같은 파일 `enabledPlugins` | — | **✗** | ✗ |
+| `SessionStart` 훅에서 `claude plugin install` | ✓ | ✓ (3.3 s) | **✗ — 훅은 스킬 목록 작성 뒤에 돈다** |
+| **클라우드 환경 설정 스크립트** | ✓ | ✓ | **✓ — Claude Code 가 뜨기 전에 돈다** |
+| **`.claude/skills/` 에 복제** (라이선스가 허락할 때) | — | — | **✓ · 설치도 네트워크도 필요 없다** |
+
+### 설정 스크립트를 쓴다면 — **사용자만 할 수 있다**
+
+claude.ai → 환경 설정 → **Setup script**. 끝나면 파일시스템이 스냅샷돼 이후 세션은 건너뛴다.
+
+```bash
+claude plugin marketplace add anthropics/claude-plugins-official
+claude plugin install <plugin>@claude-plugins-official --scope user
+```
+
+네트워크 접근 수준은 **Trusted** 여야 한다 — 기본값이고 `github.com` ·
+`raw.githubusercontent.com` 이 기본 허용 목록에 있다. **None** 이면 실패한다.
+로컬에서는 `/plugin install <plugin>@claude-plugins-official` 한 번이면 끝이다.
+
+### 확인
+
+`claude plugin list` 에 `… enabled` 가 뜨는 것은 **설치됐다**는 뜻이지
+**이번 세션이 그 스킬을 갖는다**는 뜻이 아니다 — 세션에게 직접
+「그 스킬이 지금 있나」를 물어야 한다 (UR-2 재사용 규칙 3).
+
+### 동봉이냐 외부냐 — 선언으로 되는 것의 경계
+
+마켓플레이스 항목의 `source` 가 `"./plugins/foo"` 같은 **상대 경로면 동봉**,
+`{"source":"url"|"github"|"npm", …}` 이면 **외부**다. 예: `frontend-design` 은 동봉,
+`modern-web-guidance` · `figma` 는 외부다 `[코드]`.
+
+### `design` 플러그인을 아직 안 넣은 이유
+
+`design` 은 스킬 일곱(`design-critique` · `accessibility-review` · `design-system` ·
+`design-handoff` · `ux-copy` · `user-research` · `research-synthesis`)을 주지만
+`.mcp.json` 에 **MCP 서버 9 개**가 들어 있다 `[코드]`:
+
+`slack` · `figma` · `linear` · `asana` · `atlassian` · `notion` · `intercom`, 그리고
+**`google calendar` · `gmail` 은 URL 이 빈 문자열이다.**
+
+우리가 원한 것은 스킬 둘인데 대가로 인증이 필요한 서버 아홉이 매 세션 붙는다. 클라우드
+세션은 **MCP 로그인을 기다리는 동안 유휴로 세어 만료**될 수 있다 `[문헌]`. 이 플러그인은
+**Apache 2.0 인지 확인되지 않았으니** 복제하지 말고, 넣기로 하면 설정 스크립트에:
+
+```bash
+claude plugin marketplace add anthropics/knowledge-work-plugins
+claude plugin install design@knowledge-work-plugins --scope user
+```

@@ -121,3 +121,50 @@ pytest 는 **1 failed, 580 passed** 였다 — `test_doc_cross_references_resolv
 
 「검사 통과 후 커밋」이라는 이 저장소의 전제가 한 커밋만큼 거짓이 된다. 그 위에
 다음 커밋이 쌓이면 어느 커밋부터 깨졌는지 역추적해야 한다.
+
+---
+
+## UO-3. `claude plugin uninstall` 이 **방금 만든 프로젝트 설정 파일을 비웠다**
+
+| | |
+|---|---|
+| 시점 | UD-7 검증 중 — 사용자 범위 설치를 원점으로 되돌리려다 |
+| 상태 | **되돌림** (다시 썼다). 잃은 것은 파일 하나와 몇 분 |
+
+### 무엇을 했나
+
+「프로젝트 설정만으로 되는가」를 재려고 **프로젝트 `.claude/settings.json` 을 먼저 쓰고**,
+그 다음 앞서 해 둔 사용자 범위 설치를 지우려고 이 둘을 돌렸다 `[로그]`:
+
+```
+claude plugin uninstall frontend-design@claude-plugins-official
+claude plugin marketplace remove claude-plugins-official
+```
+
+명령은 「Successfully uninstalled / removed」라고 답했다. 그런데 그 뒤 프로젝트 파일이
+이렇게 돼 있었다:
+
+```json
+{ "enabledPlugins": {}, "extraKnownMarketplaces": {} }
+```
+
+### 왜 일어났나
+
+`uninstall`·`marketplace remove` 는 **그 항목을 선언한 설정 파일을 찾아 거기서 지운다.**
+내가 방금 프로젝트 파일에 그 둘을 적어 두었으므로, 사용자 범위를 지우라고 한 명령이
+**프로젝트 파일**을 고쳤다. 「사용자 범위 설치를 지운다」와 「프로젝트 선언을 지운다」를
+같은 명령이 한다는 것을 몰랐다.
+
+커밋 전이라 `git checkout` 으로 되돌릴 수도 없었다 — **추적되지 않는 새 파일**이었다.
+
+### 조치
+
+순서를 뒤집었다 — **사용자 상태를 먼저 원점으로 돌리고, 그 다음 프로젝트 파일을 썼다.**
+그 뒤 검증은 정상으로 돌았다(UD-7 표).
+
+### 규칙으로 승급시킬 것
+
+> **`claude plugin` 의 지우는 명령은 프로젝트 설정 파일을 고칠 수 있다.**
+> 돌리기 전에 `.claude/settings.json` 이 **커밋돼 있는지** 보고, 아니면 먼저 커밋하거나
+> 사본을 떠 둔다. 이는 명판의 「산출물을 지울 때 — 새 것이 완성된 뒤에 교체한다」와
+> 같은 계열이고, **추적되지 않는 새 파일이 가장 약하다.**

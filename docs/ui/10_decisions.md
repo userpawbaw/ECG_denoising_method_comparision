@@ -448,7 +448,7 @@ SSE 엔드포인트를 못 찾는 **예상된 상태**여서 그 패턴만 좁�
 | 가칭 `04_tools.md` — 도구·스킬 대장(역할 · 상태 · 고정 SHA · **확인한 환경·날짜**) | `UX-YYYYMMDD-NN` 실험 번호 (UD 안의 절로) |
 | 가칭 `13_ai_collaboration.md` — **UR**. 절은 `docs/23_ai_review.md` 의 R 다섯 절 그대로 | 외부 F/D/O/R 의 번호 바꾼 사본 |
 | `scripts/check_records.py` — UR 필수 절 · `.claude/skills` 출처 등록 · **`SCREENS` → UD 유도** | 두 번째 검사기 |
-| `.claude/skills/` 셋 — 발산 · 모션 검토 · 검증 (외부 넷을 재작성; `ecg-ui-design`·`capability-audit` 는 `00_index` 절로) | 공식 `frontend-design` 원문 vendoring — 「All rights reserved」(`LICENSE.md`) 라 우리 말로 쓰고 고정 SHA 를 가리킨다 |
+| `.claude/skills/` 셋 — 발산 · 모션 검토 · 검증 (외부 넷을 재작성; `ecg-ui-design`·`capability-audit` 는 `00_index` 절로) | ~~공식 `frontend-design` 원문 vendoring — 「All rights reserved」(`LICENSE.md`) 라~~ **근거가 틀렸다 → UD-7 추기**: 스킬은 **Apache 2.0** 이다. 복제로 바꿨다 |
 
 **정정 하나.** `03` 3 절 #6 은 「R 은 새 종류」라고 했다 — **틀렸다.** `docs/23_ai_review.md` 에
 R-1~R-5 가 있고(옛 D-31 → D-34), `19` §1 제목 「세 종류」에 속아 표를 안 세었다. UR 은
@@ -567,3 +567,111 @@ brief · 같은 기준선 캡처 · 같은 스킬 둘**로 Opus 5 판을 따로 
 10. **검증 호출에 계약 원문을 붙인다** — `docs/21` §7 계열 · `02_benchmark` · UF-4. 검증기는 문서를 읽을 때 강하고 기억할 때 약하다.
 
 Opus 판이 돌면 결과를 이 항목 아래에 `[측정]` 으로 덧붙이고, 예측이 틀린 칸은 지우지 않는다.
+
+---
+
+## UD-7. 플러그인을 **선언으로** 들인다 — 그리고 그 선언이 어디까지 하는지 실측했다
+
+| | |
+|---|---|
+| 시점 | 2026-09-17 · 사용자가 「클라우드 세션에선 UI 를 이용한 설치가 불가능하다」며 다른 AI 의 절차 전문을 가져와 검증을 요청 `[대화]` |
+| 상태 | **적용함** — `.claude/settings.json` · `.claude/hooks/session-start.sh` |
+| 연결 | UD-5 7 항(도구 켜기) · UR-2 · UO-3 · `docs/ui/04_tools.md` 6 절 |
+
+### 갈림길
+
+UD-5 는 `frontend-design` 을 「방법만 로컬 스킬에 담고 원문은 인용」으로 두었다
+(원문이 `LICENSE.md` 「All rights reserved」라 복제하지 않는다). 그런데 **플러그인
+자체를 쓰면** 원문이 상류에서 갱신되는 채로 들어온다. 문제는 **이 환경에 `/plugin`
+UI 가 없다**는 것이다 — 클라우드 세션이라 대화형 터미널 패널이 안 뜬다.
+
+### 검토한 선택지 — 그리고 **넷을 실제로 돌려 봤다** `[테스트]`
+
+| | 안 | 결과 |
+|---|---|---|
+| 1 | `/plugin` UI | **✗ 불가** — 이 환경에 없다. 공식 문서도 그때는 `enabledPlugins` 로 선언하라고 적는다 |
+| 2 | `.claude/settings.json` 의 `extraKnownMarketplaces` | **✓ 된다** — 세션을 띄우자 `known_marketplaces.json` 에 등록됐다(`lastUpdated` 가 그 시각) |
+| 3 | 같은 파일의 `enabledPlugins` **만으로 설치** | **✗ 안 된다** — 세션에 직접 물으니 「NO」, `installed_plugins.json` 이 `{}`. 문서의 v2.1.195 단서와 일치한다 |
+| 4 | **SessionStart 훅**에서 `claude plugin install` | **△ 절반** — 설치는 3.3 s 에 성공하는데 **그 세션에는 안 실린다.** 훅은 Claude Code 가 스킬 목록을 만든 **뒤에** 돈다 |
+| 5 | **클라우드 환경 설정 스크립트** | **✓ 제자리** — 문서: 설정 스크립트는 「**Claude Code 가 뜨기 전**」에 돌고, 끝나면 파일시스템이 스냅샷돼 이후 세션은 건너뛴다. 다만 **저장소가 아니라 claude.ai 환경 설정에 있다** |
+| 6 | 스킬 원문을 `.claude/skills/` 에 복제 | **✗ 기각 유지** — 라이선스(UD-5) |
+
+### 고른 것과 근거
+
+**2 + 4 를 저장소에 넣고, 5 를 사용자에게 알린다.**
+
+- `.claude/settings.json` — 마켓플레이스 선언(검증됨) + `enabledPlugins`(설치되면 켜진 상태를 보장하고, **CLI 가 스스로 쓰는 것과 같은 스키마**다 `[테스트]`).
+- `.claude/hooks/session-start.sh` — 설정 스크립트를 아직 안 넣었어도 **다음 세션부터는** 되게 하고, 무엇을 해야 하는지 한 줄로 알린다. 이미 있으면 **0.39 s** 만에 빠진다 `[테스트]`.
+- 설정 스크립트 한 줄은 `04_tools.md` 6 절에 적어 두었다 — **사용자만 넣을 수 있다.**
+
+마켓플레이스는 전문이 쓴 `anthropics/claude-code`(`claude-code-plugins`) 대신
+**`anthropics/claude-plugins-official`** 로 바꿨다. 둘 다 `frontend-design` 을
+**상대 경로로 동봉**하지만(`./plugins/frontend-design`), 공식 쪽이 Claude Code 가
+스스로 등록하는 이름이라 **이름이 겹치지 않고**, 자동 갱신이 기본이다 `[문헌]`.
+클론 2.1 s · 11 MB `[테스트]`.
+
+### 버린 것과 이유
+
+- **`design` 플러그인을 같이 넣는 것** — 보류했다. `.mcp.json` 에 **MCP 서버 9 개**가
+  들어 있다(slack · figma · linear · asana · atlassian · notion · intercom, 그리고
+  **`google calendar`·`gmail` 은 URL 이 빈 문자열**) `[코드]`. 우리가 원한 것은 스킬
+  둘(`design-critique`·`accessibility-review`)인데 대가로 인증이 필요한 서버 아홉이
+  매 세션 붙는다. 클라우드 세션은 **MCP 로그인을 기다리는 동안 유휴로 세어 만료**될 수
+  있다 `[문헌]`. 사용자가 그 대가를 보고 정할 일이라 **말없이 넣지 않는다**(UD-5 가
+  인용한 07 §4 「scripts·권한·네트워크를 본다」).
+- **`modern-web-guidance` 를 같이 넣는 것** — 공식 마켓플레이스에서 그 항목의 source 가
+  `{"source":"url", …}` **외부 소스**다 `[코드]`. 3 번이 막는 바로 그 경우라 선언만으로는
+  안 들어온다. 필요해지면 설정 스크립트 쪽에 더한다.
+
+### 되돌려야 하는 조건
+
+- 훅이 **캐시된 환경에서도 매번 3 초를 쓰면**(= 설치가 스냅샷에 안 남으면) 훅을 빼고
+  설정 스크립트만 남긴다. 판별: 두 번째 세션에서 훅이 「설치했다」를 또 찍는가.
+- Claude Code 가 `enabledPlugins` 만으로 동봉 플러그인을 설치하도록 바뀌면(3 번이 참이
+  되면) 훅을 버린다. 판별: 훅 없이 띄운 세션이 스킬을 갖는가.
+- 플러그인 원문이 우리 계약(`docs/ui/00_index.md` 구역·LOW 구역 절제)과 어긋나는
+  방향으로 갱신되면 고정 SHA 로 내리거나 로컬 스킬만 쓴다.
+
+### 추기 (같은 날) — **라이선스 근거가 틀렸고, 답이 더 간단해졌다**
+
+사용자가 물었다: 「플러그인 설치 자체는 웹에서 성공했어. **스킬 형식으로라도 불러올 수
+있는지** 확인해줘. 스킬로 불러와지면 플러그인이 꼭 필요한 건 아닌 게 되나?」 `[대화]`
+
+**그렇다. 그리고 내가 복제를 막았던 이유가 틀렸다** `[코드]`:
+
+| | 내가 본 것 | 실제 |
+|---|---|---|
+| 라이선스 | `anthropics/claude-code` **저장소 루트** `LICENSE.md` — 「All rights reserved」 | **플러그인과 스킬이 각자 Apache 2.0 을 동봉한다** — `plugins/frontend-design/LICENSE` · `skills/frontend-design/LICENSE.txt`. `SKILL.md` 머리말의 `license: Complete terms in LICENSE.txt` 가 그것을 가리키고 있었다 |
+
+저장소 루트 라이선스를 스킬의 라이선스로 읽었다. UD-5 의 「원문은 복제하지 않는다」는
+**그 오독 위에 세워진 것**이고, 위 표에 정정 표시를 남겼다.
+
+**그래서 바꾼다 — 플러그인 기계 장치를 빼고 스킬을 복제한다.**
+
+| | 플러그인 | **스킬 복제** (채택) |
+|---|---|---|
+| 첫 세션 | ✗ 설정 스크립트가 있어야 실린다 | **✓ 즉시** — `.claude/skills/` 는 저장소에 있다 |
+| 설치·네트워크 | 필요 | **불필요** |
+| 다른 사람·CI | 각자 설치 | **클론하면 있다** |
+| 갱신 | 자동 | **손으로** — `NOTICE` 에 출처·판·받은 날을 적어 뒀다 |
+| 이 저장소의 성향 | — | **맞는다** — 무빌드·`file://`·값을 한 곳으로(UD-1·UD-3) |
+
+- `.claude/skills/frontend-design/` — `SKILL.md` · `LICENSE.txt` 를 **바이트 단위로 그대로**
+  (`diff -q` 확인 `[테스트]`) + `NOTICE`(출처 · 판 `1.1.0`/`1aa8f02ec832` · 받은 날 ·
+  **고친 곳 없음**). 고쳐 쓰게 되면 Apache 2.0 §4(b) 대로 바꿨다고 적는다.
+- `.claude/hooks/session-start.sh` — **뺐다.** 스킬이 있으면 할 일이 없고, 어차피 그
+  세션에는 못 실렸다.
+- `.claude/settings.json` — `extraKnownMarketplaces` 만 남겼다. 마켓플레이스 등록은
+  실측으로 되는 것이고(비용 0), 나중에 다른 플러그인을 넣을 때 바로 쓴다.
+  `enabledPlugins` 는 뺐다 — 스킬 복제와 겹쳐 같은 내용이 두 벌 실린다.
+
+**플러그인을 웹에서 이미 켰다면**, 그쪽을 끄는 편이 낫다 — 그대로 두면 플러그인 판
+(`/frontend-design:…`)과 복제판이 **둘 다 실려 컨텍스트를 두 번 먹는다** `[문헌]`.
+자동 갱신이 더 중요하다고 판단하면 반대로 복제판을 빼고 `04_tools.md` 6 절의 설정
+스크립트를 쓴다 — **둘 중 하나만.**
+
+### 되돌려야 하는 조건 (추기)
+
+- 상류 `SKILL.md` 가 우리 판보다 의미 있게 나아졌는데 **복제판이 낡은 것을 눈치채지
+  못하면**, 플러그인 쪽으로 되돌리고 설정 스크립트를 쓴다. 판별: `NOTICE` 의 판과
+  상류 `plugin.json` 의 `version` 이 다른가 (분기마다 한 번 본다).
