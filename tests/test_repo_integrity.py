@@ -25,7 +25,13 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 # UI/UX 파트(`docs/ui/`)도 같은 무결성 규격을 받는다 — 분리한 것은 **판단 기준**이지
 # 기록 규격이 아니다 (`docs/ui/00_index.md`).
-DOCS = sorted((ROOT / "docs").glob("*.md")) + sorted((ROOT / "docs" / "ui").glob("*.md"))
+# **저장소 루트의 두 문서도 대상이다.** 오래 빠져 있었고, 그동안 README 는 90 커밋
+# 넘게 방치돼 테스트 개수(122 → 592)와 기록 범위(F-1~F-12 → F-50)가 전부 틀려 있었다.
+# 검사가 안 보는 문서는 낡는다 — `docs/` 가 안 낡은 이유가 검사이기 때문이다 (D-35).
+ROOT_DOCS = [ROOT / "README.md", ROOT / "CLAUDE.md"]
+DOCS = (ROOT_DOCS
+        + sorted((ROOT / "docs").glob("*.md"))
+        + sorted((ROOT / "docs" / "ui").glob("*.md")))
 CONFIGS = sorted((ROOT / "configs").glob("*.yaml"))
 
 
@@ -1075,3 +1081,88 @@ def test_every_registered_screen_has_a_decision():
         "올리기로 한 결정을 적거나, 파트 이전 화면이면 SCREENS_BEFORE_THE_PART 에 이유를 적을 것")
     stale = sorted(k for k in SCREENS_BEFORE_THE_PART if k not in {s.name for s in SCREENS})
     assert not stale, f"레지스트리에 없는 화면이 예외표에 남았다: {stale}"
+
+
+# ----------------------------------------------------------- 루트 문서 (D-35)
+# README 는 90 커밋 동안 아무 검사도 받지 않았다. 링크는 전부 살아 있었는데도
+# **개수와 범위가 틀려 있었다** — 링크 검사로는 못 잡는 종류다. 그래서 둘을 나눈다:
+#   · 손으로 유지할 수 없는 값(테스트 개수·기록 번호 범위)은 **README 에서 뺀다**
+#   · 그래도 남겨야 하는 값(CLAUDE.md 의 테스트 개수)은 **기계가 대조한다**
+
+# `pytest.ini` 의 addopts. 이 값으로 도는 판에서만 개수를 대조한다 —
+# `-k` 나 다른 `-m` 이 붙으면 세는 대상이 달라진다.
+DEFAULT_MARKEXPR = "not slow and not screens"
+
+VOLATILE_IN_README = [
+    (re.compile(r"\d+\s*개\s*(?:단위|회귀|테스트)"),
+     "테스트 개수는 커밋마다 바뀐다 — 적지 말고 `pytest tests/` 가 답이게 둘 것"),
+    (re.compile(r"\b([FDOR]|U[FDOR])-\d+\s*~\s*(?:[FDOR]|U[FDOR])?-?\d+"),
+     "기록 번호 범위는 계속 늘어난다 — 「F-1~F-12」 같은 범위 대신 파일을 가리킬 것"),
+]
+
+
+def test_readme_has_no_hand_maintained_counts():
+    """README 가 **손으로 유지할 수 없는 값**을 적지 않는가.
+
+    실제로 이렇게 낡았다: 「122 개 단위/회귀 테스트」(→ 592) ·
+    「발견 노트 (F-1~F-12)」(→ F-50). 둘 다 커밋마다 바뀌는 값이라
+    고쳐 적는 것으로는 유지되지 않는다 — **안 적는 것**이 유지 방법이다.
+    """
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    hits = [f"{m.group(0)!r} — {why}" for rx, why in VOLATILE_IN_README
+            for m in rx.finditer(text)]
+    assert not hits, "README.md 에 손으로 유지할 수 없는 값이 있다:\n  " + "\n  ".join(hits)
+
+
+def test_readme_names_the_entry_points():
+    """README 가 **진입점**을 가리키는가 — 45 개를 나열하는 대신.
+
+    `docs/` 를 전부 베끼면 다음 달에 또 낡는다. 낡지 않는 방식은
+    「여기부터 읽어라」를 적고 나머지는 그 문서가 안내하게 두는 것이다.
+    """
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    required = {
+        "docs/91_report.md":      "종합 보고서 — 연구 파트의 유일한 진입점",
+        "docs/ui/00_index.md":    "UI/UX 파트의 진입점",
+        "docs/19_record_keeping.md": "기록 규약 — 이 저장소를 읽는 법",
+        "docs/99_status.md":      "현재 상태·인수인계",
+        "CLAUDE.md":              "작업 규약 명판",
+    }
+    missing = [f"{k} ({v})" for k, v in required.items() if k not in text]
+    assert not missing, "README.md 가 진입점을 가리키지 않는다:\n  " + "\n  ".join(missing)
+
+
+def test_claude_md_test_count_matches_reality(request):
+    """CLAUDE.md 의 「`pytest tests/` — N 개」가 실제 개수와 맞는가.
+
+    이 값은 **남겨 두는 쪽이 낫다** — 매 턴 읽는 명판이라 "이 판이 몇 개짜리인지"
+    가 기대치 역할을 한다. 그래서 지우는 대신 **기계가 대조한다**.
+    (README 쪽은 반대로 지웠다 — 거기선 기대치 역할을 하지 않는다.)
+    """
+    cfg = request.config
+    whole_suite = {Path(a).resolve() for a in cfg.args} == {ROOT / "tests"}
+    if cfg.option.keyword or cfg.option.markexpr != DEFAULT_MARKEXPR or not whole_suite:
+        pytest.skip("부분 실행 — 세는 대상이 기본 실행과 다르다")
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    m = re.search(r"`pytest tests/`\s*—\s*(\d+)\s*개", text)
+    assert m, "CLAUDE.md 의 「커밋 전」절에 「`pytest tests/` — N 개」 형식이 없다"
+    claimed, actual = int(m.group(1)), request.session.testscollected
+    assert claimed == actual, (
+        f"CLAUDE.md 가 {claimed} 개라고 적었는데 실제로는 {actual} 개다 — "
+        f"그 줄을 {actual} 로 고칠 것")
+
+
+def test_readme_names_every_registered_method():
+    """등록된 방법이 README 의 「비교 대상」표에 전부 있는가.
+
+    한 방향만 본다 — **레지스트리 ⊆ README**. 반대는 보지 않는다:
+    `M06`~`M08` 은 체크포인트가 있어야 등록되므로 학습 전에는 레지스트리에 없고,
+    그래도 README 에는 있어야 하기 때문이다.
+
+    실제로 이렇게 빠져 있었다: `M_FE` · `M04s` · `M04np` — 그중 `M_FE` 는
+    팔레트에 전용 색까지 있는 비교 대상이다 (D-35).
+    """
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    missing = sorted(m for m in _registry() if f"`{m}`" not in text)
+    assert not missing, (
+        f"README.md 의 「비교 대상」표에 없는 등록 방법: {missing}")

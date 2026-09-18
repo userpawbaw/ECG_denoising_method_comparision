@@ -8,27 +8,39 @@
 
 ---
 
-## 문서 (읽는 순서)
+## 여기부터 읽는다
 
-| 문서 | 내용 |
+| 알고 싶은 것 | 문서 |
 |---|---|
-| [`docs/00_review.md`](docs/00_review.md) | 착수 전 제안에 대한 검토 — 지적 11 / 발전 6 / 추가 8 항목 |
-| [`docs/01_design.md`](docs/01_design.md) | **확정 설계안** — 신호 규격, 데이터, 기법 11종, 평가 체계, 실험 매트릭스 |
-| [`docs/02_procedure.md`](docs/02_procedure.md) | **구현 절차서** — STEP 00~30, 각 단계에 DoD와 검증 명령 |
-| [`docs/03_metric_floor.md`](docs/03_metric_floor.md) | 지표 분해능 (결과표의 "구분 불가" 판정 기준) |
-| [`docs/04_snr_estimator_calibration.md`](docs/04_snr_estimator_calibration.md) | ground-truth 없는 SNR 추정기의 편향표 |
-| [`docs/05_swt_tuning.md`](docs/05_swt_tuning.md) | SWT threshold 파라미터 탐색 (탐색/검증 분리) |
-| [`docs/06_sameni_diagnosis.md`](docs/06_sameni_diagnosis.md) | Sameni EKF/EKS 자가진단 6항목 |
-| [`docs/07_safety_probe_d0.md`](docs/07_safety_probe_d0.md) | hallucination / 부정맥 훼손 검증 |
-| [`docs/08_acquisition.md`](docs/08_acquisition.md) | 실측 데이터 수집 프로토콜 (S1~S6) |
-| [`docs/18_glossary.md`](docs/18_glossary.md) | **용어·지표 사전** — 정의·수식·해석법 |
-| [`docs/19_record_keeping.md`](docs/19_record_keeping.md) | **기록 규약** — 무엇을 어떻게 남기는가 |
-| [`docs/20_findings.md`](docs/20_findings.md) | **발견 노트 (F-1~F-12)** — 결과 해석을 바꾼 것들. 판단 과정 포함 |
-| [`docs/21_decisions.md`](docs/21_decisions.md) | 설계 결정 (D) — 갈림길에서 무엇을 왜 골랐나 |
-| [`docs/22_incidents.md`](docs/22_incidents.md) | 운영 사고 (O) |
-| [`docs/23_ai_review.md`](docs/23_ai_review.md) | **AI 협업 검토 (R)** — AI 를 쓰는 방법에 관한 교훈 |
-| [`docs/90_results_d0.md`](docs/90_results_d0.md) | 실험 결과 (자동 생성) |
-| [`docs/91_report.md`](docs/91_report.md) | **종합 보고서** — 설계 논리, 지표 선택 근거, 결과 해석 |
+| **무엇을 했고 결과가 무엇인가** | [`docs/91_report.md`](docs/91_report.md) — 종합 보고서. **연구 파트의 유일한 진입점**이다 |
+| **지금 어디까지 왔나 · 다음은 무엇인가** | [`docs/99_status.md`](docs/99_status.md) |
+| **이 저장소를 읽는 법 — 기록 규약** | [`docs/19_record_keeping.md`](docs/19_record_keeping.md) |
+| **시연 화면의 설계·검증 (UI/UX 파트)** | [`docs/ui/00_index.md`](docs/ui/00_index.md) — 이 파트는 판단 기준이 달라 분리돼 있다 |
+| **작업 규약 (사람·AI 공통)** | [`CLAUDE.md`](CLAUDE.md) |
+| 설계 근거 · 실험 절차서 | [`docs/01_design.md`](docs/01_design.md) · [`docs/02_procedure.md`](docs/02_procedure.md) |
+| 용어·지표 사전 | [`docs/18_glossary.md`](docs/18_glossary.md) |
+
+`docs/` 의 나머지 문서를 여기에 나열하지 않는다. 진입점이 자기 아래를 안내하고,
+목록을 README 에 베껴 두면 **낡는다** — 실제로 그렇게 낡았다(D-35).
+
+## 기록 체계
+
+갈림길과 실패를 지우지 않고 남기는 것이 이 과제의 산출물 중 하나다.
+
+| 기호 | 무엇 | 어디 |
+|---|---|---|
+| **F** | 발견 — 이상한 것을 본 순간, 원인을 알기 전에 적는다 | [`docs/20_findings.md`](docs/20_findings.md) |
+| **D** | 결정 — **실행 전에** 적는다. 무엇을 왜 버렸는지가 값이다 | [`docs/21_decisions.md`](docs/21_decisions.md) |
+| **O** | 운영 사고 — 반복되면 규칙으로 승급시킨다 | [`docs/22_incidents.md`](docs/22_incidents.md) |
+| **R** | AI 협업 교훈 — **재사용 규칙**으로 끝난다 | [`docs/23_ai_review.md`](docs/23_ai_review.md) |
+
+UI/UX 파트는 같은 규격에 번호만 나눈 **UF · UD · UO · UR** 을 쓴다(`docs/ui/`).
+공통 규칙 넷:
+
+- **기각한 가설과 틀린 예측을 지우지 않는다.** 정정은 덧붙이고, 원문은 남긴다.
+- 문장마다 근거 태그를 단다 — `[측정] [로그] [커밋] [문헌] [추론] …`. 없으면 **「기록 없음」**이라고 적는다.
+- 수치는 로그 마지막 줄이 아니라 **파일에서 읽어** 옮긴다.
+- 위 셋을 사람이 아니라 검사가 강제한다 — `scripts/check_records.py` · `tests/test_repo_integrity.py`.
 
 ---
 
@@ -45,11 +57,14 @@ make check-nodata
 
 | 명령 | 검증 내용 |
 |---|---|
-| `pytest` | 122개 단위/회귀 테스트 |
-| `check_synthetic.py` | 합성 ECG: ODE vs 위상영역 일치, R-peak 100 % |
-| `check_noise.py` | 잡음 6종의 PSD 대역 |
-| `check_snr_estimator.py` | SNR 추정기 교정표 생성 |
-| `diagnose_sameni.py` | Sameni 구현 6항목 자가진단 |
+| `pytest tests/` | 단위·회귀 검사 + **기록 무결성 검사** (빠진 F/D 기록과 낡은 수치를 잡는다) |
+| `scripts/check_synthetic.py` | 합성 ECG: ODE vs 위상영역 일치, R-peak 100 % |
+| `scripts/check_noise.py` | 잡음 6종의 PSD 대역 |
+| `scripts/check_snr_estimator.py` | SNR 추정기 교정표 생성 |
+| `scripts/diagnose_sameni.py` | Sameni 구현 6항목 자가진단 |
+
+`push` 하면 GitHub Actions 가 같은 검사를 돌리고 **시연 화면 스크린샷을 올린다**
+(`.github/workflows/checks.yml` · 근거와 한계는 `docs/99_status.md`).
 
 ### 실제 데이터로 진행
 
@@ -80,16 +95,23 @@ python scripts/make_report.py
 | ID | 분류 | 방법 |
 |---|---|---|
 | `M00` | — | Identity (하한선) |
+| `M_FE` | front-end | 취득단 전처리 단독 — front-end 만으로 어디까지 가나 |
 | `M01`/`M01d` | classical | Bandpass 0.5–40 / 0.5–100 Hz + 자동 notch |
 | `M02` | classical | Savitzky-Golay |
 | `M03` | time-freq | DWT soft threshold (대조군) |
 | `M04` | time-freq | **SWT adaptive threshold** (level별 k + QRS 보호 + garrote) |
+| `M04s` | time-freq | SWT soft threshold — **교과서 기본 설정**. M04 의 구성요소를 가르는 대조군 |
+| `M04np` | time-freq | SWT, QRS 보호 없음 — 보호 항의 기여만 떼어 본다 |
 | `M05`/`M05f` | model-based | **Sameni EKS / EKF** |
 | `M06` | deep | **Residual 1D U-Net** |
 | `M07` | hybrid | SWT → Residual U-Net (순차) |
 | `M08` | hybrid | **Wavelet-subband Residual U-Net** (표현공간) |
 | `B01` | bound | Oracle wavelet threshold — wavelet 계열의 **상한** |
 | `B02` | bound | Oracle Wiener — 선형 시불변 필터의 **상한** |
+
+`M06`~`M08` 은 체크포인트가 있어야 레지스트리에 올라간다(`ecgdn/methods/dl_wrapper.py`
+의 `register_dl`). 나머지는 import 시점에 등록된다 — **등록된 방법이 이 표에 없으면
+검사가 잡는다**(`tests/test_repo_integrity.py`).
 
 상한(B01/B02)이 있어야 "M04가 더 튜닝될 여지가 있는가", "비선형 처리가 실제로 필요한가"에
 정량적으로 답할 수 있다.
@@ -118,6 +140,7 @@ python scripts/make_report.py
 ecgdn/
 ├─ config.py            신호 규격 단일 진실 원천 (fs=250, win=1024, hop=512, ...)
 ├─ utils.py             결정론적 seed 유도, 파워 정의 단일화
+├─ registry.py          방법 등록 — oracle 계열의 ctx 접근을 여기서 강제한다
 ├─ data/                synthetic · noise · mixer · windows · mitdb · nstdb · arduino · dataset
 ├─ methods/             base(계약) · frontend · bandpass · savgol · wavelet · kalman_sameni ·
 │                       oracle(bound) · dl_wrapper
@@ -128,9 +151,14 @@ ecgdn/
 
 scripts/                실행 진입점 (모든 산출물은 여기서만 생성)
 configs/                실험 1개 = yaml 1개
+ui/palette.json         **색의 단일 원본** — 시연 화면과 보고서 그림이 여기서 색을 받는다
+demo/                   박람회 시연 화면 (무빌드 · file:// 로 열린다) · gallery.html
+results/                실험 산출물 · 보고서 그림 · 화면 스크린샷
 hardware/               Arduino 스케치
 tests/                  pytest
 ```
+
+`data/arduino/` 는 **git 에 올리지 않는다** — 개인 생체정보다.
 
 **모든 denoiser는 하나의 계약을 따른다**:
 
