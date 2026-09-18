@@ -1,0 +1,49 @@
+exp_id: m06_cond
+seed: 0
+model:
+  name: resunet1d
+  kwargs:
+    cond: true
+    cond_dim: 32
+    cond_lo: -5.0
+    cond_hi: 20.0
+    chs:
+    - 24
+    - 32
+    - 48
+    - 60
+    - 96
+loss: L1
+data:
+  source: auto
+  dur_s: 300.0
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 1024
+  hop: 512
+  snr_range:
+  - -5.0
+  - 20.0
+  max_per_record: 160
+  nstdb_root: data/raw/nstdb
+  frontend: true
+train:
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  epochs: 60
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0
+
+# D-28 2 번 — **참 SNR 조건화(FiLM)**. 기준은 `m06_l1`.
+#   params 974,693 (기준 976,489 대비 -1,796 · -0.18 %) · 수용영역 887 샘플.
+# FiLM 이 35,968 개(+3.7 %)를 더하므로 **네 번째 레벨을 64 -> 60 으로 깎아**
+# 총량을 맞췄다. 안 맞추면 「조건 덕인지 용량 덕인지」를 또 못 가른다 (F-42).
+# 부작용 하나: `_gn` 의 그룹 수가 그 레벨에서 8 -> 6 이 된다. 등파라미터를
+# 지키려면 피할 수 없고, 크기는 D-27 의 등파라미터 오차(-0.6 ~ +0.3 %) 안이다.
+#
+# 사전 예측 (D-28): 15~20 dB 대역에서 **+3 ~ +5 dB**.
+#   D-26 의 전담 모델(+4.41)이 상한이고 조건화는 그 아래일 것이다.
+#   **상한을 넘으면 무언가 틀린 것이다** — 그때는 평가 누수부터 의심한다.

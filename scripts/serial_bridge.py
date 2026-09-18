@@ -289,12 +289,10 @@ class Hub:
                 self.qs.remove(q)
 
     def publish(self, payload: dict) -> None:
-        # **직렬화는 여기서 한 번만 한다.** 이미 문자열인 것을 받아 한 번 더
-        # 감싸면 브라우저는 «JSON 을 담은 JSON» 을 받고, 그 실패는 화면에서
-        # «아무 일도 안 일어남» 으로만 보인다 — 그래서 형을 여기서 막는다 (F-52).
+        # **여기서 JSON 을 만든다.** 이미 만든 문자열을 넘기면 한 번 더 감싸져
+        # 브라우저가 문자열을 받는다 — 조용히 틀리므로 그 자리에서 세운다 (F-52).
         if not isinstance(payload, dict):
-            raise TypeError("publish 는 dict 를 받는다 (이미 직렬화된 문자열이 "
-                            f"아니라) — 받은 것: {type(payload).__name__}")
+            raise TypeError(f"publish 는 dict 를 받는다 (받은 것: {type(payload).__name__})")
         data = json.dumps(payload, separators=(",", ":"))
         with self.lock:
             targets = list(self.qs)
@@ -612,11 +610,10 @@ def main() -> int:
                 al = Aligner(names)
                 raw, rawok, raw_base, n_in, n_input = [], [], 0, 0, 0
                 fe_lat_ms = fe.latency_samples / FS * 1000.0
-                # **`Hub.publish` 가 직렬화한다.** 여기서 한 번 더 `json.dumps`
-                # 하면 선에 실리는 것이 «JSON 문자열을 담은 JSON» 이 되고,
-                # 브라우저의 `JSON.parse` 는 문자열을 돌려준다 — `m.reset` 이
-                # undefined 라 화면이 안 비워지고, 두 front-end 의 파형이 한
-                # 화면에 섞인다. 6.3 이 막겠다고 적어 둔 바로 그 일이다 (F-52).
+                # **dict 를 그대로 넘긴다.** `Hub.publish` 가 JSON 으로 만든다 —
+                # 여기서 미리 `json.dumps` 하면 한 번 더 감싸져서 브라우저가
+                # 푼 결과가 **객체가 아니라 문자열**이 되고, `m.reset` 이 없어
+                # 전환 알림이 통째로 무시됐다 (F-52).
                 hub.publish({"reset": True, "fe": want,
                              "fe_label": FE_MODES[want]["label"],
                              "fe_lat_ms": round(fe_lat_ms, 0)})

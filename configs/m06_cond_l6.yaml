@@ -1,0 +1,46 @@
+exp_id: m06_cond_l6
+seed: 0
+model:
+  name: resunet1d
+  kwargs:
+    cond: true
+    cond_dim: 32
+    cond_lo: -5.0
+    cond_hi: 20.0
+    chs:
+    - 24
+    - 32
+    - 48
+    - 60
+    - 96
+loss: L6
+data:
+  source: auto
+  dur_s: 300.0
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 1024
+  hop: 512
+  snr_range:
+  - -5.0
+  - 20.0
+  max_per_record: 160
+  nstdb_root: data/raw/nstdb
+  frontend: true
+train:
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  epochs: 60
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0
+
+# D-28 3 번 — **2×2 의 네 번째 칸** (`L6` × 조건화).
+# `m06_cond` 와 모델이 완전히 같고 손실만 `L6` 다. 나머지 세 칸은
+# `m06_l1`(둘 다 없음) · `m06_l6`(손실만) · `m06_cond`(조건만).
+#
+# 핵심 예측은 **동등성**이다 — 「조건화가 있으면 `L6` 의 이득이 줄어든다」.
+# `p > 0.05` 는 동등성의 증거가 **아니므로** 마진을 사전에 선언했다:
+# **|Δ| < 0.5 dB 면 「실질적으로 같다」** (D-28 「이 판이 못 답하는 것」).

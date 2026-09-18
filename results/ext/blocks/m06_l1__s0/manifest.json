@@ -1,0 +1,44 @@
+{
+  "env": {
+    "python": "3.13.15",
+    "platform": "Linux-6.6.122+-x86_64-with-glibc2.39",
+    "git": "74e6149",
+    "numpy": "2.1.3",
+    "scipy": "1.16.3",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": null,
+    "torch": "2.11.0+cu128"
+  },
+  "config": {
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "batch_size": 64,
+    "epochs": 60,
+    "warmup_frac": 0.05,
+    "patience": 12,
+    "grad_clip": 1.0,
+    "seeds": [
+      0,
+      1,
+      2
+    ]
+  },
+  "sources": {
+    "ecgdn/train.py": "a41d014ebb101f74",
+    "ecgdn/data/dataset.py": "096a0be31d976980",
+    "ecgdn/data/sources.py": "c9d6cc9fd7ed3966",
+    "ecgdn/methods/frontend.py": "f1806de8d2667faf",
+    "ecgdn/models/losses.py": "30f5e5e5ff52196e"
+  },
+  "model": "resunet1d",
+  "n_params": 976489,
+  "device": "cuda",
+  "amp": false,
+  "exp_id": "m06_l1__s0",
+  "arm": "m06_l1",
+  "seed": 0,
+  "source": "mitdb",
+  "loss": "L1",
+  "sweep": true
+}

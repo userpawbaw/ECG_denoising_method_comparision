@@ -1,0 +1,33 @@
+exp_id: m06_l1_band_hi
+seed: 0
+model:
+  name: resunet1d
+  kwargs: {}
+loss: L1
+data:
+  source: auto
+  dur_s: 300.0
+  n_train: 18
+  n_val: 4
+  n_test: 22
+  win: 1024
+  hop: 512
+  snr_range:
+  - 15.0
+  - 20.0
+  max_per_record: 160
+  nstdb_root: data/raw/nstdb
+  frontend: true
+train:
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  epochs: 60
+  warmup_frac: 0.05
+  patience: 12
+  grad_clip: 1.0
+
+# D-26 진단판 — 고 SNR 전담. 여기가 오라클 대비 여유가 가장 크다 (B02−M06 = 5.50~7.95 dB).
+# **조건화 모델이 아니라 그 상한이다.** 동작점마다 전담 모델을 두는 것은
+# 「완벽하게 조건화된」 극한이므로, 이것이 넓은 대역 모델을 같은 대역에서
+# 못 이기면 조건화로도 못 이긴다. 주 결과표에 넣지 않는다.

@@ -56,6 +56,7 @@ from ecgdn.data.dataset import ECGDenoiseDataset
 from ecgdn.data.nstdb import make_banks
 from ecgdn.data.sources import get_source, resolve_source_kind
 from ecgdn.models import build_model, make_loss
+from ecgdn.sync_hf import HFStore
 from ecgdn.train import Trainer
 from ecgdn.utils import ensure_dir
 
@@ -73,11 +74,31 @@ STAGES = {
     "capacity":  ["m06_l1_quarter", "m06_l1_half", "m06_l1"],
     # 5.8.9 의 손실 효과가 정말 산포보다 큰지 확인한다.
     "loss":      ["m06_l1", "m06_l3", "m06_l6"],
+    # D-27 등파라미터 폭<->깊이.
+    "depth":     ["m06_l1", "m06_l1_deep2", "m06_l1_deep3", "m06_l1_deep4"],
+    # D-28 2 번 — 참 SNR 조건화(FiLM). 등파라미터.
+    "cond":      ["m06_l1", "m06_cond"],
+    # D-28 5 번 (B) — 폭 고정 · 깊이 증가. **파라미터가 함께 는다** (D-27 과 짝).
+    "blocks":    ["m06_l1", "m06_l1_nb2", "m06_l1_nb4"],
+    # 두 환경(T4 · CPU)이 같은 seed 에서 같은 Δ 를 내는지 — F-44 가 연 구멍.
+    "overlap":   ["m06_l1", "m06_l1_deep2", "m06_l1_deep3", "m06_l1_deep4"],
+    # D-28 3 번 — 2×2 (`L6` × 조건화). 네 칸이 한 보관소에 있어야 짝이 선다.
+    "l6cond":    ["m06_l1", "m06_l6", "m06_cond", "m06_cond_l6"],
 }
 
 # 고정 평가의 salt. seed 와 무관해야 의미가 있으므로 **상수**다. 바꾸면 예전 값과
 # 비교할 수 없게 되므로 바꾸지 않는다.
 FIXED_EVAL_SALT = ("fixed_eval", 20260909)
+
+# **SNR 대역별로도 따로 잰다.** 총합 하나는 동작점에 따라 부호까지 바뀌는 효과를
+# 가린다 — D1 EXP-A 에서 `M06` 은 −5 dB 에서 오라클에 0.90 dB 차로 붙고 20 dB
+# 에서는 7.95 dB 뒤진다. 좁은 대역으로 학습한 모델과 넓은 대역으로 학습한 모델을
+# 견주려면 **같은 대역에서** 재야 하므로, 이 다섯 칸이 그 공통 자가 된다.
+EVAL_BANDS = [(-5.0, 0.0), (0.0, 5.0), (5.0, 10.0), (10.0, 15.0), (15.0, 20.0)]
+
+# 조건 교란 격자 (D-28 4 번). **참값에 더하는 오차**[dB]다. 0 은 넣지 않는다 —
+# `fixed_snr_imp_scaled` 가 이미 그 값이라 두 번 재는 셈이 된다.
+COND_OFFSETS = [-5, -2, 2, 5]
 
 
 def parse_seeds(spec: str) -> list[int]:
@@ -148,12 +169,35 @@ def build_datasets(cfg: dict, source: str):
     # 고정 평가용 — 같은 val 기록, **seed 와 무관한 잡음 뽑기**.
     fx = ECGDenoiseDataset(src, "val", banks=make_banks("val", nstdb_root),
                            salt=FIXED_EVAL_SALT, **kw)
-    return src, tr, va, fx
+    # 대역별 고정 평가. `snr_range` 만 좁히고 나머지는 같다.
+    bands = {}
+    for lo, hi in EVAL_BANDS:
+        bkw = dict(kw, snr_range=(lo, hi))
+        bands[f"{lo:g}_{hi:g}"] = ECGDenoiseDataset(
+            src, "val", banks=make_banks("val", nstdb_root),
+            salt=(FIXED_EVAL_SALT, lo, hi), **bkw)
+    return src, tr, va, fx, bands
+
+
+def partial_epoch(out: Path) -> int | None:
+    """이 판이 **몇 epoch 까지 갔다가 끊겼나**. 안 끊겼으면 None.
+
+    `last.pt` 는 epoch 마다 저장되므로 그 안의 `epoch` 이 곧 진행분이다.
+    `summary.json` 이 있으면 끝난 판이라 진행분이 아니다.
+    """
+    if (out / "summary.json").exists() or not (out / "last.pt").exists():
+        return None
+    try:
+        return int(torch.load(out / "last.pt", map_location="cpu",
+                              weights_only=False).get("epoch", 0)) or None
+    except Exception:
+        return None
 
 
 def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None,
             amp: bool | None, epochs: int | None, keep_ckpt: bool,
-            workers: int) -> dict:
+            workers: int, resume: bool = True, hf=None,
+            cond_perturb: bool = False) -> dict:
     run_id = f"{arm}__s{seed}"
     out = ensure_dir(out_root / run_id)
     summary_p = out / "summary.json"
@@ -170,7 +214,7 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
                                                     allow_unicode=True))
 
     torch.manual_seed(seed)                      # train.py 와 동일
-    src, tr, va, fx = build_datasets(cfg, source)
+    src, tr, va, fx, bands = build_datasets(cfg, source)
     mcfg = cfg.get("model", {})
     model = build_model(mcfg.get("name", "resunet1d"), **(mcfg.get("kwargs") or {}))
     loss_fn = make_loss(cfg.get("loss", "L1"))
@@ -179,6 +223,10 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
 
     trainer = Trainer(model, loss_fn, tr, va, tcfg, out_dir=out, device=device,
                       num_workers=workers, amp=amp,
+                      # N epoch 마다 `last.pt` 를 밖으로 밀어 올린다. 세션이
+                      # 끊겨도 다음 판에서 `pull` 이 그걸 받아 이어 간다.
+                      on_epoch_end=(lambda ep, row: hf.push_epoch(out, ep))
+                      if hf is not None and hf.enabled else None,
                       model_name=mcfg.get("name", "resunet1d"),
                       extra_manifest={"exp_id": run_id, "arm": arm, "seed": seed,
                                       "source": src.kind, "loss": cfg.get("loss"),
@@ -186,6 +234,13 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
     n_params = model.n_params()
     print(f"  [{run_id}] params={n_params:,} loss={cfg.get('loss')} "
           f"device={trainer.device.type} amp={trainer.amp}", flush=True)
+
+    # **판 하나가 중간에 끊겨도 이어서 간다.** `last.pt` 에 optimizer·스케줄
+    # 위치·`best_epoch` 까지 들어 있어 「이어서」가 「다른 학습」이 되지 않는다.
+    # Colab 처럼 세션이 자주 끊기는 환경에서 이것이 없으면 한 판을 통째로 다시
+    # 돌린다 — 실제로 그렇게 잃었다.
+    if resume and not trainer.try_resume():
+        pass                                   # 없으면 그냥 처음부터
 
     t0 = time.perf_counter()
     st = trainer.fit()
@@ -198,6 +253,21 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
         ck = torch.load(bp, map_location=trainer.device, weights_only=False)
         trainer.model.load_state_dict(ck["model"])
         fixed = {f"fixed_{k}": float(v) for k, v in trainer.evaluate(fx).items()}
+        # 대역별 — `snr_imp_scaled` 하나만 남긴다 (열이 너무 늘지 않게).
+        for name, bds in bands.items():
+            fixed[f"band_{name}"] = float(trainer.evaluate(bds)["snr_imp_scaled"])
+        # **조건 교란** (D-28 4 번). 조건화 모델에만, 요청했을 때만 돈다.
+        # 학습은 다시 하지 않는다 — 같은 가중치를 **틀린 조건값**으로 평가할
+        # 뿐이라 판 하나에 평가 다섯 번이 붙는 정도다.
+        if cond_perturb and getattr(trainer.model, "needs_cond", False):
+            for off in COND_OFFSETS:
+                trainer.cond_offset = float(off)
+                tag = f"pert_{off:+d}".replace("+", "p").replace("-", "m")
+                fixed[tag] = float(trainer.evaluate(fx)["snr_imp_scaled"])
+                for name, bds in bands.items():
+                    fixed[f"{tag}_band_{name}"] = float(
+                        trainer.evaluate(bds)["snr_imp_scaled"])
+            trainer.cond_offset = 0.0          # 반드시 되돌린다
 
     rec = {
         "run_id": run_id, "arm": arm, "seed": seed,
@@ -213,6 +283,8 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
     if not keep_ckpt:
         for nm in ("best.pt", "last.pt"):
             (out / nm).unlink(missing_ok=True)
+    if hf is not None:
+        hf.push_run(out)
     print(f"  [{run_id}] best {st.best_metric:+.3f} dB (ep {st.best_epoch}) · "
           f"fixed {rec.get('fixed_snr_imp_scaled', float('nan')):+.3f} dB · "
           f"{wall/60:.1f} min", flush=True)
@@ -225,6 +297,17 @@ def rel(p: Path) -> str:
         return str(p.relative_to(ROOT))
     except ValueError:
         return str(p)
+
+
+def write_arm_order(out_root: Path, arms: list[str]) -> None:
+    """**기준 arm 이 누구인지**를 파일로 남긴다.
+
+    `sweep.csv` 는 `sorted(glob)` 으로 쓰므로 행 순서가 **알파벳 순**이다.
+    분석기는 첫 arm 을 기준으로 짝을 지었는데, 그러면 `m06_cond` 처럼
+    알파벳이 앞서는 arm 이 기준이 되어 **모든 Δ 의 부호가 뒤집힌다.**
+    실제로 D-28 2 번에서 그렇게 나왔다. 의도한 순서를 여기 적어 둔다.
+    """
+    (out_root / "arms.txt").write_text("\n".join(arms) + "\n", encoding="utf-8")
 
 
 def write_csv(out_root: Path) -> Path:
@@ -268,11 +351,39 @@ def main() -> int:
     ap.add_argument("--threads", type=int, default=None,
                     help="torch 스레드 수. 이 저장소의 학습은 4 로 돌았다 — "
                          "맞춰 두면 부동소수점 축약 순서까지 같아진다")
+    ap.add_argument("--no-resume", action="store_true",
+                    help="끊긴 판을 처음부터 다시 돌린다 (기본은 last.pt 에서 재개)")
     ap.add_argument("--keep-ckpt", action="store_true",
                     help="best.pt/last.pt 를 남긴다 (업로드가 커진다)")
+    ap.add_argument("--cond-offsets", default=None, metavar="a,b,c",
+                    help=f"교란 격자를 직접 준다 [dB] (기본 {COND_OFFSETS}). "
+                         "F-13 의 추정기 편향(+7.6)처럼 기본 격자 밖을 재야 "
+                         "할 때 쓴다")
+    ap.add_argument("--cond-perturb", action="store_true",
+                    help="조건화 모델을 **틀린 조건값**으로도 평가한다 "
+                         f"(참값 {COND_OFFSETS} dB). 학습은 다시 안 한다 — "
+                         "같은 가중치를 다시 잴 뿐이다 (D-28 4 번)")
     ap.add_argument("--dry-run", action="store_true", help="무엇을 돌릴지만 출력")
+    ap.add_argument("--hf-repo", default=None, metavar="사용자/저장소",
+                    help="Hugging Face **데이터셋** 저장소로 동기화한다. 시작할 때 "
+                         "받아 오고(끊긴 판이 이어진다), N epoch 마다 last.pt 를 "
+                         "올리고, 판·sweep 이 끝나면 전부 올린다. "
+                         "토큰은 huggingface-cli login 또는 HF_TOKEN 에서 찾는다")
+    ap.add_argument("--hf-every", type=int, default=10, metavar="N",
+                    help="몇 epoch 마다 last.pt 를 올릴지 (기본 10). "
+                         "1 로 두면 저장소가 빨리 커진다 — HF 는 git 이라 "
+                         "이력이 쌓인다")
+    ap.add_argument("--hf-public", action="store_true",
+                    help="저장소를 공개로 만든다 (기본은 비공개). "
+                         "**실측 생체신호를 올릴 때는 쓰지 마라**")
     args = ap.parse_args()
 
+    if args.cond_offsets:
+        # 모듈 전역을 갈아끼운다 — `run_one` 이 이 목록을 읽는다.
+        offs = [int(float(x)) for x in args.cond_offsets.split(",") if x.strip()]
+        if 0 in offs:
+            ap.error("0 은 넣지 마라 — fixed_* 가 이미 잰 값이다")
+        globals()["COND_OFFSETS"] = sorted(offs)
     if args.arms:
         arms = [a.strip() for a in args.arms.split(",") if a.strip()]
     elif args.stage:
@@ -284,6 +395,13 @@ def main() -> int:
                                                        else [0, 1, 2])
     out_root = ensure_dir(Path(args.out) if args.out
                           else ROOT / "results" / "ext" / (args.stage or "custom"))
+
+    # **받아 오는 것을 todo 계산보다 먼저 한다.** 그래야 지난 세션에서 끝난 판이
+    # `summary.json` 으로 건너뛰어지고, 끊긴 판이 `last.pt` 의 epoch 에서 이어진다.
+    hf = HFStore(args.hf_repo, prefix=out_root.name, every=args.hf_every,
+                 private=not args.hf_public)
+    if hf.enabled and not args.dry_run:
+        hf.pull(out_root)
 
     missing = [a for a in arms if not (ROOT / "configs" / f"{a}.yaml").exists()]
     if missing:
@@ -304,10 +422,16 @@ def main() -> int:
           f"(완료 {done}, 남은 {len(todo)-done})")
     print(f"[sweep] out={rel(out_root)} source={args.source} "
           f"amp={args.amp}")
+    write_arm_order(out_root, arms)       # 기준 arm = arms[0] 을 남긴다
     if args.dry_run:
         for a, s in todo:
-            mark = "✓" if (out_root / f"{a}__s{s}" / "summary.json").exists() else " "
-            print(f"  {mark} {a}__s{s}")
+            d = out_root / f"{a}__s{s}"
+            if (d / "summary.json").exists():
+                print(f"  ✓ {a}__s{s}")
+            elif (ep := partial_epoch(d)) is not None:
+                print(f"  ↻ {a}__s{s}   epoch {ep} 까지 갔다가 끊겼다 — 거기서 재개한다")
+            else:
+                print(f"    {a}__s{s}")
         return 0
 
     amp = {"on": True, "off": False}[args.amp]
@@ -316,12 +440,17 @@ def main() -> int:
     t_start = time.perf_counter()
     n_ran = 0
     for i, (arm, seed) in enumerate(todo, 1):
-        pre = (out_root / f"{arm}__s{seed}" / "summary.json").exists()
-        print(f"[sweep] {i}/{len(todo)}  {arm} seed={seed}"
-              f"{'  (이미 있음, 건너뜀)' if pre else ''}", flush=True)
+        d = out_root / f"{arm}__s{seed}"
+        pre = (d / "summary.json").exists()
+        part = partial_epoch(d)
+        tag = ("  (이미 있음, 건너뜀)" if pre else
+               f"  (epoch {part} 에서 재개)" if part and not args.no_resume else "")
+        print(f"[sweep] {i}/{len(todo)}  {arm} seed={seed}{tag}", flush=True)
         try:
             run_one(arm, seed, out_root, args.source, args.device, amp,
-                    args.epochs, args.keep_ckpt, args.workers)
+                    args.epochs, args.keep_ckpt, args.workers,
+                    resume=not args.no_resume, hf=hf if hf.enabled else None,
+                    cond_perturb=args.cond_perturb)
         except Exception as e:                      # 한 판이 죽어도 큐는 계속
             print(f"  [실패] {arm} seed={seed}: {type(e).__name__}: {e}",
                   file=sys.stderr, flush=True)
@@ -335,6 +464,7 @@ def main() -> int:
         write_csv(out_root)
 
     p = write_csv(out_root)
+    hf.push_all(out_root)                 # 완료 — 전체 출력을 올린다
     print(f"\n[sweep] 끝. 표 → {rel(p)}")
     print(f"[sweep] 업로드할 것: {rel(out_root)} 폴더 전체 "
           f"({sum(f.stat().st_size for f in out_root.rglob('*') if f.is_file())/1e6:.1f} MB)")

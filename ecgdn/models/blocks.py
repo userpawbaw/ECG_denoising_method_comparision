@@ -35,7 +35,11 @@ class ConvBlock(nn.Module):
 
 
 class ResBlock(nn.Module):
-    """Conv-GN-SiLU-Conv-GN + skip -> SiLU."""
+    """Conv-GN-SiLU-Conv-GN + skip -> SiLU.
+
+    `film` 은 조건화(D-28 2 번)용 `(γ, β)` 다. **잔차 가지에만** 걸린다 —
+    근거는 `ecgdn/models/film.py` 머리말. 안 주면 종래와 완전히 같은 계산이다.
+    """
 
     def __init__(self, ch: int, k: int = 9):
         super().__init__()
@@ -45,9 +49,12 @@ class ResBlock(nn.Module):
         self.n2 = _gn(ch)
         self.act = nn.SiLU()
 
-    def forward(self, x):
+    def forward(self, x, film: tuple[torch.Tensor, torch.Tensor] | None = None):
         h = self.act(self.n1(self.c1(x)))
         h = self.n2(self.c2(h))
+        if film is not None:
+            g, b = film
+            h = g * h + b
         return self.act(x + h)
 
 

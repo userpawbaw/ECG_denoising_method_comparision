@@ -107,3 +107,23 @@ def _seg(ds, i):
     if pad_l or pad_r:
         seg = np.pad(seg, (pad_l, pad_r), mode="edge")
     return seg, rec.fs, m
+
+
+def test_resunet_default_is_unchanged_by_the_depth_knob():
+    """`n_blocks` 를 추가해도 **기본값에서는 종래와 완전히 같은 망**이어야 한다.
+
+    기존 체크포인트가 전부 이 구조로 학습됐다. 파라미터 수나 수용영역이 1 이라도
+    달라지면 그 체크포인트들이 무효가 된다(F-9).
+    """
+    from ecgdn.models.resunet1d import ResUNet1D
+    m = ResUNet1D()
+    assert m.n_params() == 976_489
+    assert m.receptive_field_samples == 887
+    assert ResUNet1D(n_blocks=1).n_params() == m.n_params()
+
+
+def test_depth_knob_deepens_and_widens_the_receptive_field():
+    """깊이를 늘리면 수용영역도 같이 는다 — 둘은 conv 망에서 분리되지 않는다."""
+    from ecgdn.models.resunet1d import ResUNet1D
+    rf = [ResUNet1D(n_blocks=n).receptive_field_samples for n in (1, 2, 3)]
+    assert rf == sorted(rf) and len(set(rf)) == 3, rf
