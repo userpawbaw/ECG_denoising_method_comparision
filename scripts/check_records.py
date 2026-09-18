@@ -378,6 +378,41 @@ def main() -> int:
     # 로컬 스킬은 출처가 대장에 있어야 한다 (docs/ui/04_tools.md 2 절). 외부 검사기는
     # 문서 전체 문자열 포함으로 봤는데 그러면 아무 데나 이름이 있어도 통과한다 —
     # **2 절 표 안**에서만 찾는다.
+    # UR 의 「사람이 문제 삼은 것」에는 **인용이 있어야** 한다 — 없으면 [재구성]/기록 없음.
+    # 원본 F-005 의 교훈(「문서 규칙만으로는 사람이 다시 읽을 서사가 안 남는다」)을
+    # 우리 형식으로. 인용은 장식이 아니라 「왜 판단이 바뀌었나」의 증거다 (UD-10).
+    if urp.exists():
+        q_bad = []
+        for rid, body in ur_items:
+            sec = body.split("### 사람이 문제 삼은 것", 1)
+            sec = sec[1].split("\n### ", 1)[0] if len(sec) > 1 else ""
+            quotes = len(re.findall(r"^>\s*\S", sec, re.M))
+            if quotes < 2 and "[재구성]" not in sec and "기록 없음" not in sec:
+                q_bad.append(f"{rid}: 「사람이 문제 삼은 것」에 인용이 {quotes} 개 — "
+                             "2 개 이상 직접 인용하거나 [재구성]/기록 없음 을 명시할 것")
+        for b in q_bad:
+            print("  ✗", b)
+        problems += q_bad
+
+    # 시안 가지치기 산출물(demo/ui/branches/UD-nn-x.html)은 파일명의 UD 가 실재하고
+    # 그 UD 본문이 그 파일을 불러야 한다 — 생성기 계층의 「없는 기록」 탐지 (UD-10).
+    branches = ROOT / "demo" / "ui" / "branches"
+    if branches.exists():
+        ud_txt = (d / "ui" / "10_decisions.md").read_text(encoding="utf-8")
+        br_bad = []
+        for f in sorted(branches.glob("*.html")):
+            mm = re.match(r"^(UD-\d+)-[a-z]\.html$", f.name)
+            if not mm:
+                br_bad.append(f"demo/ui/branches/{f.name}: 이름이 UD-nn-a.html 꼴이 아니다")
+            elif not re.search(rf"^## {mm.group(1)}\.", ud_txt, re.M):
+                br_bad.append(f"demo/ui/branches/{f.name}: {mm.group(1)} 이 10_decisions.md 에 없다")
+            elif f.name not in ud_txt:
+                br_bad.append(f"demo/ui/branches/{f.name}: {mm.group(1)} 본문이 이 브랜치를 부르지 않는다")
+        print("\n[시안 브랜치] demo/ui/branches — %d 개" % len(list(branches.glob("*.html"))))
+        for b in br_bad:
+            print("  ✗", b)
+        problems += br_bad
+
     skills = ROOT / ".claude" / "skills"
     ledger_path = d / "ui" / "04_tools.md"
     if skills.exists():

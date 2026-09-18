@@ -52,7 +52,7 @@ UI 결정이 연구 결론에 영향을 주면(예: 그림 색이 바뀌면 보�
 | `demo/ui/layout_b.html` | **3 단계 레이아웃 시안 — 경로 B**(직접 구현). 갤러리에서 열린다 |
 | `docs/ui/02_benchmark.md` | **레퍼런스 분석** — 표시 규약 · 비교 UI · 레이아웃 · 타이포 · 반응형, 그리고 **빌리지 않기로 한 것** |
 | `docs/ui/03_external_system_review.md` | **외부 UI/UX 시스템 이식 검토** — `userpawbaw/ecg-gui-design-review` 의 오케스트레이션 계층을 판정하고, 이식 시 충돌 지점과 도구 조합을 적었다. 결정은 **UD-5** |
-| `docs/ui/05_upstream_delta_review.md` | **외부 시스템 2 차 검토** — 원본 `62b65b1 → 08ffec3` 변경분(레퍼런스 마이닝 · Superdesign · Dual Director)의 채택/변형/기각과 capability 지도. `[검토 중]` — 채택은 UD-10 뒤 |
+| `docs/ui/05_upstream_delta_review.md` | **외부 시스템 2 차 검토** — 원본 `62b65b1 → 08ffec3` 변경분(레퍼런스 마이닝 · Superdesign · Dual Director)의 채택/변형/기각과 capability 지도. 채택은 **UD-10** — Superdesign 보류, 이중 디렉터는 모델 분리 + B 먼저 |
 | `docs/ui/04_tools.md` | **도구·스킬 대장** — 역할 · 상태(켜짐/켜야 함/로컬/기각) · 출처 SHA · **확인한 환경·날짜**. 로컬 스킬 출처 등록도 여기 |
 | `docs/ui/13_ai_collaboration.md` | UR 기록 |
 
@@ -68,6 +68,40 @@ UI 결정이 연구 결론에 영향을 주면(예: 그림 색이 바뀌면 보�
 | **데이터 스토리** | 한 문장 insight → 관계(rank · slope · trade-off · before/after) → 표현 후보. **순서와 전환**이 우리에게 빈 능력이다(UR-1) | `dataviz` · Flourish(초안) — `04_tools.md` |
 | **검증** (Validator) | KEEP / TUNE / REJECT + 되돌릴 조건. 「취향」은 이유가 아니다 | `.claude/skills/ecg-ui-validator` · `motion-review` · `design-critique` · `accessibility-review` |
 | **구현** | 승인 범위만. 무빌드 시연판을 유지한다(UD-1) | 이 세션 · `pytest tests/ -m screens` · CI |
+
+### 이중 디렉터 — 같은 문제, 다른 먹이 (UD-10)
+
+발산을 **둘로** 돌린다. 같은 brief 를 서로 다른 inspiration diet 로 풀어야 다양성이
+실제로 는다 — 한쪽이 다른 쪽을 먼저 보면 **두 번 비용을 쓰고 같은 방향**을 얻는다.
+
+| | **B — 네이티브 디렉터** (먼저) | **A — 레퍼런스 디렉터** (뒤) |
+|---|---|---|
+| 먹이 | 코드베이스 · `ui/palette.json` · 기준선 캡처 · `frontend-design` 2 패스 | 외부 실제 장면 — `02_benchmark` §8 카드 |
+| 스킬 | `frontend-design` · `expo-ui-art-director` | `expo-ui-art-director` + 카드 |
+| 출력 | 토큰 계획(색·서체·레이아웃) + 후보 4~6 | 카드 3~8 + 후보 5~8, 후보마다 REF 번호 |
+| 공유 | brief · 기준선 캡처 · invariant · 구역 · **기각 대장**(지난 UD 의 「버린 것」) | 같음 |
+| 1 차 패스 금지 | A 의 카드·URL·후보 | **B 의 후보·토큰 계획** |
+
+**격리 — 한 세션에서 어떻게**: ① **모델을 가른다**(한쪽은 `/model` 로 바꿔 돌린다, 어느
+모델이 어느 디렉터였는지 UD 에 `[런타임]` 으로) ② **B 먼저** — B 의 먹이(코드)는 A 가
+못 흔들고, A 는 후보마다 REF 를 대야 하니 B 에 기대기 어렵다 ③ 두 번째 디렉터는 **자기
+표를 먼저 다 쓴 뒤** 첫 디렉터의 절을 연다. 완전한 독립은 아니다 — 그건 서브에이전트가
+필요하고 사용자 지시가 있어야 띄운다(UD-10 되돌릴 조건).
+
+**구역별 예산**: HIGH 새 방향 → 이중 자동 · MEDIUM → B 만 + A 제안 · LOW → 발산 없음.
+
+**교차 검토 → Hybrid → 검증**: 두 표를 나란히 놓고 겹치는 것을 합치고, **상보적 강점이
+실제로 보일 때만** Hybrid 하나. 그 다음 검증기 넷 → KEEP/TUNE/REJECT → **UD**.
+
+**시안 가지치기**(생성기 절차, 도구는 없다 — UD-10): 승인된 2~4 후보만
+`demo/ui/branches/UD-nn-{a,b,c}.html` 로(`layout_b` 복제, 같은 baseline, **방향** 프롬프트),
+`python3 scripts/shoot_screens.py` 로 L2 캡처, 갤러리에서 나란히, 필요하면 Artifact 로
+발행해 폰에서 본다. 브랜치는 탐색물이다 — `SCREENS` 에 안 올리고, **파일명의 UD 가
+그 브랜치를 부르는지 `check_records.py` 가 본다.** 생성기는 자기 결과를 승인하지 않는다.
+
+**짧은 명령**: 「새 디자인 라운드」(구역이 단일/이중을 정한다) · 「네이티브 디렉터만」 ·
+「레퍼런스 디렉터만」 · 「이중 디렉터」 · 「시안 가지치기 UD-nn a/b/c」.
+스킬: `.claude/skills/dual-creative-director`.
 
 ### 구역 — 대담함은 HIGH 에, 절제는 LOW 에
 
@@ -159,7 +193,8 @@ python3 -m pytest tests/test_palette.py
 | **화면이 어떻게 보이는지 보고 싶다** | `demo/ui/gallery.html` 을 열거나 `python3 scripts/shoot_screens.py --all` |
 | **새 색을 고른다** | `scripts/validate_palette.py` 로 **먼저 재고** 고른다. 눈으로 고르지 않는다 |
 | **그림 스크립트를 돌린다** | 그 명령은 **저장한다**(UO-1). 한글 폰트가 있는 환경인지 먼저 보고, 결과를 열어 본 뒤 커밋한다 |
-| **화면을 더 인상적으로 만들고 싶다** | `expo-ui-art-director` 로 발산 → **UD 먼저** → `ecg-ui-validator` 로 판정. 위 「운영」 절 |
+| **화면을 더 인상적으로 만들고 싶다** | 「새 디자인 라운드」 — 구역을 보고 단일/이중 발산(위 「이중 디렉터」) → **UD 먼저** → 검증기 넷 |
+| **후보의 느낌을 텍스트로는 못 나누겠다** | `02_benchmark` §8 레퍼런스 카드 — 어디를 볼지까지 짚고 L1 캡처. 그래도 안 갈리면 「시안 가지치기」 |
 | **AI/도구의 제안이 판단을 바꿨다** | UR 후보 — `docs/ui/13_ai_collaboration.md` |
 | **새 도구·스킬을 들이고 싶다** | `docs/ui/04_tools.md` 3 절. 카탈로그를 **실제로** 검색한다(UR-1) |
 | **플러그인이 안 보인다** | `docs/ui/04_tools.md` 6 절 — 이 환경엔 `/plugin` UI 가 없다. **라이선스가 허락하면 스킬로 복제하는 것이 제일 낫다**(UD-7) |
