@@ -370,20 +370,62 @@ def test_sweep_fades_into_the_cursor_instead_of_cutting(browser):
         f"멀리 {far:.0f}")
 
 
+_GLOW_JS = """() => {
+  const p = panels[1];
+  const cv = document.querySelectorAll('.lane .plot canvas')[1];
+  const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  // 열마다 **선의 밝기**(칠해진 픽셀 중 최대 L). 개수를 세지 않는다 — 개수는
+  // 파형의 기울기(R 피크)에 따라 열마다 3 배까지 달라진다 (UF-7).
+  const maxL = [];
+  for (let x = 0; x < cv.width; x++){
+    let m = 0;
+    for (let y = 0; y < cv.height; y++){
+      const o = (y * cv.width + x) * 4;
+      if (d[o+3] > 200){
+        const L = 0.2126*d[o] + 0.7152*d[o+1] + 0.0722*d[o+2];
+        if (L > m) m = L;
+      }
+    }
+    maxL.push(m);
+  }
+  const x1 = Math.round((((animIdx % p.n) + p.n) % p.n) * (p.pxPerSec / B.fs));
+  return {x1: x1, w: cv.width, maxL: maxL};
+}"""
+
+
 @pytest.mark.skipif(SWEEP not in IDS, reason="스윕 화면이 아직 없다")
 def test_sweep_glows_behind_the_cursor(browser):
     """커서 **뒤**는 밝게 톤업됐다가 멀어지며 원래 색으로 돌아와야 한다.
 
-    감시장치 형광체를 흉내 낸 것이다. 밝기가 오르면 밝은 픽셀이 늘어나므로
-    같은 탐침으로 잡힌다 — 커서 바로 뒤 띠가 그보다 앞선 띠보다 진해야 한다.
-    """
-    r = _sweep_ink(browser)
-    col, w, x1 = r["col"], r["w"], r["x1"]
-    band = lambda a, b: sum(col[(x1 + k) % w] for k in range(a, b))
+    감시장치 형광체를 흉내 낸 것이다. 그 주장을 **그대로** 잰다 — **같은 열**을
+    커서가 막 지난 때와 멀어진 뒤에 두 번 재서, 두 번째가 어두워야 한다.
+    같은 픽셀·같은 파형이므로 남는 차이는 잔광뿐이다.
 
-    hot, cool = band(-60, -10), band(-180, -130)
-    assert hot > cool, (
-        f"커서 뒤 잔광이 없다 — 바로 뒤 {hot:.0f} 가 먼 쪽 {cool:.0f} 보다 진하지 않다")
+    이전 판은 «커서 뒤 띠 vs 더 뒤 띠» 의 밝은 픽셀 **개수**를 견줬다. 그러면
+    (1) 어느 띠에 R 피크가 들었느냐가 잔광보다 크게 먹고, (2) 참값 회색선
+    (L≈182)이 열마다 최댓값을 차지해 방법 색의 톤업이 묻힌다 — 결정론적으로
+    빨갰다 (UF-7). 그래서 참값을 끄고, 개수가 아니라 밝기를, 띠가 아니라 같은
+    열을 본다.
+    """
+    s = _screen(SWEEP)
+    page = new_page(browser, theme="dark")
+    settle_page(page, s)
+    page.evaluate("() => { state.showRef = false; render(); }")
+    page.get_by_role("button", name="스윕", exact=True).click()
+    page.wait_for_timeout(13_000)                # 두 바퀴째 — 뒤에 지난 바퀴가 있다
+    a = page.evaluate(_GLOW_JS)
+    page.wait_for_timeout(2_000)                 # 커서가 ≈380 px 앞으로 간다
+    b = page.evaluate(_GLOW_JS)
+    page.close()
+
+    w, x1 = a["w"], a["x1"]
+    assert b["x1"] != x1, "커서가 안 움직였다 — 스윕이 돌고 있지 않다"
+    cols = [(x1 + k) % w for k in range(-70, -10)]       # 꼬리(≈79 px) 안쪽
+    mean = lambda prof: (lambda v: sum(v) / len(v))([prof[i] for i in cols if prof[i] > 0])
+    hot, cooled = mean(a["maxL"]), mean(b["maxL"])
+    assert hot > cooled + 10, (
+        f"커서 뒤 잔광이 없다 — 같은 열이 커서 뒤에서 L {hot:.1f}, 멀어진 뒤 "
+        f"{cooled:.1f} (실측은 ≈155 → ≈129 다)")
 
 
 # ------------------------------------------------------------------ 갤러리
