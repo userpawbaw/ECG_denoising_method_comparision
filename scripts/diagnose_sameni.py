@@ -36,8 +36,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", "--source", dest="data", default="synthetic",
                     choices=["synthetic", "mitdb"], help="config 없이 도는 보조 스크립트다. synthetic 이 기본 — D0 결과(이미 보고서에 인용된 값)와의 연속성을 지킨다")
-    ap.add_argument("--dur", type=float, default=90.0)
-    ap.add_argument("--snr", type=float, default=5.0)
+    ap.add_argument("--dur", type=float, default=90.0,
+        help="한 구간의 길이 [s]")
+    ap.add_argument("--snr", type=float, default=5.0,
+        help="입력 SNR [dB]")
     args = ap.parse_args()
     tag = "d0" if args.data == "synthetic" else "d1"
     suffix = "" if tag == "d0" else "_d1"

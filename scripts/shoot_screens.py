@@ -39,7 +39,8 @@ def main(argv=None) -> int:
     ap.add_argument("--only", nargs="*", help="화면 이름 일부 (기본: 전부)")
     ap.add_argument("--width", type=int, action="append",
                     help="폭 (여러 번 줄 수 있다). 기본 1920")
-    ap.add_argument("--theme", choices=("light", "dark", "both"), default="light")
+    ap.add_argument("--theme", choices=("light", "dark", "both"), default="light",
+                    help="어느 테마로 찍을지. both 는 화면당 두 장 — 다크는 자동 반전이 아니라 따로 고른 값이라 둘 다 봐야 한다 (UF-5)")
     ap.add_argument("--all", action="store_true", help="세 폭 × 두 테마")
     ap.add_argument("--full-page", action="store_true", help="스크롤 전체를 찍는다")
     a = ap.parse_args(argv)

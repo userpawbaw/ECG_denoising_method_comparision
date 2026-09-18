@@ -33,7 +33,8 @@ from ecgdn.utils import stale_sources  # noqa: E402
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default="results")
+    ap.add_argument("--root", default="results",
+        help="검사할 산출물 루트")
     ap.add_argument("--strict", action="store_true",
                     help="낡은 산출물이 있으면 종료코드 2")
     a = ap.parse_args()

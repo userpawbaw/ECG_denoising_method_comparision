@@ -233,11 +233,13 @@ def render(result: dict) -> str:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="색 팔레트 검증 (docs/ui/01_system.md · UD-1)")
     ap.add_argument("colors", help="쉼표로 나눈 hex 목록")
-    ap.add_argument("--mode", default="light", choices=sorted(BAND))
+    ap.add_argument("--mode", default="light", choices=sorted(BAND),
+                    help="검사 기준이 되는 표면 모드. 명도대·기본 표면색이 모드마다 다르다 (--surface 로 표면만 따로 줄 수 있다)")
     ap.add_argument("--surface", default=None, help="차트 표면색 (기본은 모드별)")
     ap.add_argument("--scope", default="lane", choices=("lane", "legend"),
                     help="lane=모든 쌍(엄격) · legend=인접 쌍 (docs/ui 01_system 2.1)")
-    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--json", action="store_true",
+                    help="사람이 읽는 표 대신 JSON 으로 낸다 — 검사·스크립트가 쓴다 (tests/test_palette.py)")
     a = ap.parse_args(argv)
 
     cols = [c for c in (s.strip(_WS) for s in a.colors.split(",")) if c]
