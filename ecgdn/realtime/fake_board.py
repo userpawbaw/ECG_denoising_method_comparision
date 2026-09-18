@@ -82,7 +82,7 @@ class FakeBoard:
         self.mode = "bin" if mode.startswith("b") else "ascii"
         # **명령을 모르는 판을 흉내낸다.** 스케치가 구 버전이면 `'2'` 를 받고도
         # 500 Hz 를 계속 준다. 그러면 PC 는 250 Hz 라 믿고 처리하고, 시간축이
-        # 두 배로 틀린다 — **에러는 안 나고 심박수만 절반이 된다** (F-42).
+        # 두 배로 틀린다 — **에러는 안 나고 심박수만 절반이 된다** (F-54).
         self.accept_commands = bool(accept_commands)
         self.dropped = 0
         self.seq = 0

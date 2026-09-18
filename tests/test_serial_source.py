@@ -8,8 +8,8 @@ tty 한 쌍을 열고 한쪽에 `FakeBoard` 를 붙여 그 길을 통째로 태�
 고정하는 것 넷 — 넷 다 시연 당일에 실제로 일어나는 일이다:
 
 1. **명령이 보드에 닿는가** (`--board-fs 250` 이 정말 250 Hz 를 만드는가)
-2. **포트가 배타 자원인가** (IDE 나 두 번째 브리지가 붙으면 막히는가 — O-30)
-3. **선이 끊기면 알아채는가** (조용히 멈추지 않는가 — O-30)
+2. **포트가 배타 자원인가** (IDE 나 두 번째 브리지가 붙으면 막히는가 — O-34)
+3. **선이 끊기면 알아채는가** (조용히 멈추지 않는가 — O-34)
 4. **부팅 잡음이 신호에 안 섞이는가**
 """
 from __future__ import annotations
@@ -150,7 +150,7 @@ def test_the_boot_banner_never_reaches_the_signal(board):
 
 # --------------------------------------------------- 포트는 배타 자원이다
 def test_a_second_bridge_cannot_take_the_port(board):
-    """**이것이 없으면 두 브리지가 에러 없이 바이트를 나눠 가진다** (O-30).
+    """**이것이 없으면 두 브리지가 에러 없이 바이트를 나눠 가진다** (O-34).
 
     양쪽 화면이 손실 50 % 로 보이고, 그 증상은 전극 문제와 구별되지 않는다.
     """
@@ -185,7 +185,7 @@ def test_without_the_exclusive_flag_two_readers_split_the_bytes(board):
 
 # ------------------------------------------------------- 선이 끊기면
 def test_pulling_the_cable_raises_instead_of_going_quiet(board):
-    """읽기가 조용히 죽으면 화면은 «연결됨» 인 채 파형만 멈춘다 (O-30)."""
+    """읽기가 조용히 죽으면 화면은 «연결됨» 인 채 파형만 멈춘다 (O-34)."""
     m = _load("serial_bridge")
     src = m.SerialSource(board.port, 115200, 250, True, settle_s=0.3)
     try:
@@ -211,7 +211,7 @@ def test_link_loss_is_a_distinct_error_type():
 
 # ------------------------------------------- 구 스케치가 꽂혀 있으면
 def test_an_old_sketch_keeps_its_own_fs_and_the_bridge_can_see_it():
-    """명령을 모르는 판은 500 Hz 를 계속 준다 — **에러 없이 시간축만 틀린다**(F-42).
+    """명령을 모르는 판은 500 Hz 를 계속 준다 — **에러 없이 시간축만 틀린다**(F-54).
 
     브리지가 이것을 잡는 근거는 «실측 샘플률» 하나뿐이므로, 그 값이 정말
     보드를 따라가는지 여기서 고정한다.
@@ -328,7 +328,7 @@ class ComPair:
     (`SerialLink` — pyserial 의 `read`/`write`) 를 태운다.
 
     한동안 문서가 이 길을 윈도우 대안으로 안내했는데, `attach_port` 가
-    `ser.fileno()` 를 쓰고 있어서 **윈도우에서는 그 줄에서 터졌다** (O-32).
+    `ser.fileno()` 를 쓰고 있어서 **윈도우에서는 그 줄에서 터졌다** (O-36).
     `fileno()` 는 pyserial 의 POSIX 구현에만 있다.
     """
 
@@ -435,7 +435,7 @@ def test_windows_without_attach_says_to_install_com0com():
     """**`--attach` 없이 윈도우에서 돌리면 무엇을 깔아야 하는지 말해야 한다.**
 
     실제로 「termios 모듈이 없다」는 스택트레이스만 보고 무엇을 해야 할지
-    모르는 일이 있었다 (O-32).
+    모르는 일이 있었다 (O-36).
     """
     m = _load("fake_arduino")
     real = getattr(os, "openpty")

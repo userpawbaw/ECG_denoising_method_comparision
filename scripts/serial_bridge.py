@@ -87,7 +87,7 @@ def build_stream_method(mid: str, axis: str = "d1"):
 
 # ------------------------------------------------------------------- 입력원
 class LinkLost(RuntimeError):
-    """선이 끊겼다 — 케이블·보드 쪽 문제. **조용히 멈추면 안 된다**(O-30)."""
+    """선이 끊겼다 — 케이블·보드 쪽 문제. **조용히 멈추면 안 된다**(O-34)."""
 
 
 class SerialSource:
@@ -104,7 +104,7 @@ class SerialSource:
             # **`exclusive=True` 가 있어야 포트가 배타 자원이 된다.** 없으면
             # 두 번째 프로그램이 **에러 없이** 같은 포트를 열고 바이트를 나눠
             # 가진다 — 양쪽 화면이 손실 50 % 로 보이고, 그것이 전극 문제처럼
-            # 읽힌다. 가상 포트로 재현해 확인했다 (O-30).
+            # 읽힌다. 가상 포트로 재현해 확인했다 (O-34).
             self.ser = serial.Serial(port, baud, timeout=0.05, exclusive=True)
         except serial.SerialException as e:
             raise SystemExit(
@@ -291,7 +291,7 @@ class Hub:
     def publish(self, payload: dict) -> None:
         # **직렬화는 여기서 한 번만 한다.** 이미 문자열인 것을 받아 한 번 더
         # 감싸면 브라우저는 «JSON 을 담은 JSON» 을 받고, 그 실패는 화면에서
-        # «아무 일도 안 일어남» 으로만 보인다 — 그래서 형을 여기서 막는다 (F-43).
+        # «아무 일도 안 일어남» 으로만 보인다 — 그래서 형을 여기서 막는다 (F-52).
         if not isinstance(payload, dict):
             raise TypeError("publish 는 dict 를 받는다 (이미 직렬화된 문자열이 "
                             f"아니라) — 받은 것: {type(payload).__name__}")
@@ -540,7 +540,7 @@ def main() -> int:
             # `stop.set()` 뒤에 `source.close()` 를 부르는데, 그때 읽기가
             # 이미 `read()` 안에 들어가 있었으면 닫힌 fd 로 Errno 9 가 난다.
             # 그것을 경보로 올리면 `--dur` 로 끝내거나 Ctrl+C 를 누를 때마다
-            # 「케이블이 빠졌다」가 뜬다 (O-31).
+            # 「케이블이 빠졌다」가 뜬다 (O-35).
             if not stop.is_set():
                 link_err.append(str(e))
         except Exception as e:                               # pragma: no cover
@@ -575,7 +575,7 @@ def main() -> int:
             # **아무것도 안 나올 때가 가장 알아채기 어렵다.** 화면은 비어 있고
             # 터미널의 진행 줄은 첫 payload 가 나와야 찍히므로, 스케치가 안
             # 올라갔거나 형식이 어긋나면 **20 초 동안 아무 말도 없다.**
-            # 그래서 여기서 먼저 말한다 (O-30).
+            # 그래서 여기서 먼저 말한다 (O-34).
             now0 = time.perf_counter()
             if n_board == 0 and now0 - t_start > 5.0 and now0 - t_nodata > 10.0:
                 t_nodata = now0
@@ -616,7 +616,7 @@ def main() -> int:
                 # 하면 선에 실리는 것이 «JSON 문자열을 담은 JSON» 이 되고,
                 # 브라우저의 `JSON.parse` 는 문자열을 돌려준다 — `m.reset` 이
                 # undefined 라 화면이 안 비워지고, 두 front-end 의 파형이 한
-                # 화면에 섞인다. 6.3 이 막겠다고 적어 둔 바로 그 일이다 (F-43).
+                # 화면에 섞인다. 6.3 이 막겠다고 적어 둔 바로 그 일이다 (F-52).
                 hub.publish({"reset": True, "fe": want,
                              "fe_label": FE_MODES[want]["label"],
                              "fe_lat_ms": round(fe_lat_ms, 0)})
@@ -691,7 +691,7 @@ def main() -> int:
             # **보드가 정말 그 fs 로 주고 있는가.** `--board-fs` 는 보드에게
             # 보내는 «명령» 일 뿐이라, 펌웨어가 그 명령을 모르면(구 버전) 보드는
             # 원래 fs 를 계속 준다. 그러면 에러 없이 **시간축만 틀린다** —
-            # R-peak 간격이 배로 벌어지고 심박수가 절반으로 보인다 (F-42).
+            # R-peak 간격이 배로 벌어지고 심박수가 절반으로 보인다 (F-54).
             el_all = now - t_start
             if not fs_checked and el_all > 10.0 and n_board > 0:
                 fs_checked = True

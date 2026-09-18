@@ -187,7 +187,7 @@ def test_aligner_still_aligns_after_trimming():
 
 # ------------------------------------------- 화면으로 미는 길 (SSE)
 def test_publish_refuses_an_already_serialised_payload():
-    """**두 번 직렬화하면 브라우저가 문자열을 받는다** (F-43).
+    """**두 번 직렬화하면 브라우저가 문자열을 받는다** (F-52).
 
     `JSON.parse` 는 성공하고 결과가 문자열이라 `m.reset` 이 undefined 가 된다.
     화면에서는 «아무 일도 안 일어남» 으로만 보여서 눈으로는 못 잡는다.
@@ -214,4 +214,4 @@ def test_no_call_site_serialises_before_publishing():
     """가드가 있어도 **호출부에 남아 있으면 시연 중에 터진다** — 미리 잡는다."""
     src = (ROOT / "scripts" / "serial_bridge.py").read_text()
     assert "hub.publish(json.dumps(" not in src, \
-        "publish 앞에서 json.dumps 를 부르고 있다 (F-43)"
+        "publish 앞에서 json.dumps 를 부르고 있다 (F-52)"

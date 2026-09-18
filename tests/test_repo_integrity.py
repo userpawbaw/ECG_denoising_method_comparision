@@ -807,7 +807,7 @@ def test_demo_cards_share_the_lane_renderer(card: str):
 # 실행 스크립트의 옵션은 **전부** `docs/24_cli_reference.md` 에 있어야 한다.
 # 기본 예시만 보고 돌리면 고를 수 있는 것을 모른 채 한 가지 그림만 보게 된다 —
 # 실제로 `--record`·`--noise` 를 문서에서 못 찾아 "여러 개를 못 돌려보겠다" 는
-# 지적이 나왔다 (O-31). 그 문서는 자동 생성이므로 여기서는 **재생성이 필요한지**
+# 지적이 나왔다 (O-35). 그 문서는 자동 생성이므로 여기서는 **재생성이 필요한지**
 # 와 **설명이 빈 옵션이 있는지** 둘을 본다.
 CLI_DOC = ROOT / "docs" / "24_cli_reference.md"
 CLI_MAKER = ROOT / "scripts" / "make_cli_reference.py"
