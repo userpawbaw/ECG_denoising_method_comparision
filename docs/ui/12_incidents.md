@@ -124,6 +124,25 @@ pytest 는 **1 failed, 580 passed** 였다 — `test_doc_cross_references_resolv
 
 ---
 
+### 추기 (2026-09-18) — **재발했다. 두 번째다**
+
+`pytest tests/ -q 2>&1 | tail -1 && git add … && git commit … && git push` — 정확히
+같은 모양이다. `tail` 이 0 을 돌려 **1 failed 인 판이 커밋·푸시됐다**(`docs/ui/05` 검토서
+커밋). 깨진 것은 D-35 가 만든 `test_claude_md_test_count_matches_reality` — 새 문서가
+매개변수 검사 둘을 늘려 699 → 701 이 됐는데 명판을 안 고쳤다. **검사는 제 일을 했고
+파이프가 그것을 삼켰다.**
+
+위의 「규칙」(`set -o pipefail` 또는 요약 줄을 직접 읽는다)은 **틀린 게 아니라 약했다** —
+지킬지 말지가 매번 사람 손에 있었다. 승급한다:
+
+> **검사와 커밋을 한 셸 줄에 두지 않는다.** `pytest` 는 자기 줄에서 돌리고 요약 줄을
+> 읽은 **다음 호출**에서 커밋한다. `| tail` 뒤에 `&&` 를 두는 순간 종료 코드는 `tail` 의 것이다.
+
+CLAUDE.md 「일곱 줄」표에 넣을지는 세 번째가 나면 — 지금은 `00_index` 「작업 직전」표의
+그 줄을 이 문장으로 바꾼다.
+
+---
+
 ## UO-3. `claude plugin uninstall` 이 **방금 만든 프로젝트 설정 파일을 비웠다**
 
 | | |

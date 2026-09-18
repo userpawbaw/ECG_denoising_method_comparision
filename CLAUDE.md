@@ -42,7 +42,7 @@ ECG 잡음 제거 기법 비교(졸업과제). 규약 원문은 `docs/`, **이 �
 
 ## 커밋 전
 
-`pytest tests/` — 699 개, 약 1 분. **push 하면 Actions 가 같은 것을 돌리고
+`pytest tests/` — 701 개, 약 1 분. **push 하면 Actions 가 같은 것을 돌리고
 화면 스크린샷 42 장을 올린다** (`docs/99_status.md`). 기록 무결성 검사가 여기 들어 있어
 **빠진 F/D 기록과 낡은 보고서 수치를 잡는다** (`tests/test_repo_integrity.py`).
 실제 학습을 도는 검사는 `slow` 로 빠져 있다 — `-m slow` 로 따로 돌린다.
