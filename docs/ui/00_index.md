@@ -52,6 +52,7 @@ UI 결정이 연구 결론에 영향을 주면(예: 그림 색이 바뀌면 보�
 | `demo/ui/layout_b.html` | **3 단계 레이아웃 시안 — 경로 B**(직접 구현). 갤러리에서 열린다 |
 | `docs/ui/02_benchmark.md` | **레퍼런스 분석** — 표시 규약 · 비교 UI · 레이아웃 · 타이포 · 반응형, 그리고 **빌리지 않기로 한 것** |
 | `docs/ui/03_external_system_review.md` | **외부 UI/UX 시스템 이식 검토** — `userpawbaw/ecg-gui-design-review` 의 오케스트레이션 계층을 판정하고, 이식 시 충돌 지점과 도구 조합을 적었다. 결정은 **UD-5** |
+| `docs/ui/05_upstream_delta_review.md` | **외부 시스템 2 차 검토** — 원본 `62b65b1 → 08ffec3` 변경분(레퍼런스 마이닝 · Superdesign · Dual Director)의 채택/변형/기각과 capability 지도. `[검토 중]` — 채택은 UD-10 뒤 |
 | `docs/ui/04_tools.md` | **도구·스킬 대장** — 역할 · 상태(켜짐/켜야 함/로컬/기각) · 출처 SHA · **확인한 환경·날짜**. 로컬 스킬 출처 등록도 여기 |
 | `docs/ui/13_ai_collaboration.md` | UR 기록 |
 
