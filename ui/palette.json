@@ -10,15 +10,23 @@
     "",
     "고치면 반드시: python3 scripts/build_tokens.py  (그리고 pytest tests/test_ui_tokens.py)"
   ],
-
   "meta": {
     "thresholds": {
       "_": "scripts/validate_palette.py 와 같은 값. 바꾸면 과거 기록과 비교가 끊긴다.",
       "normal_floor": 15.0,
       "cvd_target": 8.0,
       "cvd_floor": 6.0,
-      "lightness_band": {"light": [0.43, 0.77], "dark": [0.48, 0.67]},
-      "chroma_floor": 0.10,
+      "lightness_band": {
+        "light": [
+          0.43,
+          0.77
+        ],
+        "dark": [
+          0.48,
+          0.67
+        ]
+      },
+      "chroma_floor": 0.1,
       "contrast_min": 3.0
     },
     "how_to_verify": [
@@ -36,7 +44,6 @@
       "synced_at": null
     }
   },
-
   "methods": {
     "_": [
       "**색은 방법에 고정한다** (docs/33). 그림마다 바뀌면 같은 방법이 다른 것으로 읽힌다.",
@@ -44,19 +51,68 @@
       "dark 는 아직 [미정]: 자동 반전이 아니라 다크 표면 기준으로 따로 골라야 한다",
       "(mockup_expo 의 다크 4색은 명도대를 넷 다 벗어나 FAIL 이었다)."
     ],
-    "M01":  {"slot": 1, "light": "#2a78d6", "dark": null, "label": "Bandpass 0.5–40 Hz", "family": "classic"},
-    "M04":  {"slot": 2, "light": "#eb6834", "dark": null, "label": "SWT thresholding",   "family": "classic"},
-    "M08":  {"slot": 3, "light": "#1baf7a", "dark": null, "label": "Wavelet U-Net",      "family": "deep"},
-    "M05":  {"slot": 4, "light": "#e4a824", "dark": null, "label": "Sameni EKS",         "family": "classic",
-             "moved": {"from": "#eda100", "delta_e": 2.0, "why": "M04 와 정상시야 13.7 → 15.1 (UD-2)"}},
-    "M_FE": {"slot": 5, "light": "#e880b4", "dark": null, "label": "front-end 단독",     "family": "frontend",
-             "moved": {"from": "#e87ba4", "delta_e": 2.2, "why": "M04 와 정상시야 12.9 → 15.1 (UD-2)"}},
-    "M02":  {"slot": 6, "light": "#7b53c1", "dark": null, "label": "Wavelet (DWT)",      "family": "classic",
-             "note": "어느 그림에도 안 쓰인다. 쓰게 되면 그 조합으로 먼저 잰다 (UF-1 «남은 것»)."},
-    "M06":  {"slot": 7, "light": "#184f95", "dark": null, "label": "ResUNet1D",          "family": "deep",
-             "note": "상동. LOSS 램프의 진한 끝과 값이 같으므로 함께 쓰면 먼저 잰다."}
+    "M01": {
+      "slot": 1,
+      "light": "#2a78d6",
+      "dark": null,
+      "label": "Bandpass 0.5–40 Hz",
+      "family": "classic"
+    },
+    "M04": {
+      "slot": 2,
+      "light": "#eb6834",
+      "dark": null,
+      "label": "SWT thresholding",
+      "family": "classic"
+    },
+    "M08": {
+      "slot": 3,
+      "light": "#1baf7a",
+      "dark": null,
+      "label": "Wavelet U-Net",
+      "family": "deep"
+    },
+    "M05": {
+      "slot": 4,
+      "light": "#e4a824",
+      "dark": null,
+      "label": "Sameni EKS",
+      "family": "classic",
+      "moved": {
+        "from": "#eda100",
+        "delta_e": 2.0,
+        "why": "M04 와 정상시야 13.7 → 15.1 (UD-2)"
+      }
+    },
+    "M_FE": {
+      "slot": 5,
+      "light": "#e880b4",
+      "dark": null,
+      "label": "front-end 단독",
+      "family": "frontend",
+      "moved": {
+        "from": "#e87ba4",
+        "delta_e": 2.2,
+        "why": "M04 와 정상시야 12.9 → 15.1 (UD-2)"
+      }
+    },
+    "M02": {
+      "slot": 6,
+      "light": "#7b53c1",
+      "dark": null,
+      "label": "Wavelet (DWT)",
+      "family": "classic",
+      "note": "어느 그림에도 안 쓰인다. 쓰게 되면 그 조합으로 먼저 잰다 (UF-1 «남은 것»)."
+    },
+    "M06": {
+      "slot": 7,
+      "light": "#184f95",
+      "dark": null,
+      "label": "ResUNet1D",
+      "family": "deep",
+      "note": "상동. LOSS 램프의 진한 끝과 값이 같으므로 함께 쓰면 먼저 잰다."
+    }
   },
-
   "families": {
     "_": [
       "시연 화면은 방법을 여덟까지 보이므로 방법마다 색을 줄 수 없다 — 계열로 묶는다.",
@@ -64,37 +120,82 @@
       "**현 상태는 FAIL** 이다 (classic↔input 정상시야 14.0 · oracle↔input CVD 4.2).",
       "레이아웃 재설계(3단계)에서 레인 기준으로 다시 고른다 — 지금은 있는 값을 담아 둔다."
     ],
-    "input":    {"light": "#b0453a", "dark": "#e0705f", "label": "잡음 섞인 입력"},
-    "classic":  {"light": "#c07a1f", "dark": "#e0a445", "label": "고전 방법"},
-    "deep":     {"light": "#184f95", "dark": "#7bb0f0", "label": "딥러닝"},
-    "oracle":   {"light": "#2f7d4f", "dark": "#5fbe86", "label": "oracle (계열 상한)"},
-    "frontend": {"light": "#c07a1f", "dark": "#e0a445", "label": "front-end 단독",
-                 "note": "지금은 classic 과 같은 값이다. 레인에서 둘이 나란히 오면 갈라야 한다."}
+    "input": {
+      "light": "#b0453a",
+      "dark": "#e0705f",
+      "label": "잡음 섞인 입력"
+    },
+    "classic": {
+      "light": "#c07a1f",
+      "dark": "#e0a445",
+      "label": "고전 방법"
+    },
+    "deep": {
+      "light": "#184f95",
+      "dark": "#7bb0f0",
+      "label": "딥러닝"
+    },
+    "oracle": {
+      "light": "#2f7d4f",
+      "dark": "#5fbe86",
+      "label": "oracle (계열 상한)"
+    },
+    "frontend": {
+      "light": "#c07a1f",
+      "dark": "#e0a445",
+      "label": "front-end 단독",
+      "note": "지금은 classic 과 같은 값이다. 레인에서 둘이 나란히 오면 갈라야 한다."
+    }
   },
-
   "roles": {
     "_": [
       "역할 색. **여기도 어긋나 있었다** — INK 가 슬라이드 #0b0b0b · 카드 #1b1b1b,",
       "MUTE 가 #52514e · #6b6b6b 였다. 방법 색만의 문제가 아니었다 (U-2).",
       "값은 슬라이드 쪽으로 통일했다 — 보고서 본문 그림이 더 많다."
     ],
-    "clean":   {"light": "#b8b6ae", "dark": null, "label": "참조(정답) — 뒤에 두껍게 깔아 '목표' 로 읽히게"},
-    "noisy":   {"light": "#52514e", "dark": null, "label": "입력 신호"},
-    "ink":     {"light": "#0b0b0b", "dark": null, "label": "본문 글자"},
-    "ink_2":   {"light": "#52514e", "dark": null, "label": "보조 글자"},
-    "surface": {"light": "#fcfcfb", "dark": "#1a1a19", "label": "차트 표면 — 검증기의 기준 표면"},
-    "bad":     {"light": "#d03b3b", "dark": null, "label": "경계선·경고"}
+    "clean": {
+      "light": "#b8b6ae",
+      "dark": null,
+      "label": "참조(정답) — 뒤에 두껍게 깔아 '목표' 로 읽히게"
+    },
+    "noisy": {
+      "light": "#52514e",
+      "dark": null,
+      "label": "입력 신호"
+    },
+    "ink": {
+      "light": "#0b0b0b",
+      "dark": null,
+      "label": "본문 글자"
+    },
+    "ink_2": {
+      "light": "#52514e",
+      "dark": null,
+      "label": "보조 글자"
+    },
+    "surface": {
+      "light": "#fcfcfb",
+      "dark": "#1a1a19",
+      "label": "차트 표면 — 검증기의 기준 표면"
+    },
+    "bad": {
+      "light": "#d03b3b",
+      "dark": null,
+      "label": "경계선·경고"
+    }
   },
-
   "ramps": {
     "_": [
       "ordinal 램프. **categorical 슬롯이 아니다** — 순서가 의미를 가진다.",
       "손실 L1→L3→L6 은 개입이 점점 커지는 순서라 단일 색조 램프를 쓴다.",
       "단조 L · 인접 간격 >= 0.06 · 밝은 끝 2.06:1 로 검증했다."
     ],
-    "loss": {"L1": "#86b6ef", "L3": "#3987e5", "L6": "#184f95"}
+    "loss": {
+      "L1": "#86b6ef",
+      "L3": "#3987e5",
+      "L6": "#184f95"
+    }
   },
-
   "kinds": {
     "_": [
       "개입의 **종류**(구조/손실)를 가르는 두 색. 방법 색을 쓰면 「M08 색」 같은",
@@ -103,38 +204,107 @@
     "구조": "#8a8a8a",
     "손실": "#184f95"
   },
-
   "typography": {
     "_": [
-      "**[미정] — 지금은 현 상태 기록이다.** 값을 고르는 것은 0 단계(레퍼런스 분석)의",
+      "**[미정] — 단계(scale)는 아직 안 골랐다.** 값을 고르는 것은 0 단계(레퍼런스 분석)의",
       "R-E 가 끝난 뒤다 (docs/ui/01_system.md 6.0). 근거 없이 단계를 정하면",
       "지금 난립과 다를 바가 없다.",
       "",
       "관측: demo/index.html 8 단계 · demo/mockup_expo.html 10 단계.",
-      "그중 11 · 11.5 · 12 · 12.5 px 넷은 눈으로 구분되지 않는다 — 위계가 아니라 잡음이다 (U-8)."
+      "그중 11 · 11.5 · 12 · 12.5 px 넷은 눈으로 구분되지 않는다 — 위계가 아니라 잡음이다 (U-8).",
+      "",
+      "**서체는 실었다 (UF-6 · UD-9 0 번).** 아래 faces 가 @font-face 로 나간다.",
+      "그 전에는 families 의 스택이 이름만 적고 있었고 어느 기계에도 IBM Plex 가 없어",
+      "한글이 대체 서체로 그려졌다 — 굵은 판이 없어 font-weight:700 이 폭을 0.9 %만",
+      "바꿨다. 「고르는 문제」가 아니라 「싣는 문제」였다."
     ],
     "status": "미정",
     "scale": null,
     "observed_px": {
-      "demo/index.html": [9.5, 11, 11.5, 12, 12.5, 14, 15, 17],
-      "demo/mockup_expo.html": [9.5, 11, 11.5, 12.5, 13, 13.5, 15, 16, 19]
+      "demo/index.html": [
+        9.5,
+        11,
+        11.5,
+        12,
+        12.5,
+        14,
+        15,
+        17
+      ],
+      "demo/mockup_expo.html": [
+        9.5,
+        11,
+        11.5,
+        12.5,
+        13,
+        13.5,
+        15,
+        16,
+        19
+      ]
     },
     "families": {
       "sans": "\"IBM Plex Sans KR\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
       "mono": "\"IBM Plex Mono\", ui-monospace, SFMono-Regular, Menlo, monospace"
+    },
+    "faces": {
+      "_": [
+        "tokens.css 의 @font-face 원본. dir 는 tokens.css 기준 상대 경로다.",
+        "**서브셋을 만들지 않았다** — 서브셋은 「화면 문구가 곧 폰트 커버리지」라는",
+        "숨은 결합을 만든다. 나중에 한 글자를 바꾸면 조용히 깨진다.",
+        "400 과 700 을 **둘 다** 담는다. 한 판만 담으면 UF-6 이 그대로 재발한다.",
+        "라이선스는 OFL-1.1 — demo/ui/fonts/LICENSE.txt 와 NOTICE 를 함께 둔다."
+      ],
+      "dir": "fonts/",
+      "list": [
+        {
+          "family": "IBM Plex Sans KR",
+          "weight": 400,
+          "file": "IBMPlexSansKR-Regular.woff2"
+        },
+        {
+          "family": "IBM Plex Sans KR",
+          "weight": 700,
+          "file": "IBMPlexSansKR-Bold.woff2"
+        },
+        {
+          "family": "IBM Plex Mono",
+          "weight": 400,
+          "file": "IBMPlexMono-Regular.woff2"
+        },
+        {
+          "family": "IBM Plex Mono",
+          "weight": 700,
+          "file": "IBMPlexMono-Bold.woff2"
+        }
+      ]
     }
   },
-
   "spacing": {
-    "_": ["[미정] — typography 와 같은 이유. 0 단계 R-D(레이아웃·그리드·여백) 뒤에 정한다."],
+    "_": [
+      "[미정] — typography 와 같은 이유. 0 단계 R-D(레이아웃·그리드·여백) 뒤에 정한다."
+    ],
     "status": "미정",
     "scale": null
   },
-
   "viewport": {
-    "_": ["확정 (사용자 판단) — docs/ui/01_system.md 7 절."],
-    "target": {"w": 1920, "h": 1080, "note": "브라우저 크롬을 빼면 실 뷰포트 약 1920×910"},
-    "min": {"w": 1280, "h": 720, "note": "다른 노트북을 쓰게 될 경우의 하한"},
-    "test_widths": [1280, 1440, 1920]
+    "_": [
+      "확정 (사용자 판단) — docs/ui/01_system.md 7 절."
+    ],
+    "target": {
+      "w": 1920,
+      "h": 1080,
+      "note": "브라우저 크롬을 빼면 실 뷰포트 약 1920×910"
+    },
+    "min": {
+      "w": 1280,
+      "h": 720,
+      "note": "다른 노트북을 쓰게 될 경우의 하한"
+    },
+    "test_widths": [
+      1280,
+      1440,
+      1920
+    ]
   }
 }

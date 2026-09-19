@@ -61,6 +61,23 @@ def render_css(p: dict) -> str:
     # 라이트를 bare :root 에 **전부** 깐다. 다크 블록에는 **다른 값만** 둔다 —
     # 어떤 색의 유일한 정의가 다크 블록 안에 있으면, 테마를 안 고른 사용자에게는
     # 그 색이 아예 적용되지 않는다.
+    # **@font-face 가 먼저다.** 스택에 이름만 적어 두면 그 서체가 없는 기계에서는
+    # 대체 서체로 그려지고, 한글 대체 서체에는 굵은 판이 없어 위계가 통째로
+    # 사라진다 — 그것을 못 보고 여러 커밋을 지났다 (UF-6).
+    faces = p["typography"].get("faces")
+    if faces:
+        for f in faces["list"]:
+            L += [
+                "@font-face{",
+                f"  font-family: \"{f['family']}\";",
+                f"  src: url(\"{faces['dir']}{f['file']}\") format(\"woff2\");",
+                f"  font-weight: {f['weight']};",
+                "  font-style: normal;",
+                "  font-display: swap;",
+                "}",
+            ]
+        L.append("")
+
     L.append(":root{")
     groups = [("method", p["methods"]), ("family", p["families"]),
               ("role", p["roles"]), ("kind", p["kinds"])]
