@@ -105,4 +105,10 @@ results/ext/**/last.pt
 # 시연 화면 스크린샷 (scripts/shoot_screens.py). 화면이 바뀔 때마다 갱신되는
 # 이미지라 추적하면 커밋 잡음만 쌓인다 — results/logs/ 와 같은 이유다.
 # 보려고 찍는 것이고, 남길 근거가 있으면 문서에 인용한다.
-results/screens/
+# 디렉터리째(`results/screens/`)가 아니라 **내용물**을 제외한다 — 디렉터리를
+# 통째로 빼면 안쪽 negation 이 평가되지 않아 아래 예외가 죽는다.
+results/screens/*
+# **레퍼런스 캡처는 예외다.** 위 이유(「화면이 바뀔 때마다 갱신된다」)가 여기엔 안
+# 맞는다 — REF 캡처는 한 번 찍고 안 바꾸는 **증거**다. 원본 사이트가 사라지거나
+# 리디자인돼도 카드가 살아 있어야 한다 (UD-10 · docs/ui/02_benchmark.md 8 절).
+!results/screens/refs/
