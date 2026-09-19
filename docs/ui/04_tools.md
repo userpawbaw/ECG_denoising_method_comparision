@@ -31,7 +31,8 @@
 | | `ui-ux-pro-max` (`nextlevelbuilder/…` `15de38f`) | 참조 (선택) | 2026-09-17 · upstream HEAD 일치 | 패턴/안티패턴 **검색만**. 디자인 시스템 생성기는 안 쓴다(docs/22 §6 · UD-1). 스크립트는 세션 밖에서 |
 | | `design-taste` (`arez-xd/…` `a5c03fb`) | 참조 → 흡수 뒤 정리 | 2026-09-17 · upstream HEAD 일치 · **1 star** | motion·polish 참고 문서 두 개를 `02_benchmark` 에 흡수하면 의존을 끊는다 |
 | **IMPLEMENTATION · QA** | 이 세션(Claude Code web) + Chromium + `pytest -m screens` + CI(`checks.yml`) + 아티팩트 발행 | 켜짐 | 항상 | 구현 · L2/L3 검증 · 폰에서 보기 |
-| **RESEARCH** | WebSearch · WebFetch · `chrome --screenshot` | 켜짐 | 항상 | 레퍼런스 (UD-1 · `02_benchmark`) |
+| **RESEARCH** | WebSearch · WebFetch · `chrome --screenshot` | **막힘 — 이 환경** | 2026-09-19 `[측정]` | 외부 레퍼런스 호스트가 `403 to CONNECT`(조직 egress 정책). `WebFetch` 도 `EGRESS_BLOCKED`. **우회하지 않는다**(UF-8). `github.com` 은 열린다. → **레퍼런스 마이닝은 로컬 세션에서** |
+| | **MCP 커넥터**(MDN · Figma · Flourish) | **켜짐** | 2026-09-19 · MDN 재확인 `[측정]` | 같은 호스트가 컨테이너에선 403 인데 커넥터로는 답한다 — **「호스트가 막혔다」와 「capability 가 없다」는 다르다** |
 | **DESIGN SYSTEM** | **Figma** (MCP 커넥터) | **켜짐** | 2026-09-17 · `ListConnectors` | 경로 A 시안 보드 (UD-1 §5.2) · `ui/palette.json` ↔ Variables 대조 |
 
 **기각** (이유는 `03` 6 절): Context7 · Motion AI Kit · TinyFish · browser-use · Vercel ·
