@@ -162,7 +162,25 @@ SUPERDESIGN_DEBUG          디버그
 ```
 
 `extract-website` 와 `extract-brand-guide` **둘 다 0.14.0 에 있다** `[측정]`
-(`dist/` 에서 각각 5 · 2 파일에서 발견). 스킬 문서는 전자를, 패키지 README 는 후자를 쓴다.
+(`dist/` 에서 각각 5 · 2 파일에서 발견). 그런데 **`extract-brand-guide` 는 쓰지 않는다** —
+`SUPERDESIGN.md` COMMAND CONTRACT 가 명시한다 `[문헌]`:
+
+> *"`extract-website` … **supersedes `extract-brand-guide`, which the command list still shows —
+> do not use that one.**"*
+
+패키지 README 가 후자를 「Inspiration & Style Tools」에 올려 둔 것은 **낡은 줄**이다.
+
+**`extract-website` 의 함정** `[문헌]` — 같은 절에서:
+
+| | |
+|---|---|
+| **시간** | **서버 쪽 크롤 60~120 s / 한 사이트.** URL 열 개면 10~20 분이다 |
+| 기본값 | 선택자 없이 부르면 **`--design-md` 로 동작** |
+| `--all` 의 함정 | 모든 payload 를 가져오지만 **clone HTML 을 안 쓰고 brand 바이너리를 안 받는다** → `--clone` · `--brand-assets` 를 **따로** 줘야 한다 |
+| 포함 관계 | `--brand-assets` 는 `--brand` 를 포함한다 |
+| **이미지·GIF 직링크** | `extract-website` 가 아니다. 안전하게 내려받아 **`upload-asset --purpose reference`** 로 올린다(`WEBSITE.md` URL ROUTING) |
+| **PDF** | **안 된다.** 지원 보류 — 필요한 쪽을 이미지로 달라고 한다 |
+| 로그인 뒤 페이지 | 안 된다. 크롤이 **공개 HTTP(S)** 안에서만 리디렉트를 따른다 |
 
 **붙이는 순서** (로컬, 저장소 루트에서):
 
