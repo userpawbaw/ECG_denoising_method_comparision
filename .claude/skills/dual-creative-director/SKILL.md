@@ -5,7 +5,8 @@ description: Run two independent creative divergences for the ECG demo screens �
 
 역할은 **발산의 독립을 지키는 것**이다. 후보를 만드는 건 `expo-ui-art-director` 와
 `frontend-design` 이 하고, 이 스킬은 **누가 무엇을 언제 보는지**를 정한다.
-운영 원문: `docs/ui/00_index.md` 「이중 디렉터」 · `docs/ui/02_benchmark.md` §8·§11 ·
+운영 원문: `docs/ui/00_index.md` 「이중 디렉터」 · `docs/ui/02_benchmark.md` §8·§11·§13 ·
+`docs/ui/06_superdesign_method_review.md` ·
 UD-10 → **UD-12 가 B 의 도구를 바꿨다**(`frontend-design` → Superdesign, 로컬 전용).
 
 ## 먼저 정한다 — 구역
@@ -15,6 +16,10 @@ HIGH 새 방향 → 이중. MEDIUM → B 만 돌리고 A 는 한 줄로 제안. 
 
 ## 순서 — B 가 먼저다
 
+0. **고정값을 먼저 적는다 — 발산 전에.** 이번 라운드에서 **안 흔드는 것**을 표로 적는다
+   (색·서체·파형 기하·단위·속도 등, 지난 UD 가 이미 정한 것 전부). 후보는 고정값을 건드리지
+   않는다. **스타일은 하드 제약이고 발산은 구조·내용·서사로만 간다** — 라운드 ① 은 다섯 칸 중
+   하나를 이미 정해진 색에 썼다 (UD-13 S2).
 1. **B 네이티브 디렉터.** 읽는 것: brief · 기준선 캡처(`results/screens/`) ·
    `ui/palette.json` · `demo/ui/tokens.css` · `scripts/_screens.py` · 지난 UD 의 「버린 것」.
    **읽지 않는 것: A 의 어떤 것도.**
@@ -49,6 +54,15 @@ HIGH 새 방향 → 이중. MEDIUM → B 만 돌리고 A 는 한 줄로 제안. 
 7. **검증기 넷**(`ecg-ui-validator` · `motion-review` · `design-critique` ·
    `accessibility-review`) → KEEP/TUNE/REJECT → **UD 를 먼저 적는다.** 구현은 그 뒤.
 
+## 후보를 적는 규격 (UD-13 — Superdesign 자료에서)
+
+- **골격을 하나 고른다.** `02_benchmark` §13 메뉴에서 **정확히 하나**. 한 라운드에 **같은 골격
+  둘 금지** — 셋째가 같으면 그 후보를 버리고 다시 낸다. 골격은 레이아웃이지 스타일이 아니다.
+- **이름은 목적으로 짓는다.** 「멀리서 판정을 읽히는 화면」은 되고 「스윕 잔광」·「깔끔한 대시보드」는
+  안 된다. **기제로 이름 지으면 현행 기제의 변주가 나오고**, 형용사로 지으면 VS 의 V3 에서 0 점이다.
+- **「바꾸는 것」과 「그대로 두는 것」을 같이 적는다.** 후보 표에 두 칸 다 있어야 겹침이 표에서 보인다.
+- 후보 하나는 **방향 하나**다. 「①과 ③을 섞어서」는 후보가 아니라 합류이고 교차 검토에서 한다.
+
 ## 산출물은 라운드 폴더 하나에 (UD-12 · `02_benchmark` §8.5)
 
 ```
@@ -67,6 +81,8 @@ results/screens/refs/round<N>/  dir_A.md · dir_B.md · vs_rank.md · REF-nn.png
 - 브랜치는 탐색물이다. `SCREENS` 에 안 올린다. 파일명의 UD 가 본문에서 그 파일을 불러야
   한다(`check_records.py` 가 본다). 생성기(=이 세션)는 자기 결과를 **승인하지 않는다** —
   검증기 넷이 한다.
+- **가지는 대안일 때만 친다.** 사용자가 고른 뒤에 오는 피드백은 **새 브랜치 파일이 아니라
+  같은 파일의 다음 커밋**이다 — git 이 버전 이력이다. 결함 고치기에 가지를 쓰지 않는다 (UD-13 S6).
 - production 으로 덮어쓰지 않는다. 채택안은 UD 의 변경 계약을 거쳐 `layout_b` 로 옮긴다.
 
 ## 하지 않는 것
@@ -74,6 +90,8 @@ results/screens/refs/round<N>/  dir_A.md · dir_B.md · vs_rank.md · REF-nn.png
 - 파형 기하 · 시간축 · 단위 · Reference/Difference 의미 · 지표 의미를 표현을 위해 바꾸지 않는다.
 - 낯설다는 이유로 발산 중에 버리지 않는다. 데이터 무결성을 **직접** 깨는 것만 뺀다.
 - 원본 레퍼런스의 팔레트·서체·오브젝트를 그대로 가져오지 않는다(Distance 0~2 는 이유 필수).
+- **시각 스타일 원천을 둘 섞지 않는다** — 팔레트 둘, 서체 계획 둘은 서로를 희석한다 (UD-13 S1).
+  구조는 합쳐도 된다. 섞는 것이 스타일인지 구조인지 먼저 가린다.
 - **Superdesign 을 실행한 척하지 않는다.** 이 세션에선 `403` 이라 한 줄도 안 돈다(UF-8 · UD-12).
   돌린 척한 출력은 기록이 아니라 위조다. 못 돌면 못 돌았다고 적는다.
 - 생성기가 낸 시안을 **커밋하지 않고** 판정하지 않는다 — 내려와서 `demo/ui/branches/` 에 앉아야 기록이다.

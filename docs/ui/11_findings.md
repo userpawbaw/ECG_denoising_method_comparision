@@ -719,3 +719,55 @@ A5 를 「69 px 로 하면 된다」고 적고 넘어갔을 것이다. 부스 �
 해당 줄을 골라 HIGH 구역 글자 크기의 하한으로 쓴다.
 정해지기 전에는 **가장 빡빡한 13.3"(81 px)** 를 가정한다 — 크게 만든 것은 줄일 수
 있지만 작게 만든 것은 L4 에서 다시 짜야 한다.
+
+---
+
+## UF-11. 플러그인 셋이 꺼져 있었다 — **하나는 무관했고, 하나는 진짜였다**
+
+### 발단
+
+사용자 `[대화]`: 「방금 확인해봤는데 superdesign, playground, frontend design 플러그인이
+모두 비활성화 되어있더라. 혹시 이번 디렉터 B의 문제가 이 영향도 있을까?」
+
+라운드 ① 의 B 는 `frontend-design` 으로 돌았다고 UD-11 에 적혀 있다. 그 스킬이 꺼져 있었다면
+**UD-11 의 「방법」 칸 전체가 거짓**이 된다. 답이 예/아니오로 갈린다.
+
+### 먼저 의심한 것
+
+「플러그인이 꺼졌으니 `frontend-design` 도 안 붙었을 것이다」 — **틀렸다.** 우리는 그 스킬을
+**플러그인으로 쓰지 않는다.** UD-7 추기에서 **Apache 2.0 이라 저장소에 복제**했다.
+`.claude/skills/frontend-design/` 이 그것이고, 04_tools 에 「플러그인 판은 안 쓴다」고 적혀 있다.
+
+### 결정적 측정 `[측정]`
+
+| 잰 것 | 결과 |
+|---|---|
+| `ListPlugins` (계정에 켜진 것) | **`{"results":[]}`** — 하나도 없다. 사용자 말이 맞다 |
+| `SearchPlugins` (조직 카탈로그) | `design` · `qt-development-skills` · `wix` · `figma` · `engineering` — **전부 `enabled:false`**. superdesign · playground 는 **여기 없다** |
+| **공식 마켓플레이스 manifest** (`anthropics/claude-plugins-official` `.claude-plugin/marketplace.json`, 310 개) | **셋 다 있다** — `frontend-design`(Anthropic) · `superdesign`(sha `f9f05cd988c2…`) · `playground`(Anthropic) |
+| 이 저장소 `.claude/settings.json` | `extraKnownMarketplaces` 에 **그 마켓플레이스가 등록돼 있다** |
+| **`diff` 로컬 복제본 ↔ upstream** | `.claude/skills/frontend-design/SKILL.md` **9,390 바이트 · 바이트 동일**(오늘 `raw.githubusercontent` 에서 다시 받아 대조) |
+
+### 답 — 셋을 따로 본다
+
+| 플러그인 | 라운드 ① 에 영향 | 근거 |
+|---|---|---|
+| **frontend-design** | **없다** | 로컬 복제본이 upstream 과 오늘도 바이트 동일. B 는 이 스킬을 **제대로 받았다.** UD-7 이 복제한 이유가 정확히 이것 — 플러그인 상태에 안 걸리려고 |
+| **superdesign** | **있다 — 이게 진짜다** | 이 플러그인의 실체는 **스킬 문서**다(source = `superdesign-skill.git`). 켰더라면 B 는 CLI 없이도 **방법 문서**를 읽었을 것이다. 그 문서에서 뽑은 여덟 항이 `06_superdesign_method_review.md` 다 — 그중 **S2**(스타일은 고정, 발산은 구조로만)는 라운드 ① 의 실제 구멍을 정확히 가리킨다 |
+| **playground** | 없다(그때는) | 하지만 구조가 우리와 맞는다 — 단일 HTML · 인라인 · `state` 객체 · live preview · **네트워크 불필요**. `06` 5 절 |
+
+**UD-10 의 「카탈로그 없음」을 정정한다** `[측정]`: 그때 잰 것은 **조직 카탈로그**(`SearchPlugins`)
+였고 거기엔 정말 없다. 그런데 **공식 마켓플레이스에는 있었고 이 저장소가 그 마켓플레이스를
+등록해 두었다.** 「없다」가 아니라 **「다른 데 있었고 우리가 안 켰다」**가 맞다.
+UD-10 의 문장은 지우지 않는다 — 측정 자체는 옳았고 **결론의 범위가 넓었다**.
+
+### 놓쳤다면
+
+「플러그인이 꺼져서 그랬다」로 덮고 넘어갔을 것이다. 그러면 **frontend-design 을 켜고 다시
+돌려서 또 같은 결과**를 얻고, 진짜 원인(도구가 0 · 스타일 슬롯 낭비)은 두 라운드 더 살아남는다.
+반대로 「우리는 복제본을 쓰니 무관하다」로만 답했다면 **superdesign 플러그인을 켜면 방법 문서가
+따라온다**는 것을 못 봤을 것이다 — 사용자가 지금 요청한 바로 그것이다.
+
+**규칙으로**: 「스킬이 안 붙었나」는 **플러그인 상태가 아니라 `diff` 로 답한다.**
+로컬 복제본이 있으면 플러그인은 무관하고, 없으면 마켓플레이스 manifest 까지 본다 —
+**조직 카탈로그에 없다고 없는 것이 아니다.**
