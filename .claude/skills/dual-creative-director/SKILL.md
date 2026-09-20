@@ -23,9 +23,15 @@ HIGH 새 방향 → 이중. MEDIUM → B 만 돌리고 A 는 한 줄로 제안. 
 1. **B 네이티브 디렉터.** 읽는 것: brief · 기준선 캡처(`results/screens/`) ·
    `ui/palette.json` · `demo/ui/tokens.css` · `scripts/_screens.py` · 지난 UD 의 「버린 것」.
    **읽지 않는 것: A 의 어떤 것도.**
-   **도구는 Superdesign 이다** (UD-12). 로컬 세션에서:
+   **B 도 레퍼런스를 갖는다** (UD-12) — 다만 **허브는 사용자가 주고 탐색은 디렉터가 한다**
+   (`02_benchmark` §8.2.1). `extract-website` 는 **탐색을 못 한다** — 허브 URL 을 주면
+   허브 자신의 디자인을 뜯어 온다. 순서는 **허브 → 탐색·선별 → 고른 작품 URL → extract-website**.
+   갈래 둘: **ⓐ-1 로컬 갤러리**(사용자 허브 · 브라우저 필요) · **ⓐ-2 GitHub 허브**
+   (`api.github.com` + README 스크린샷을 `raw.githubusercontent.com` 으로 **열어 본다** —
+   이 환경에서 된다, UF-8 추기 2).
+   **도구는 Superdesign 이다.** 로컬 세션에서:
    `npx -y @superdesign/cli@latest` · `DO_NOT_TRACK=1` · `search-prompts --tags style` 과
-   `extract-website --url … --design-md` 로 **B 자신의 레퍼런스 경로**를 잡고,
+   `extract-website --url <고른 작품> --design-md --brand-assets` 로 DNA 를 받고,
    `create-project --template demo/ui/layout_b.html` 로 우리 화면을 넘기고,
    `iterate-design-draft --mode branch -p … -p …` 로 방향 여럿.
    **클라우드 세션에서는 못 돈다** — `api.superdesign.dev` 가 `403 to CONNECT`(UF-8).
