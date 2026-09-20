@@ -143,6 +143,23 @@ const state = {
      보이는 구간이 짧아져 **방법 간 차이를 눈으로 재기 어려워진다** — 시연의
      두 목적(임팩트 / 비교) 중 비교 쪽을 해친다. 그래서 둘을 분리했다. */
   play: "off", speed: 1,
+  /* **방법 가리기.** 이름·수치·주장을 가리고 칸 순서를 한 번 섞는다. 시연에서
+     «둘 중 어느 쪽이 딥러닝일까요» 를 물을 수 있게 하는 것이 목적이다 —
+     이름을 먼저 보이면 관람객은 화면이 아니라 선입견을 본다.
+
+     `blindOrder` 를 **끈 뒤에도 유지**하는 것이 요점이다. 끌 때 순서가 다시
+     바뀌면 방금 본 칸과 돌아온 이름을 관람객이 못 잇는다 — 그러면 해소가
+     안 된다. 고른 방법이 바뀔 때만 버린다. */
+  blind: false, blindOrder: null,
+};
+const BLIND = ["가", "나", "다", "라", "마", "바", "사", "아", "자", "차", "카"];
+const shuffled = (a) => {
+  const x = a.slice();
+  for (let i = x.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [x[i], x[j]] = [x[j], x[i]];
+  }
+  return x;
 };
 const clampStart = () => {
   const max = Math.max(0, B.n - Math.round(state.win * B.fs));
@@ -157,6 +174,20 @@ function has(cond, snr){
 function current(){
   return B.scenes.find(s => s.axis === state.axis && s.cond === state.cond &&
                             s.snr === state.snr) || scenesFor(state.axis)[0];
+}
+
+/* 화면에 놓을 방법과 그 **순서**. 섞어 둔 순서가 지금 고른 것과 같은 집합일
+   때만 살린다 — 다르면 은행 순서로 돌아간다. */
+function shownMethods(s){
+  const base = B.methods.filter(m => state.shown.has(m) && s.traces[m]);
+  const o = state.blindOrder;
+  if (o && o.length === base.length && o.every(m => base.includes(m))) return o.slice();
+  return base;
+}
+function blindMap(s){
+  const m = new Map();
+  shownMethods(s).forEach((k, i) => m.set(k, BLIND[i] || `#${i + 1}`));
+  return m;
 }
 
 function chip(label, on, fn, title, off){
@@ -211,6 +242,11 @@ function buildBar(){
   const op = $("opts"); op.innerHTML = "";
   op.append(chip("참값 겹치기", state.ref, () => state.ref = !state.ref,
                  "각 출력 위에 참값(clean)을 반투명 회색으로 겹쳐 그린다"));
+  op.append(chip("방법 가리기", state.blind, () => {
+    state.blind = !state.blind;
+    if (state.blind) state.blindOrder = shuffled(shownMethods(current()));
+  }, "이름·수치·주장을 가리고 칸 순서를 한 번 섞는다 — 관람객에게 «어느 칸이"
+   + " 딥러닝일까요» 를 물을 수 있다. 끄면 **같은 자리에** 이름이 돌아온다"));
   const pl = $("play"); pl.innerHTML = "";
   for (const [k, name, tip] of [
       ["off", "정지", "구간 전체를 한 번에 그린다 — 방법 간 비교는 이 모드에서"],
@@ -221,10 +257,16 @@ function buildBar(){
     for (const v of [0.5, 1, 2])
       pl.append(chip(v + "×", state.speed === v, () => state.speed = v));
   const me = $("methods"); me.innerHTML = "";
+  /* 패널만 가리고 도구막대를 그냥 두면 소용이 없다 — 시연은 화면 전체가 보인다.
+     그렇다고 칩에 «가 · 나» 를 적으면 **칩 순서가 고정**이라 위치로 대응이
+     읽힌다. 전부 «·» 로 둔다 — 눌린 표시는 남으므로 진행자는 그대로 쓴다.
+     어느 넷을 켰는지는 보여도 되는 정보다. 섞인 것은 칸 순서 쪽이다. */
   for (const m of B.methods) {
-    me.append(chip(m, state.shown.has(m), () => {
+    me.append(chip(state.blind ? "·" : m, state.shown.has(m), () => {
       state.shown.has(m) ? state.shown.delete(m) : state.shown.add(m);
-    }, (B.method_info[m] || {}).label || m));
+      state.blindOrder = null;        // 고른 것이 바뀌면 섞어 둔 순서를 버린다
+    }, state.blind ? "가린 상태 — 「방법 가리기」 를 끄면 이름이 돌아온다"
+                   : (B.method_info[m] || {}).label || m));
   }
 }
 
@@ -345,7 +387,10 @@ function panel(s, key, label, color, showRef){
   const nm = document.createElement("span"); nm.className = "pname"; nm.textContent = label;
   const num = document.createElement("span"); num.className = "pnum";
   const m = s.metrics[key];
-  if (m) {
+  if (m && state.blind) {
+    // dB 값 하나로 어느 계열인지 거의 읽힌다 — 가리기에서는 파형만 남긴다.
+    num.innerHTML = `<span class="k">수치는 가렸다 — 파형과 참값만 보고 고른다</span>`;
+  } else if (m) {
     const r = s.ref_mean[key];
     num.innerHTML = `이 구간 <b>${m.snr_imp.toFixed(2)} dB</b>` +
       (r === undefined
@@ -364,7 +409,7 @@ function panel(s, key, label, color, showRef){
     num.textContent = "참값 (clean reference)";
   }
   head.append(nm, num);
-  if (B.method_info[key]) {
+  if (B.method_info[key] && !state.blind) {
     const q = document.createElement("button");
     q.className = "q"; q.textContent = "?"; q.title = "설명";
     q.onclick = () => {
@@ -402,9 +447,14 @@ function render(){
     `모든 칸이 같은 y 축과 같은 시간 구간을 쓴다`;
   main.innerHTML = "";
   const c = document.createElement("div"); c.className = "claim";
-  c.innerHTML = `<b>${s.highlight ? "★ " : ""}${s.title}</b>` +
-                (s.claim ? `<br>${s.claim}` : "") +
-                `<span class="ev">${s.evidence}</span>`;
+  c.innerHTML = state.blind
+    ? `<b>어느 칸이 딥러닝일까요?</b><br>이름·수치·주장을 가렸다. 파형과`
+      + ` 회색 참값만 보고 고른 뒤 「방법 가리기」 를 끈다 — 이름은 같은 자리에`
+      + ` 돌아온다.<span class="ev">같은 잡음 · 같은 입력 SNR · 같은 y 축이다.`
+      + ` 칸 순서는 가릴 때 한 번 섞였다.</span>`
+    : `<b>${s.highlight ? "★ " : ""}${s.title}</b>`
+      + (s.claim ? `<br>${s.claim}` : "")
+      + `<span class="ev">${s.evidence}</span>`;
   main.append(c);
   const p = document.createElement("p"); p.className = "prov";
   p.textContent =
@@ -414,7 +464,8 @@ function render(){
     ` 후보 범위 ${s.selection.dev_range[0]}~${s.selection.dev_range[1]}).` +
     ` 딥러닝−고전 대비는 후보 중 ${s.selection.contrast_rank} 위 —` +
     ` 잘 나온 구간을 고른 것이 아니다.`;
-  main.append(p);
+  // 이 줄은 «딥러닝−고전 대비는 후보 중 N 위» 를 적는다 — 가리기에서는 답이다.
+  if (!state.blind) main.append(p);
 
   const max = clampStart();
   if (max > 0) {
@@ -429,13 +480,13 @@ function render(){
     upd(); z.append(r, lab); main.append(z);
   }
   main.append(panel(s, "input", "입력", COLOR.input, true));
-  const shown = B.methods.filter(m => state.shown.has(m) && s.traces[m]);
+  const shown = shownMethods(s), bmap = state.blind ? blindMap(s) : null;
   if (!shown.length) {
     const e = document.createElement("div");
     e.className = "empty"; e.textContent = "방법을 하나 이상 고르세요.";
     main.append(e);
   }
-  for (const m of shown) main.append(panel(s, m, m, null, true));
+  for (const m of shown) main.append(panel(s, m, bmap ? bmap.get(m) : m, null, true));
   // 격자 간격을 CSS 변수로 넘긴다 (캔버스 밖에 그리므로)
   for (const wr of main.querySelectorAll(".wrap"))
     wr.style.setProperty("--sec", `${100 / state.win}%`);
