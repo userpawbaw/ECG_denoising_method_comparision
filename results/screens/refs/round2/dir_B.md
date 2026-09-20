@@ -15,6 +15,37 @@
 | 오염 표시 | 후보마다 **「A 가 보이는 자리」** 칸에 적었다. 안 적은 후보는 A·B 어디에도 없던 것이다 |
 | 본 것 | `ui/palette.json` · `demo/ui/tokens.css` · `demo/ui/layout_b.html` · `02_benchmark` §1 R-A · §10 · §13 · UD-6·UD-9 의 「버린 것」 · UD-11 의 B 후보 5 |
 
+## 0.5 **레퍼런스 없음** — 이 라운드는 원본 장면을 하나도 안 봤다 (UO-6 추기, 2026-09-20)
+
+사용자 질문 「레퍼런스, 원본 DNA 는 깃허브 문서에만 포함했어?」 `[대화]` 로 드러난 것이다.
+**그렇다.** 아래 후보 다섯에 **URL 0 개 · 레퍼런스 카드 0 장 · L1 캡처 0 장**이다.
+
+| 이 라운드가 읽은 외부 자료 | 무엇 |
+|---|---|
+| Superdesign GitHub 문서 9 개 (150 KB) | **방법**(절차 규칙). 시각 레퍼런스가 **아니다** |
+| `02_benchmark` §13 골격 메뉴 | 장치는 `GRAPHIC.md` 에서 빌렸지만 **내용은 우리 어휘로 새로 썼다** |
+| 외부 장면 | **없다** |
+
+**왜 없나** `[측정]`: 이 환경에서 시각 레퍼런스로 가는 길이 전부 막혔다 —
+`en.wikipedia.org` · `upload.wikimedia.org` · `commons.wikimedia.org` · `web.archive.org` ·
+`earthquake.usgs.gov` · `eyes.nasa.gov` · `dood.al` · `*.flourish.studio` **전부 `000`**,
+`api.superdesign.dev` 는 `403`. 열리는 것은 `raw.githubusercontent.com` 뿐이라 **문서만** 읽혔다.
+Flourish MCP 는 템플릿 64 개를 주지만 **이름과 한 줄 설명**뿐이고 `showcase_url` 은 `000` 이다.
+
+**그래서 후보 다섯은 무엇에 기대고 있나** — 원본 대신 적는다:
+
+| 후보 | 기댄 것 | 이것이 왜 카드가 아닌가 |
+|---|---|---|
+| C1 접촉 인화 격자 | 사진의 **contact sheet** 라는 형식(기억) + `demo_bank` 의 7×7 구조(코드) | 실제 장면을 **안 봤다.** 「어디를 볼지」도 Imitation Distance 도 잴 수 없다 |
+| C2 중첩 한 축 | 차이를 면적으로 보이는 관습(기억) | 같음 |
+| C3 분할 | **A2**(라운드 ①) | A 의 후보이지 원본이 아니다 |
+| C4 레인 스택 | **A4** → 그 뿌리는 REF-06 USGS 헬리코더 | 카드가 `round1/` 에 있다. **이 라운드가 본 것은 아니다** |
+| C5 액자 | **REF-07** 스플릿플랩의 「드물고 확실하게」 | 같음 |
+
+**즉 다섯 중 셋은 A 의 카드를 한 단계 건너 쓴 것이고, 둘은 원본이 아예 없다.**
+이것이 이 라운드의 한계이며, 라운드 ③(로컬 Superdesign · `extract-website`)이 되돌릴
+변수다. **판정 단계로 넘어가기 전에 사용자가 이 사실을 알고 있어야 한다.**
+
 ## 1. 고정값 — 이번 라운드에서 **안 흔드는 것** (S2)
 
 > *"The design system is a hard constraint, not a suggestion: iteration prompts explore

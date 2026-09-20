@@ -437,6 +437,13 @@ def main() -> int:
                     elif f"{rd.name}/{f.name}" not in ud_txt:
                         rf_bad.append(f"{rd.name}/{f.name}: 10_decisions.md 의 어느 UD 도 "
                                       "이 파일을 부르지 않는다")
+                    else:
+                        # 발산 문서는 원본을 대거나 원본이 없다고 말해야 한다 (UO-6).
+                        body = f.read_text(encoding="utf-8")
+                        if "### REF-" not in body and "레퍼런스 없음" not in body:
+                            rf_bad.append(
+                                f"{rd.name}/{f.name}: 레퍼런스 카드(### REF-nn)가 없는데 "
+                                "「레퍼런스 없음」도 명시하지 않았다 — 없으면 없다고 적을 것")
                 else:
                     rf_bad.append(f"{rd.name}/{f.name}: .md 나 .png 가 아니다")
         print("\n[발산 산출물] results/screens/refs — %d 개" % n)
