@@ -70,7 +70,7 @@
 |---|---|
 | 레퍼런스 소스 표(Awwwards · Godly · SiteInspire · Lapa · Mobbin · 21st.dev) | **소스가 다르다.** 우리는 부스 노트북의 **연구용 계측 시연**이다 — `02_benchmark` 의 범주(임상 기록지 · 환자 모니터 · 오실로스코프 · 과학관 인터랙티브 · NASA Eyes 류 · 데이터 저널리즘)가 맞다. Awwwards 류는 HIGH 구역(attract) 에만. **Mobbin 은 UD-1 에서 기각** — 되살리지 않는다 |
 | Reference Card 의 「ECG translation」 | 이름만 「프로젝트 번역」이 아니라 **「구역 + 계약 무손실」** — 우리 UD 「검토한 선택지」표의 「구역 · 데이터/UX 위험 · validator 가 볼 것」열과 합친다 |
-| 레퍼런스 링크는 사라진다 → 장면 설명을 남겨라 | **우리는 캡처할 수 있다** — `chrome --screenshot` 이 있으니 Reference Card 마다 **L1 캡처**를 `results/screens/refs/` 에 담는다(원본이 못 하는 것) |
+| 레퍼런스 링크는 사라진다 → 장면 설명을 남겨라 | **우리는 캡처할 수 있다** — `chrome --screenshot` 이 있으니 Reference Card 마다 **L1 캡처**를 `results/screens/refs/round<N>/` 에 담는다(원본이 못 하는 것) |
 | Superdesign 의 baseline = `prototype/v2`(React) | **우리 canonical 은 둘**(UD-5 ①): `layout_b`(무빌드, 여기) + v2(React, 외부 저장소). Superdesign 은 React 코드베이스용이라 **v2 에는 맞고 `layout_b` 에는 안 맞는다** → §6 |
 | 검증 차원 8 개(13 §13) | 우리 검증기 넷에 **「imitation risk / reference anchoring」한 차원만 더한다** — 나머지는 있다 |
 | 구역별 디렉터 예산(HIGH=듀얼 자동 · MEDIUM=A 먼저 · LOW=없음) | 그대로 — 우리 구역표(`00_index`)에 열 하나 |

@@ -413,6 +413,37 @@ def main() -> int:
             print("  ✗", b)
         problems += br_bad
 
+    # 발산 산출물(results/screens/refs/round<N>/)은 파일명이 규약대로이고 어느 UD 가
+    # 그 파일을 불러야 한다 — 라운드 ① 에서 B 의 발산이 UD 안에만 있어서 A 와 나란히
+    # 읽을 수 없었다 (UD-12 · 02_benchmark 8.5).
+    refs = ROOT / "results" / "screens" / "refs"
+    if refs.exists():
+        ud_txt = (d / "ui" / "10_decisions.md").read_text(encoding="utf-8")
+        allowed_md = {"dir_A.md", "dir_B.md", "vs_rank.md"}
+        rf_bad, n = [], 0
+        for rd in sorted(x for x in refs.iterdir() if x.is_dir()):
+            if not re.match(r"^round\d+$", rd.name):
+                rf_bad.append(f"results/screens/refs/{rd.name}: 이름이 round<N> 꼴이 아니다")
+                continue
+            for f in sorted(rd.iterdir()):
+                n += 1
+                if f.suffix == ".png":
+                    if not re.match(r"^REF-\d{2}\.png$", f.name):
+                        rf_bad.append(f"{rd.name}/{f.name}: 캡처 이름이 REF-nn.png 꼴이 아니다")
+                elif f.suffix == ".md":
+                    if f.name not in allowed_md:
+                        rf_bad.append(f"{rd.name}/{f.name}: 발산 문서 이름은 "
+                                      + " · ".join(sorted(allowed_md)) + " 뿐이다")
+                    elif f"{rd.name}/{f.name}" not in ud_txt:
+                        rf_bad.append(f"{rd.name}/{f.name}: 10_decisions.md 의 어느 UD 도 "
+                                      "이 파일을 부르지 않는다")
+                else:
+                    rf_bad.append(f"{rd.name}/{f.name}: .md 나 .png 가 아니다")
+        print("\n[발산 산출물] results/screens/refs — %d 개" % n)
+        for b in rf_bad:
+            print("  ✗", b)
+        problems += rf_bad
+
     skills = ROOT / ".claude" / "skills"
     ledger_path = d / "ui" / "04_tools.md"
     if skills.exists():

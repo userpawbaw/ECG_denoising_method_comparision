@@ -19,7 +19,7 @@
 | | `algorithmic-art` (세션 내장 스킬) | 켜짐 | 2026-09-17 | HIGH 구역 attract 의 ECG 모티프 실험 |
 | | **`dual-creative-director`** | **로컬** | 2026-09-18 · 이 세션 | 발산 둘의 **독립** — B(코드베이스+`frontend-design`) 먼저, 모델 바꿔 A(레퍼런스 카드), 교차 검토 뒤 검증기. `00_index` 「이중 디렉터」 |
 | **생성** 시안 브랜치 | 이 세션 + `shoot_screens.py` + 갤러리 + Artifact 발행 | 켜짐 | 2026-09-18 | `demo/ui/branches/UD-nn-{a,b,c}.html` — 같은 baseline 2~4 개, L2 캡처. **생성기는 승인 안 함** |
-| | **Superdesign** (`superdesigndev/superdesign-skill` `f9f05cd` 스킬 0.6.0 · CLI `@superdesign/cli` **0.14.0**, `@latest` 로 부름) | **보류** — NEEDS USER ACTION(계정) | 2026-09-18 · 카탈로그 없음 `[측정]` · npm 닿음 `[측정]` | 9 기능 중 5 는 있고 2 는 의도된 공백, 2 는 범위 밖(UD-10 표). React 코드베이스용이라 무빌드 canonical 과 안 맞는다. **v2 작업이 여기로 오면 다시 본다** |
+| | **Superdesign** (`superdesigndev/superdesign-skill` 스킬 0.6.0 · CLI `@superdesign/cli` **0.14.0**) | **채택 — 로컬 세션 전용. 이 세션에선 못 돈다** | 2026-09-20 `[측정]` · `npm pack` 으로 열어 봤다 | **UD-12 가 UD-10 을 부분 번복했다**(9 행 중 3 행). Director B 의 도구다 — `search-prompts`·`extract-website`(레퍼런스 경로) · `create-project --template demo/ui/layout_b.html` · `iterate-design-draft --mode branch`(시안 1~2). **`api.superdesign.dev` 가 `403 to CONNECT`**(UF-8 과 같은 정책) → 로컬에서만. **안 쓰는 것**: `design-system.md` 를 원본으로(=`ui/palette.json` 유지) · `confirm-generation`(크레딧) · 프레젠테이션·그래픽. 로컬 실행 시 `DO_NOT_TRACK=1`. **계정·가격은 사용자 확인 대기** |
 | **DATA** 스토리 | `dataviz` (세션 내장 스킬) | 켜짐 | 2026-09-17 | 그리기 규격 · 팔레트 검증(`validate_palette.py` 의 원형) |
 | | **Flourish** (MCP 커넥터) | **켜짐** — 사용자가 연결했다 | 2026-09-17 · 이 세션의 도구 목록 | **스토리 초안** — 한 문장 insight 마다 표현 후보를 빠르게 만든다. MCP 는 단일 시각화 생성·데이터 바인딩·설정 편집까지이고 **Stories(순서·전환)는 Flourish 편집기에서** 만든다 `[문헌]`. 결과는 무빌드 시연에 그대로 못 들어간다(외부 임베드) — 채택안은 Canvas/SVG 로 재구현하거나 내보낸다 |
 | **MOTION** | `motion-review` | **로컬** | 2026-09-17 | Scorecard 10 항 · 현행 스윕 계약(UF-4) |
@@ -51,7 +51,7 @@ Mobbin(UD-1) · Magic Patterns · Canva(UI) · HyperFrames · Anthropic `data` �
 | `frontend-design` | 발산의 방법 — 2 패스 · 클리셰 목록 · 「대담함은 한 곳에」 | **Anthropic 공식**, `anthropics/claude-plugins-official` `plugins/frontend-design/skills/frontend-design/` · 판 `1.1.0` / `1aa8f02ec832` · **Apache 2.0** | **아무것도 안 바꿨다** — `SKILL.md`·`LICENSE.txt` 바이트 단위 동일. 출처·판·「고친 곳 없음」은 같은 폴더 `NOTICE` 에 |
 | `design-critique` | 다섯 축 비평틀 — 2 초 첫인상 · 사용성 · 위계 · 일관성 · 접근성 | **Anthropic**, `anthropics/knowledge-work-plugins` `design/skills/design-critique/` · 플러그인 판 `1.2.0` · **Apache 2.0** | **안 바꿨다.** 본문의 `../../CONNECTORS.md` 링크는 여기 없다(플러그인 문서를 안 가져왔다) — `NOTICE` 에 적었다 |
 | `accessibility-review` | WCAG 2.1 AA 조항 대조표 + 흔한 실패 8 · 검사 순서 | 같은 저장소 `design/skills/accessibility-review/` · 같은 판 · **Apache 2.0** | **안 바꿨다.** 위와 같다 |
-| `dual-creative-director` | 발산 둘의 독립 — 순서·격리·교차 검토·가지치기 | 외부 `ecg-gui-design-review` **핸드오프** `handoffs/DUAL_CREATIVE_DIRECTOR_IMPLEMENTATION_2026-09-18.md`(`08ffec3`) — **원본에도 스킬은 아직 없다**, 여기가 첫 구현 | B 를 Superdesign 이 아니라 `frontend-design` 으로 · Chat/Work 분리 대신 **모델 분리 + B 먼저** · 브랜치 파일명 ↔ UD 검사 |
+| `dual-creative-director` | 발산 둘의 독립 — 순서·격리·**VS 줄세우기**·사용자 정렬·교차 검토·가지치기 | 외부 `ecg-gui-design-review` **핸드오프** `handoffs/DUAL_CREATIVE_DIRECTOR_IMPLEMENTATION_2026-09-18.md`(`08ffec3`) — **원본에도 스킬은 아직 없다**, 여기가 첫 구현 | **B 는 Superdesign(로컬), A 는 레퍼런스 카드**(UD-12 — 초판의 `frontend-design` 대체는 라운드 ① 이 반증했다) · 모델 분리 → **환경 분리**(클라우드 B / 로컬 A, UF-8) · 산출물은 `results/screens/refs/round<N>/` 한 폴더 · **검증기 앞에 VS + 사용자 정렬**(UO-5 · `02_benchmark` §11) · 브랜치 파일명 ↔ UD 검사 |
 
 외부 `project-capability-audit` 는 스킬이 아니라 아래 3 절이 됐다.
 
