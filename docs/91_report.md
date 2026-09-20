@@ -22,7 +22,7 @@
 | **실험 상세** | `03_metric_floor`\* · `04_snr_estimator_calibration`\* · `05_swt_tuning`\* · `06_sameni_diagnosis`\* · `07_safety_probe`\* · `10_loss_ablation` — 여섯 다 **두 축 짝**이 있다(D0 판은 접미사가 없는 것도 있다) | 본문이 한 문단으로 요약한 것의 전문. 축이 다르면 값도 결론도 다르다(F-16 · F-17) |
 | | `11_loss_by_noise`\* · `12_causal_fe`\* · `13_lookahead_fe`\* · `14_median_vs_zerophase`\* · `15_reference_and_training` · `16_fe_metric_audit` | EXP-G, 실시간 front-end 후보 네 판, 참조 정의 검토, 채점 기준 감사 |
 | **산출물·운영** | `90_results_d0`\* · `90_results_d1`\* · `92_axis_gap`\* | **모든 방법 × 모든 지표**의 자동 생성 결과표 (본문은 여기서 골라 싣는다) |
-| | `30_realtime_demo` · `31_demo_design_review` · `32_metric_cards`\* · `33_card_design_samples` · `93_slides`\* · `34_visual_plan` | 시연 화면 · 지표 카드 · 발표 그림 — 8 장에 정리 |
+| | `30_realtime_demo` · `31_demo_design_review` · `32_metric_cards`\* · `33_card_design_samples` · `93_slides`\* · `34_visual_plan` · `94_presentation` | 시연 화면 · 지표 카드 · 발표 그림 — 8 장에 정리. **`94` 는 그 그림들을 「10 분 동안 어떤 순서로 말하는가」로 엮은 것**이다 |
 | | `08_acquisition` · `09_data_upload` · `35_external_compute` · `99_status` | 실측 수집 절차 · PhysioNet 데이터 공유 · **외부 GPU 에서 산포를 재는 판의 실행 안내**(F-40 · 5.10.7) · **현재 상태와 인수인계** |
 
 **모르는 용어를 만나면 `docs/18_glossary.md`** 를 먼저 본다 — 지표 정의, 약어,
