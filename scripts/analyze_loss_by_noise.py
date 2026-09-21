@@ -139,8 +139,10 @@ def _grid_line() -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--axis", nargs="*", default=["d0", "d1"])
-    ap.add_argument("--out", default="docs/11_loss_by_noise.md")
+    ap.add_argument("--axis", nargs="*", default=["d0", "d1"],
+        help="데이터 축 (d0 = 합성 · d1 = MIT-BIH). 산출물 경로가 갈린다")
+    ap.add_argument("--out", default="docs/11_loss_by_noise.md",
+        help="산출물을 둘 곳")
     args = ap.parse_args()
 
     out = [

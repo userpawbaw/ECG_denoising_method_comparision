@@ -154,10 +154,14 @@ def per_window_cost(method, buf: np.ndarray, warmup: int = 3, reps: int = 7) -> 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--axis", nargs="*", default=["d0", "d1"])
-    ap.add_argument("--methods", nargs="*", default=["M06", "M06L6", "M04"])
-    ap.add_argument("--seconds", type=float, default=40.0)
-    ap.add_argument("--segments", type=int, default=3)
+    ap.add_argument("--axis", nargs="*", default=["d0", "d1"],
+        help="데이터 축 (d0 = 합성 · d1 = MIT-BIH). 산출물 경로가 갈린다")
+    ap.add_argument("--methods", nargs="*", default=["M06", "M06L6", "M04"],
+        help="대조할 방법. 쉼표로 나열한다")
+    ap.add_argument("--seconds", type=float, default=40.0,
+        help="재는 구간의 길이 [s]")
+    ap.add_argument("--segments", type=int, default=3,
+        help="구간을 몇 개 볼 것인가")
     ap.add_argument("--grid", nargs="*", default=["12:12", "12:25", "12:64", "50:128"],
                     help="d:hop 쌍")
     ap.add_argument("--hp-hz", type=float, default=None,

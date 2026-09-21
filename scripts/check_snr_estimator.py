@@ -123,9 +123,12 @@ def bias_table(df, fe):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dur", type=float, default=120.0)
-    ap.add_argument("--n-rep", type=int, default=3)
-    ap.add_argument("--snrs", type=int, nargs="+", default=[0, 5, 10, 15, 20])
+    ap.add_argument("--dur", type=float, default=120.0,
+        help="한 구간의 길이 [s]")
+    ap.add_argument("--n-rep", type=int, default=3,
+        help="같은 조건을 몇 번 반복할 것인가")
+    ap.add_argument("--snrs", type=int, nargs="+", default=[0, 5, 10, 15, 20],
+        help="쓸 입력 SNR 목록 [dB]")
     ap.add_argument("--source", default="synthetic", choices=("synthetic", "mitdb"),
                     help="synthetic 이 기본 — D0 결과(보고서 인용값)와의 연속성을 지킨다")
     args = ap.parse_args()

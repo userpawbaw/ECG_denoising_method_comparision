@@ -139,10 +139,14 @@ def snr(x: np.ndarray, xh: np.ndarray) -> float:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--axis", default="d1")
-    ap.add_argument("--seconds", type=float, default=20.0)
-    ap.add_argument("--seeds", type=int, default=3)
-    ap.add_argument("--out", default="results/stream_seam.json")
+    ap.add_argument("--axis", default="d1",
+        help="데이터 축 (d0 = 합성 · d1 = MIT-BIH). 산출물 경로가 갈린다")
+    ap.add_argument("--seconds", type=float, default=20.0,
+        help="재는 구간의 길이 [s]")
+    ap.add_argument("--seeds", type=int, default=3,
+        help="seed 를 몇 개 쓸 것인가")
+    ap.add_argument("--out", default="results/stream_seam.json",
+        help="산출물을 둘 곳")
     a = ap.parse_args()
     src = {"d0": "synthetic", "d1": "mitdb"}[a.axis]
 

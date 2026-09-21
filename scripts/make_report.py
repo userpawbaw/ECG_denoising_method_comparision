@@ -276,7 +276,8 @@ def main() -> int:
                     help="실측 장비 SNR 추정치 [dB]. F4 에 수직선으로 표시.")
     ap.add_argument("--fig-snr", type=float, default=5.0,
                     help="대표 파형 그림(F1-F3)의 입력 SNR [dB].")
-    ap.add_argument("--no-waveforms", action="store_true")
+    ap.add_argument("--no-waveforms", action="store_true",
+        help="F1 파형 그림을 건너뛴다 (느린 단계다)")
     ap.add_argument("--source", default="auto", choices=("auto", "synthetic", "mitdb"),
                     help="어느 데이터축의 결과를 읽어 보고서를 만들지")
     args = ap.parse_args()

@@ -44,9 +44,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--probe-snr", type=float, default=40.0,
                     help="교란 강도 [dB]. 클수록 약한 교란.")
-    ap.add_argument("--n-seed", type=int, default=10)
-    ap.add_argument("--dur", type=float, default=120.0)
-    ap.add_argument("--n-record", type=int, default=5)
+    ap.add_argument("--n-seed", type=int, default=10,
+        help="seed 를 몇 개 쓸 것인가")
+    ap.add_argument("--dur", type=float, default=120.0,
+        help="한 구간의 길이 [s]")
+    ap.add_argument("--n-record", type=int, default=5,
+        help="기록을 몇 개 쓸 것인가")
     ap.add_argument("--source", default="synthetic", choices=("synthetic", "mitdb"),
                     help="config 없이 도는 보조 스크립트다. synthetic 이 기본 — D0 결과(이미 보고서에 인용된 값)와의 연속성을 지킨다")
     args = ap.parse_args()

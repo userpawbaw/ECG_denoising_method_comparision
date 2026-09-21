@@ -66,7 +66,8 @@ def main() -> int:
     import argparse
     from ecgdn.data.sources import resolve_source_kind, source_tag
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", default="auto", choices=("auto", "synthetic", "mitdb"))
+    ap.add_argument("--source", default="auto", choices=("auto", "synthetic", "mitdb"),
+        help="clean 신호의 출처. auto 는 파일이 생기면 조용히 바뀐다 — 99_status 2.1")
     args = ap.parse_args()
     kind, tag = resolve_source_kind(args.source), source_tag(args.source)
 
