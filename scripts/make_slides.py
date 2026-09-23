@@ -259,6 +259,7 @@ def prepare(source: str, snr_db: float, noise: str = "mixed",
         except Exception as e:                                   # noqa: BLE001
             print(f"[warn] {mid} 실패: {type(e).__name__}: {e}")
     return dict(x=x, y=y, fs=fs, outs=outs, record=it["record"],
+                x_raw=np.asarray(it.get("x_raw", it["x"]), dtype=float),
                 r_peaks=np.asarray(it["r_peaks"], dtype=int), tag=tag)
 
 
@@ -938,6 +939,21 @@ INDEX = [
      "**6 장 머리말 한 장.** 측정 틀이 틀렸던 아홉 건과 각각을 잡아낸 것. "
      "아홉 중 다섯이 '참조를 무엇으로 둘 것인가' 이고, 아홉 다 p 값이 "
      "유의했다 — 통계는 전제가 틀렸다는 것을 알려주지 않는다."),
+    ("S15_pli_psd.png",
+     "**Q1 · 층 4 «무엇을 지웠나».** 전원선 잡음 입력과 공통 전처리 출력의 **파형 "
+     "둘과 그 두 신호의 PSD** 를 한 장에. 60·120 Hz 만 도려내고 나머지 대역은 "
+     "원본과 겹친다 — 그런데 남은 오차는 전부 **70 Hz**(180 Hz 고조파가 접힌 자리, "
+     "notch 목록에 없다)다. 비교 기준은 평가 참값이 아니라 **원본 기록**이다 — "
+     "참값은 같은 전처리를 통과한 것이라 «나머지 대역 그대로» 가 정의상 참이 된다 (F-54)."),
+    ("S16_pli_swt.png",
+     "**Q2 · S4 에 없던 행.** 전원선 잡음에서는 SWT 가 이긴다(실기록 · 입력 10 dB, "
+     "잡음 종류별 실험과 같은 조건). 잔차 칸이 이유를 보여 준다 — 전처리가 남긴 "
+     "것은 70 Hz 뿐이고 SWT 는 그것을 줄이며, 딥러닝의 오차는 대부분 **40 Hz 아래** "
+     "— 이미 깨끗한 심전도를 건드린 것이다 (F-54)."),
+    ("S17_noise_board.png",
+     "**Q2 전체 판.** 잡음 7 조건 × (전처리만 · SWT · 딥러닝). 딥러닝이 이기는 곳과 "
+     "SWT 가 이기는 곳의 수, 차이를 **표에서 계산**해 적는다. 고전이 이기는 두 곳은 "
+     "전처리만으로도 딥러닝보다 높다."),
 ]
 
 
@@ -1465,6 +1481,234 @@ def s10_loss_by_noise(TXT):
     print("  S10_loss_by_noise.png")
 
 
+# ------------------------------------------------ S15~S17 전원선 잡음 (Q1·Q2)
+# 발표의 앞 두 질문을 받치는 세 장이다(docs/94 6 장).
+#
+#   S15  Q1 층 4 «무엇을 지웠나» — 파형 둘 옆에 **그 두 파형의** PSD.
+#        스펙트럼만 띄우면 «그래서 신호가 어떻게 됐나» 가 안 이어진다.
+#   S16  Q2 «전원선에서는 고전이 이긴다» — S4 에 없던 행. S4 만 보면 딥러닝이
+#        늘 이기는 것처럼 읽힌다.
+#   S17  Q2 전체 판 — 잡음 7 종에서 누가 이기나, 한 장에.
+#
+# S16·S17 은 **잡음 종류별 실험(EXP-B)과 같은 조건**(실기록 · 입력 10 dB)이다.
+# EXP-B 는 10 dB 한 점만 돌렸으므로, 다른 SNR 의 그림을 옆에 두면 표와 그림이
+# 다른 조건을 말하게 된다. S4 가 -5 dB 인 것과 다르다는 사실을 제목에 적는다.
+NOISE_LAB = {"pli": "전원선 60 Hz", "bw_synth": "기저선 변동", "ma_synth": "근전도",
+             "em_synth": "전극 움직임", "impulse": "임펄스", "awgn": "백색잡음",
+             "mixed": "혼합 (전부)"}
+EXPB_SNR = 10.0
+RAW_LAB = "원본 기록 (잡음 넣기 전)"
+ALIAS_HZ = 70.0     # 전원선 3 고조파 180 Hz 가 fs=250 에서 접히는 자리 (F-54)
+
+
+def _db_rel(p, top):
+    return 10.0 * np.log10(np.maximum(p, top * 1e-12) / top)
+
+
+def s15_pli_psd(cache, snr):
+    """전원선 잡음 입력과 공통 전처리 출력 — 파형 둘과 그 둘의 PSD."""
+    from matplotlib.gridspec import GridSpec
+
+    from ecgdn.eval.spectral import welch_psd
+    d = cache[("mitdb", snr, "pli")]
+    fs, y, o = d["fs"], d["y"], d["outs"]["M_FE"]
+    # **비교 기준은 원본(잡음 넣기 전, 필터 전)이다.** 평가의 참값 `x` 는 같은
+    # 공통 전처리를 통과한 깨끗한 신호라(D-3), 그것과 견주면 «나머지 대역은 그대로»
+    # 가 정의상 참이 된다 — 처음 그렸을 때 0.0 dB 가 나와서 알았다.
+    x = d["x_raw"]
+    f, px = welch_psd(x, fs)
+    # 원본에는 직류 높이(-0.4 mV 안팎)가 있고 전처리의 0.5 Hz 고역통과가 그것을
+    # 뺀다. 파형 칸에서 그 차이가 «R 봉우리가 달라졌다» 로 읽히므로 **그림에서만**
+    # 원본과 입력을 같은 높이로 올린다. PSD 는 손대지 않는다.
+    lift = float(np.median(o - x))
+    _, py = welch_psd(y, fs)
+    _, po = welch_psd(o, fs)
+    top = float(px.max())
+    dx, dy, do = _db_rel(px, top), _db_rel(py, top), _db_rel(po, top)
+
+    # 판정은 **스펙트럼에서 계산**한다(O-27). 봉우리는 ±1.5 Hz 안의 최댓값.
+    def peak(db, f0):
+        m = (f >= f0 - 1.5) & (f <= f0 + 1.5)
+        return float(db[m].max())
+    cut = {f0: peak(dy, f0) - peak(do, f0) for f0 in (60.0, 120.0, ALIAS_HZ)}
+    # 나머지 대역 = 전원선 성분 셋(60 · 70 · 120)을 뺀 1-95 Hz.
+    keep = ((f >= 1.0) & (f <= 95.0) & (np.abs(f - 60.0) > 3.0)
+            & (np.abs(f - ALIAS_HZ) > 3.0))
+    dev = float(np.mean(np.abs(do[keep] - dx[keep])))
+    # 처리 후 남은 오차 중 70 Hz 몫 — «notch 가 모르는 자리» 가 얼마나 남았나
+    from ecgdn.eval.engine import trim_guard
+    g = trim_guard(len(x), fs)
+    fr, pr = welch_psd((o - d["x"])[g], fs)
+    alias_share = float(pr[np.abs(fr - ALIAS_HZ) <= 1.5].sum() / pr.sum())
+
+    fig = plt.figure(figsize=(15, 5.8))
+    gs = GridSpec(2, 2, figure=fig, width_ratios=[1.0, 1.15], hspace=0.45, wspace=0.16)
+    i0, i1 = _window(d, 1.2)
+    t = (np.arange(i0, i1) - i0) / fs
+    a0 = fig.add_subplot(gs[0, 0])
+    a1 = fig.add_subplot(gs[1, 0], sharex=a0, sharey=a0)
+    for ax, sig, col, lab in ((a0, y, NOISY, "입력 — 원본에 전원선 60 Hz 를 섞었다"),
+                              (a1, o, C["M_FE"], f"{NAME['M_FE']} 통과 후")):
+        ax.plot(t, x[i0:i1] + lift, color=CLEAN, lw=2.6, label=RAW_LAB)
+        ax.plot(t, sig[i0:i1] + (lift if sig is y else 0.0), color=col, lw=0.9)
+        ax.set_title(lab, fontsize=11, color=col, loc="left")
+        ax.set_ylabel(TXT["amp"])
+    a0.legend(loc="upper right", fontsize=9)
+    a1.set_xlabel(TXT["time"] + "   (원본·입력은 직류 높이만 맞춰 그렸다)")
+
+    ap = fig.add_subplot(gs[:, 1])
+    ap.plot(f, dx, color=CLEAN, lw=4.0, label=RAW_LAB)
+    ap.plot(f, dy, color=NOISY, lw=1.0, label="입력")
+    ap.plot(f, do, color=C["M_FE"], lw=1.4, label="처리 후")
+    for f0 in (60.0, 120.0):
+        ap.axvline(f0, color="#d03b3b", lw=0.8, ls="--", zorder=0)
+        ap.annotate(f"{f0:.0f} Hz\n-{cut[f0]:.0f} dB", xy=(f0, peak(dy, f0)),
+                    xytext=(f0 - 2, peak(dy, f0) - 1), ha="right", va="top",
+                    fontsize=10, color="#d03b3b", fontweight="bold")
+    # 70 Hz 는 notch 목록에 없다 — 180 Hz 고조파가 fs=250 에서 접힌 자리다
+    # (`ecgdn/data/noise.py` 의 pli 주석: «해석 시 이 점을 명시할 것»).
+    ap.annotate(f"{ALIAS_HZ:.0f} Hz — 180 Hz 고조파가 접힌 자리\n"
+                "notch 목록에 없어 그대로 남았다",
+                xy=(ALIAS_HZ + 0.8, peak(do, ALIAS_HZ)),
+                xytext=(ALIAS_HZ + 6, peak(do, ALIAS_HZ) + 1), ha="left", va="top",
+                fontsize=9.5, color=INK, arrowprops=dict(arrowstyle="-", color=INK2, lw=0.7))
+    ap.axvspan(100, fs / 2, color="#e8e6df", alpha=0.6, zorder=0)
+    ap.text(112.5, -93, "100 Hz 위:\n저역 필터", ha="center", fontsize=9, color=INK2)
+    ap.set_xlim(0, fs / 2); ap.set_ylim(-100, 8)
+    ap.set_xlabel("주파수 [Hz]"); ap.set_ylabel("PSD [dB, 원본 최대 = 0]")
+    ap.legend(loc="lower left", fontsize=9.5)
+    ap.set_title("같은 두 신호의 스펙트럼", fontsize=11, loc="left")
+    fig.suptitle(
+        f"지정한 주파수만 도려냈다 — 60 Hz 를 {cut[60.0]:.0f} dB 깎고 나머지 1-95 Hz 는 "
+        f"원본과 평균 {dev:.2f} dB 차이. 그런데 남은 오차의 {alias_share * 100:.0f} % 가 "
+        f"{ALIAS_HZ:.0f} Hz 다\n"
+        f"D1 실기록 {d['record']} · 입력 SNR {snr:+.0f} dB · "
+        f"개선량 {_snr_imp(d['x'], y, o, fs):+.1f} dB — 이 숫자 하나로는 무엇을 지웠고 "
+        "무엇이 남았는지가 안 보인다",
+        fontsize=12.5, y=0.995)
+    fig.subplots_adjust(left=0.06, right=0.985, top=0.83, bottom=0.10)
+    fig.savefig(OUT / "S15_pli_psd.png", dpi=165); plt.close(fig)
+    print("  S15_pli_psd.png")
+
+
+def _expb_means(tag="d1"):
+    """EXP-B(잡음 종류별) 의 개선량 평균과 구간 수. 표(`table_noise.csv`)와 같은 원천."""
+    import pandas as pd
+    df = pd.read_parquet(Path("results") / tag / "exp_b" / "metrics.parquet")
+    df = df[(df.metric == "snr_imp_scaled") & (df.snr_in_target == EXPB_SNR)]
+    mean = df.groupby(["cond", "method"]).value.mean().unstack("method")
+    n = int(df[df.method == "M_FE"].groupby("cond").size().min())
+    return mean, n
+
+
+def _resid_share(x, o, fs):
+    """잔차(출력 - 참값) 전력 중 70 Hz 접힘과 40 Hz 아래의 몫."""
+    from ecgdn.eval.engine import trim_guard
+    from ecgdn.eval.spectral import welch_psd
+    g = trim_guard(len(x), fs)
+    f, p = welch_psd((o - x)[g], fs)
+    tot = float(p.sum())
+    return {"alias": float(p[np.abs(f - ALIAS_HZ) <= 1.5].sum()) / tot,
+            "low": float(p[f < 40.0].sum()) / tot}
+
+
+def s16_pli_swt(cache):
+    """전원선에서는 고전이 이긴다 — 출력과 잔차, EXP-B 와 같은 조건."""
+    d = cache[("mitdb", EXPB_SNR, "pli")]
+    mean, n = _expb_means()
+    show = ["M_FE", "M04", "M08"]
+    fs, x, y = d["fs"], d["x"], d["y"]
+    i0, i1 = _window(d, 2.0)
+    t = (np.arange(i0, i1) - i0) / fs
+    fig, axes = plt.subplots(2, 4, figsize=(15, 5.4), sharex=True)
+    # 1 행: 출력 — 행 공유. 2 행: 잔차 — **방법 셋만 공유**한다. 입력 칸의 잔차는
+    # 잡음 그 자체라 크기가 수십 배라, 같이 묶으면 방법 셋이 전부 평평하게 눌린다.
+    for ax in axes[0, 1:]:
+        ax.sharey(axes[0, 0])
+    for ax in axes[1, 2:]:
+        ax.sharey(axes[1, 1])
+    axes[0, 0].plot(t, x[i0:i1], color=CLEAN, lw=2.4)
+    axes[0, 0].plot(t, y[i0:i1], color=NOISY, lw=0.8)
+    axes[0, 0].set_title(NAME["noisy"], fontsize=10.5)
+    axes[1, 0].plot(t, (y - x)[i0:i1], color=NOISY, lw=0.7)
+    axes[1, 0].set_title("지울 잡음 (입력 - 참값) · 세로 눈금 다름", fontsize=9.5, color=INK2)
+    axes[0, 0].set_ylabel(TXT["output"]); axes[1, 0].set_ylabel(TXT["resid"])
+    for c_, m in enumerate(show, start=1):
+        o = d["outs"][m]
+        axes[0, c_].plot(t, x[i0:i1], color=CLEAN, lw=2.4)
+        axes[0, c_].plot(t, o[i0:i1], color=C[m], lw=1.0)
+        axes[0, c_].set_title(NAME[m], fontsize=10.5, color=C[m])
+        # 오른쪽 위 구석은 세 번째 R 봉우리가 지나간다 — 박동 사이(1.4 s 쯤)에 둔다
+        axes[0, c_].text(0.70, 0.92, f"{_snr_imp(x, y, o, fs):+.1f} dB",
+                         transform=axes[0, c_].transAxes, ha="center", va="top",
+                         fontsize=11, color=C[m], fontweight="bold")
+        axes[1, c_].plot(t, (o - x)[i0:i1], color=C[m], lw=0.8)
+        axes[1, c_].axhline(0, color=INK2, lw=0.5)
+        sh = _resid_share(x, o, fs)
+        axes[1, c_].text(0.985, 0.95,
+                         f"오차의 {sh['alias'] * 100:.0f} % = {ALIAS_HZ:.0f} Hz 접힘\n"
+                         f"오차의 {sh['low'] * 100:.0f} % = 40 Hz 아래 (심전도 대역)",
+                         transform=axes[1, c_].transAxes, ha="right", va="top",
+                         fontsize=9, color=INK)
+    # 잔차 칸 위쪽에 글자 자리를 둔다 — 딥러닝 잔차의 봉우리가 글자를 지나갔다
+    lo, hi = axes[1, 1].get_ylim()
+    axes[1, 1].set_ylim(lo, hi + 0.45 * (hi - lo))
+    for ax in axes[1]:
+        ax.set_xlabel(TXT["time"])
+    avg = " · ".join(f"{NAME[m]} {mean.loc['pli', m]:+.1f}" for m in show)
+    fig.suptitle(f"전원선 잡음에서는 고전 방법이 이긴다 — 전처리가 남긴 것은 {ALIAS_HZ:.0f} Hz 뿐이고, "
+                 "딥러닝은 이미 깨끗한 심전도를 건드린다\n"
+                 f"D1 실기록 {d['record']} · 입력 SNR {EXPB_SNR:+.0f} dB (잡음 종류별 실험과 같은 조건) · "
+                 f"숫자 = 이 구간 · 전체 평균(n={n} 구간): {avg} dB",
+                 fontsize=11.5, y=0.995)
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
+    fig.savefig(OUT / "S16_pli_swt.png", dpi=165); plt.close(fig)
+    print("  S16_pli_swt.png")
+
+
+def s17_noise_board():
+    """잡음 7 종의 판정 — 딥러닝과 SWT 중 누가 이기나, 전처리만은 어디까지 가나."""
+    mean, n = _expb_means()
+    show = ["M_FE", "M04", "M08"]
+    conds = list(NOISE_LAB)
+    # 딥러닝이 이기는 폭 순으로 — 위가 딥러닝, 아래가 고전.
+    margin = {c: float(mean.loc[c, "M08"] - mean.loc[c, "M04"]) for c in conds}
+    conds.sort(key=lambda c: -margin[c])
+    fig, ax = plt.subplots(figsize=(13, 6.2))
+    h = 0.26
+    for k, m in enumerate(show):
+        ys = [i + (k - 1) * h for i in range(len(conds))]
+        vals = [float(mean.loc[c, m]) for c in conds]
+        ax.barh(ys, vals, height=h * 0.92, color=C[m], label=NAME[m])
+        for yv, v in zip(ys, vals):
+            ax.text(v + 0.3, yv, f"{v:.1f}", va="center", fontsize=9, color=INK2)
+    ax.set_yticks(range(len(conds)))
+    ax.set_yticklabels([NOISE_LAB[c] for c in conds], fontsize=11.5)
+    ax.invert_yaxis()
+    xmax = float(mean.loc[conds, show].to_numpy().max())
+    for i, c in enumerate(conds):
+        dl = margin[c] > 0
+        ax.text(xmax + 6.5, i, f"{'딥러닝' if dl else 'SWT'} +{abs(margin[c]):.1f} dB",
+                va="center", ha="left", fontsize=11, fontweight="bold",
+                color=C["M08"] if dl else C["M04"])
+    ax.set_xlim(0, xmax + 14)
+    # 세로축은 «전처리 위에 더한 몫» 이 아니라 **개선량 그 자체**다 — 전처리만(M_FE)
+    # 막대가 함께 서야 «고전이 이기는 곳은 전처리가 이미 높다» 가 보인다.
+    ax.set_xlabel("개선량 [dB]  (클수록 좋다)", labelpad=2)
+    ax.grid(axis="y", visible=False)
+    # 범례를 축 안에 두면 오른쪽 판정 글자(«SWT +11.1 dB»)와 겹친다 — 눈으로 보고 옮겼다
+    ax.legend(loc="upper center", bbox_to_anchor=(0.45, -0.1), ncol=3, fontsize=10.5)
+    k_dl = sum(margin[c] > 0 for c in conds)
+    fig.suptitle(f"잡음 {len(conds)} 조건 중 딥러닝이 이기는 곳 {k_dl}, SWT 가 이기는 곳 "
+                 f"{len(conds) - k_dl} — 고전이 이기는 곳은 전처리만으로도 딥러닝보다 높다\n"
+                 f"D1 실기록 · 입력 SNR {EXPB_SNR:+.0f} dB · 조건마다 {n} 구간 평균 "
+                 "· 오른쪽 = 딥러닝과 SWT 의 차이",
+                 fontsize=12.5, y=0.985)
+    fig.subplots_adjust(left=0.12, right=0.98, top=0.87, bottom=0.2)
+    fig.savefig(OUT / "S17_noise_board.png", dpi=165); plt.close(fig)
+    print("  S17_noise_board.png")
+
+
 def main() -> int:
     import argparse
     global NAME, TXT, OUT
@@ -1481,7 +1725,7 @@ def main() -> int:
         OUT = PRESENT_OUT
     want = set(a.only) if a.only else {"S1", "S2", "S3", "S4", "S5", "S6",
                                        "S7", "S8", "S9", "S10", "S11", "S12",
-                                       "S13", "S14"}
+                                       "S13", "S14", "S15", "S16", "S17"}
 
     NAME, TXT = slide_style(present=a.present)
     ensure_dir(OUT)
@@ -1495,6 +1739,10 @@ def main() -> int:
     if "S4" in want:
         need |= {(s, a.snr, k) for s in ("synthetic", "mitdb")
                  for k in ("bw", "ma", "impulse")}
+    if "S15" in want:
+        need |= {("mitdb", a.snr, "pli")}
+    if "S16" in want:
+        need |= {("mitdb", EXPB_SNR, "pli")}
 
     cache = {}
     for key in sorted(need):
@@ -1532,6 +1780,12 @@ def main() -> int:
         s9_structure_vs_loss(TXT)
     if "S10" in want:
         s10_loss_by_noise(TXT)
+    if "S15" in want:
+        s15_pli_psd(cache, a.snr)
+    if "S16" in want:
+        s16_pli_swt(cache)
+    if "S17" in want:
+        s17_noise_board()
 
     save_manifest(OUT, cfg=vars(a), sources=[
         "scripts/make_slides.py", "scripts/run_exp.py", "ecgdn/data/dataset.py",

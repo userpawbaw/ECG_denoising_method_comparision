@@ -235,6 +235,45 @@ def rank_flip(tag: str = "d1") -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# ── 8. 잡음 7 조건 판정판 (Q2 · `S17_noise_board`) ─────────────────
+BOARD = {"M_FE": "공통 전처리만", "M04": "SWT wavelet", "M08": "딥러닝 Wavelet U-Net"}
+
+
+def noise_board(tag: str = "d1") -> pd.DataFrame:
+    """행 = 잡음, 열 = 방법 셋 + 판정. `noise_by_method()` 를 그대로 접는다."""
+    nb = noise_by_method()
+    nb = nb[(nb.axis_tag == tag) & nb.method.isin(BOARD)]
+    w = nb.pivot(index="noise", columns="method", values="snr_imp_db")
+    w = w[list(BOARD)].rename(columns=BOARD)
+    gap = w["딥러닝 Wavelet U-Net"] - w["SWT wavelet"]
+    w["판정"] = [f"{'딥러닝' if g > 0 else 'SWT'} +{abs(g):.1f} dB" for g in gap]
+    w = w.loc[gap.sort_values(ascending=False).index]
+    w.index.name = "잡음 종류"
+    return w.reset_index()
+
+
+# ── 9. 전원선 잡음의 PSD (Q1 층 4 · `S15_pli_psd`) ────────────────────
+def pli_psd(snr: float = -5.0) -> pd.DataFrame:
+    """원본 · 입력 · 처리 후 셋의 PSD [dB, 원본 최대 = 0]. 그림과 **같은 경로**.
+
+    `make_slides.prepare` 를 그대로 부른다 — 여기서 잡음을 따로 만들면 그림과
+    다른 구간이 된다(F-10). 기록 100 · 입력 -5 dB 한 구간이다.
+    """
+    import make_slides as ms
+    from ecgdn.eval.spectral import welch_psd
+    d = ms.prepare("mitdb", snr, "pli")
+    fs = d["fs"]
+    f, pr = welch_psd(d["x_raw"], fs)
+    top = float(pr.max())
+    col = {"원본 기록": d["x_raw"], "입력 (전원선 섞임)": d["y"]}
+    col.update({f"{BOARD[m]} 출력": d["outs"][m] for m in BOARD})
+    out = {"주파수 (Hz)": np.round(f, 3)}
+    for k, v in col.items():
+        _, p = welch_psd(v, fs)
+        out[k] = np.round(10 * np.log10(np.maximum(p, top * 1e-12) / top), 2)
+    return pd.DataFrame(out)
+
+
 def _write(df: pd.DataFrame, name: str) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUT / name, index=False)
@@ -265,6 +304,8 @@ def main() -> None:
     _write(heat, "02_loss_grid_d1_m06_heatmap.csv")
 
     _write(noise_by_method(), "03_noise_by_method.csv")
+    _write(noise_board(), "08_noise_board_d1.csv")
+    _write(pli_psd(), "09_pli_psd_d1.csv")
 
     fs = frontend_share()
     _write(fs, "04_frontend_share.csv")

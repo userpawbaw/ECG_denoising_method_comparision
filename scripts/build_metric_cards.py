@@ -3,6 +3,7 @@
 
     python3 scripts/build_metric_cards.py            # 여섯 장 전부
     python3 scripts/build_metric_cards.py --only C2 C4
+    python3 scripts/build_metric_cards.py --present --only C2 C3   # 발표용 말
 
 산출: `results/metric_cards/*.png`, 색인 `docs/32_metric_cards.md`.
 
@@ -42,6 +43,56 @@ from ecgdn.utils import ensure_dir, save_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "results" / "metric_cards"
+# 발표용 묶음 — 같은 카드, **말만 다르다** (`make_slides.py --present` 와 같은 뜻).
+# 시연 카드는 저장소 용어(`r_amp_err_pct` · `EXP-C(d0)` · `M02`)로 적혀 있어서
+# 발표장에서는 읽히지 않는다(docs/94 U-5).
+PRESENT_OUT = ROOT / "results" / "metric_cards_present"
+PRESENT_CARDS = ("C2", "C3")    # C4 · C5 는 막대 눈금이 전부 코드라 따로 손봐야 한다
+
+# **글자 전체가 같을 때만** 바꾸는 것. 범례의 `M04` 처럼 코드 하나만 있는 글자를
+# 부분 치환으로 바꾸면, 이미 바뀐 «SWT wavelet (M04)» 가 다시 걸려 이중으로 된다.
+PRESENT_EXACT = {"M01": "Bandpass (M01)", "M02": "Savitzky-Golay (M02)",
+                 "M04": "SWT wavelet (M04)"}
+# 부분 치환 — 긴 것부터. 조사까지 함께 적는다.
+PRESENT_TERMS: list[tuple[str, str]] = [
+    ("M02  (Savitzky-Golay)", "Savitzky-Golay 평활 (M02)"),
+    ("M04  (SWT + QRS 보호)", "SWT wavelet (M04)"),
+    ("M01  (대역통과 + notch)", "Bandpass 0.5-40 Hz (M01)"),
+    ("r_amp_err_pct  ·  EXP-C(d0): 입력에 잡음을 0 으로 넣고 그대로 통과시킨다",
+     "R 봉우리 높이 오차  ·  합성 ECG 에 잡음을 0 으로 넣고 그대로 통과시켰다"),
+    ("psd_logdist  ·  EXP-C(d0): 잡음 0 입력. 없어진 것은 전부 방법이 지운 것이다",
+     "스펙트럼 거리  ·  합성 ECG, 잡음 0 입력 — 없어진 것은 전부 방법이 지운 것이다"),
+    ("(d0 기록 ", "(합성 기록 "),
+    ("R-peak 를 깎았다", "R 봉우리를 깎았다"),
+    ("R-peak 오차", "R 봉우리 높이 오차"),
+    ("R-peak 진폭으로", "R 봉우리 높이로"),
+    ("psd_logdist ", "스펙트럼 거리 "),
+    ("M01 은 40 Hz", "Bandpass 는 40 Hz"),
+    ("왜곡 하한", "잡음 0 입력의 출력 SNR"),
+    ("그래서 층 4 가 따로 있다", "그래서 스펙트럼 지표가 따로 있다"),
+]
+
+
+def present_text(s: str) -> str:
+    if s in PRESENT_EXACT:
+        return PRESENT_EXACT[s]
+    for a, b in PRESENT_TERMS:
+        s = s.replace(a, b)
+    return s
+
+
+def install_present_sink() -> None:
+    """글자가 그림에 닿는 한 지점(`Text.set_text`)에서 바꾼다 — make_slides 와 같은 방식."""
+    from matplotlib.text import Text
+    if getattr(Text.set_text, "_present", False):
+        return
+    orig = Text.set_text
+
+    def patched(self, s):
+        return orig(self, present_text(s) if isinstance(s, str) else s)
+
+    patched._present = True
+    Text.set_text = patched
 
 # ---------------------------------------------------------------- 스타일
 # 색은 `make_slides.py` 와 **같은 값**을 쓴다. 두 산출물이 같은 자리에서
@@ -605,12 +656,24 @@ def write_index(made: list[str]) -> Path:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", nargs="*", default=None, choices=sorted(CARDS))
+    ap.add_argument("--present", action="store_true",
+                    help=f"발표용 말로 {PRESENT_OUT.relative_to(ROOT)}/ 에 쓴다 "
+                         f"({', '.join(PRESENT_CARDS)} 만)")
     a = ap.parse_args()
+    if a.present:
+        global OUT
+        OUT = PRESENT_OUT
+        install_present_sink()
+        bad = sorted(set(a.only or []) - set(PRESENT_CARDS))
+        if bad:
+            raise SystemExit(f"발표용 말이 준비되지 않은 카드: {bad}")
+        a.only = list(a.only or PRESENT_CARDS)
     made = []
     for k in (a.only or sorted(CARDS)):
         print(f"[{k}]")
         made.append(CARDS[k]())
-    save_manifest(OUT, cfg={"cards": [p.stem for p in made]}, sources=[__file__])
+    save_manifest(OUT, cfg={"cards": [p.stem for p in made], "present": a.present},
+                  sources=[__file__])
     if a.only is None:                    # 일부만 만들었으면 색인을 덮지 않는다
         write_index([p.stem.split("_")[0] for p in made])
     print(f"\n{len(made)} 장 -> {OUT.relative_to(ROOT)}")

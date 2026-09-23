@@ -765,6 +765,9 @@ FIGURE_DATA = {
     "S10_loss_by_noise.png": ["results/d0/exp_g/metrics.parquet",
                               "results/d1/exp_g/metrics.parquet"],
     "S11_nofe_grid.png": ["results/d1/exp_nofe/metrics.parquet"],
+    # S16 은 파형이 한 구간이지만 제목의 44 구간 평균을 EXP-B 에서 읽는다
+    "S16_pli_swt.png": ["results/d1/exp_b/metrics.parquet"],
+    "S17_noise_board.png": ["results/d1/exp_b/metrics.parquet"],
 }
 SLIDES = ROOT / "results" / "slides"
 

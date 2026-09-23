@@ -173,3 +173,46 @@ def test_present_set_matches_the_report_set():
     a = {f.name for f in PRESENT.glob("*.png")}
     b = {f.name for f in REPORT.glob("*.png")}
     assert a == b, f"두 묶음의 그림이 다르다: 발표용만 {a - b}, 보고서용만 {b - a}"
+
+
+# ---------------------------------------------------------------- 지표 카드
+CARDS = ROOT / "scripts" / "build_metric_cards.py"
+
+
+@pytest.fixture(scope="module")
+def cards():
+    """`build_metric_cards` 를 불러오기만 한다 (카드는 안 그린다)."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec = importlib.util.spec_from_file_location("cards_under_test", CARDS)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def test_card_terms_are_alive_and_ordered(cards):
+    """카드의 발표용 표도 같은 두 가지로 낡는다 — 안 걸리는 항목, 먹히는 긴 항목.
+
+    카드 문자열은 f-string 조각이 많아 **소스 전체**에 대고 본다. `(d0 기록 `
+    처럼 f-string 의 `{tag}` 가 풀린 뒤에만 생기는 조각은 원문 조각으로 대조한다.
+    """
+    src = CARDS.read_text(encoding="utf-8").replace("{tag}", "d0")
+    dead = [a for a, _ in cards.PRESENT_TERMS if a not in src]
+    assert not dead, f"카드 발표용 항목이 원문에 안 걸린다: {dead}"
+    terms = [a for a, _ in cards.PRESENT_TERMS]
+    bad = [(a, b) for i, a in enumerate(terms) for b in terms[i + 1:] if a in b]
+    assert not bad, f"짧은 항목이 긴 항목을 먼저 먹는다: {bad}"
+
+
+def test_card_exact_labels_do_not_double_apply(cards):
+    """범례의 `M04` 는 통째로만 바뀐다 — 이미 바뀐 글자가 다시 걸리면 안 된다."""
+    for code, label in cards.PRESENT_EXACT.items():
+        assert cards.present_text(code) == label
+        assert cards.present_text(label) == label, f"{label} 이 두 번 바뀐다"
+
+
+def test_present_cards_exist_for_the_deck():
+    """덱이 싣는 카드(`C2`)의 발표용 판이 있어야 한다."""
+    d = ROOT / "results" / "metric_cards_present"
+    if not d.exists():
+        pytest.skip("발표용 카드가 아직 없다 — `build_metric_cards.py --present`")
+    assert (d / "C2_r_amp_err.png").exists()
