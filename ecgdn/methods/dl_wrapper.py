@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,29 @@ from .base import BaseDenoiser
 __all__ = ["DLDenoiser", "load_checkpoint"]
 
 
+# 인코더 한 레벨이 **블록 하나**에서 **블록 묶음**(`nn.Sequential`)으로 바뀌면서
+# 키가 한 겹 깊어졌다: `enc.0.c1` -> `enc.0.0.c1`. 깊이 축을 열면서(`n_blocks`)
+# 생긴 변화인데, **가중치 자체는 그대로**다 — 레벨당 블록이 1 개면 옛 판의
+# `enc.i` 가 새 판의 `enc.i.0` 과 같은 자리다. `dec` 는 원래 앞에 `ConvBlock`
+# 이 붙어 이미 묶음이었으므로 영향이 없다.
+_OLD_ENC = re.compile(r"^((?:backbone\.)?enc)\.(\d+)\.")
+
+
+def _lift_old_encoder_keys(sd: dict, want: set[str]) -> tuple[dict, bool]:
+    """옛 판 state_dict 를 지금 모듈 배치로 옮긴다. 못 옮기면 **그대로 둔다.**
+
+    되돌린 뒤에도 `load_state_dict(strict=True)` 를 그대로 거치므로, 이 규칙으로
+    설명되지 않는 어긋남은 **여전히 예외로 터진다.** 조용히 맞춰 넣지 않는다.
+    """
+    if set(sd) <= want:
+        return sd, False
+    moved = {(_OLD_ENC.sub(r"\1.\2.0.", k) if k not in want else k): v
+             for k, v in sd.items()}
+    if set(moved) <= want and len(moved) == len(sd):
+        return moved, True
+    return sd, False
+
+
 def load_checkpoint(path: str | Path, device: str = "cpu"):
     """체크포인트에서 모델을 복원한다."""
     import torch
@@ -36,7 +60,12 @@ def load_checkpoint(path: str | Path, device: str = "cpu"):
     name = ck.get("model_name", "resunet1d")
     kw = ck.get("model_kwargs", {}) or {}
     model = build_model(name, **kw)
-    model.load_state_dict(ck["model"])
+    sd, lifted = _lift_old_encoder_keys(ck["model"], set(model.state_dict()))
+    if lifted:
+        print(f"[ckpt] {Path(path).parent.name}: 인코더가 한 겹 깊어지기 전의 "
+              "판이다 — 같은 가중치를 새 자리로 옮겨 싣는다 "
+              "(tests/test_ckpt_compat.py 가 수치 재현으로 고정한다)")
+    model.load_state_dict(sd)
     model.to(device).eval()
     return model, ck
 

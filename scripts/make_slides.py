@@ -34,6 +34,8 @@ import numpy as np
 from ecgdn.utils import ensure_dir, save_manifest
 
 OUT = Path("results/slides")
+# 발표용 묶음. 같은 그림·같은 수치, **말만 다르다** (`--present`).
+PRESENT_OUT = Path("results/slides_present")
 # `_bootstrap` 이 작업 디렉터리를 저장소 루트로 옮기므로 상대경로가 곧 루트다.
 ROOT = Path(".")
 
@@ -88,8 +90,96 @@ TXT_EN = {
     "gain": "gain over front-end [dB]",
 }
 
+# ---------------------------------------------------- 발표용 (저장소 밖 청중)
+# 저장소 안에서는 `M04` · `snr_imp_scaled` · `EXP-C` 가 옳다 — 짧고 보고서와
+# 1:1 로 붙는다. **발표장에서는 아무도 모른다.** 그렇다고 보고서 그림을 바꾸면
+# 보고서가 자기 표와 어긋나므로, 같은 그림을 **말만 바꿔 따로 렌더**한다.
+#
+# 코드를 통째로 지우지는 않는다 — 괄호로 남긴다(`SWT wavelet (M04)`). 발표 중
+# 백업 슬라이드나 보고서를 펴는 사람이 두 이름을 이어야 하기 때문이다.
+NAME_PRESENT = {
+    "clean": "참값 (정답 신호)", "noisy": "입력 (잡음 섞임)",
+    "M_FE": "공통 전처리만 (M_FE)", "M01": "Bandpass 0.5-40 Hz (M01)",
+    "M04": "SWT wavelet (M04)", "M05": "Sameni 칼만필터 (M05)",
+    "M08": "딥러닝 Wavelet U-Net (M08)",
+}
+TXT_PRESENT = {
+    "time": "시간 [s]", "amp": "진폭 [mV]", "resid": "잔차 = 출력 - 참값",
+    "output": "출력 파형", "in_snr": "입력 SNR [dB]  (오른쪽일수록 깨끗한 신호)",
+    "gain": "공통 전처리 위에 더한 개선량 [dB]",
+}
 
-def slide_style():
+# 제목·주석은 f-string 으로 조립되는 것이 많아 리터럴마다 감쌀 수가 없다.
+# 그래서 **글자가 그림에 닿는 한 지점**에서 한 번에 바꾼다(`install_present_sink`).
+# 부분 치환은 조사에서 깨지므로 **긴 것부터** 적고, 스크립트에 실제로 있는
+# 문자열 전부에 대해 `tests/test_slides_present.py` 가 결과를 고정한다.
+#
+# **손실 이름(L1 · L3 · L6)은 바꾸지 않는다.** 발표에서 그 사다리를 슬라이드
+# 본문에 함께 띄우므로(docs/94 2.4 의 11 번), 그림과 본문이 같은 말을 써야 한다.
+PRESENT_TERMS: list[tuple[str, str]] = [
+    # ① 방법 코드 — 문맥까지 함께 갈아야 조사가 안 깨진다
+    ("딥러닝(M08)", "딥러닝 (Wavelet U-Net)"),
+    ("(M06, TEST, 기록 단위 n=44)", "(U-Net · 평가용 분할 · 기록 단위 n=44)"),
+    ("(M06 기준, TEST n=22)", "(U-Net 기준 · 평가용 분할 n=22)"),
+    ("(M06, TEST)", "(U-Net · 평가용 분할)"),
+    ("M06L6 - M06", "L6 로 학습 - L1 로 학습"),
+    ("SWT 와의", "SWT wavelet 과의"),
+    ("SWT 선까지", "SWT wavelet 선까지"),
+    # ② 데이터축 — 조사가 붙은 꼴을 통째로
+    ("D0 는", "합성 데이터는"), ("D1 은", "실기록은"), ("D1 에서", "실기록에서"),
+    ("— D1, 입력 SNR", "— 실기록 · 입력 SNR"),
+    ("두 축 · 두 프로브", "두 데이터 · 두 시험"),
+    ("합성축 참값 기준", "합성 데이터의 참값 기준"),
+    # ③ 지표·실험·통계 용어
+    ("기준 대비 Δ  snr_imp_scaled [dB]", "기준 대비 개선량 차이 [dB]"),
+    ("snr_imp_scaled", "개선량"),
+    ("(EXP-C)", "(잡음 0 입력)"),
+    ("paired Wilcoxon + Holm", "짝지은 검정 + 다중비교 보정"),
+    ("Holm 보정 후 유의", "다중비교 보정 후 유의"),
+    # ④ 영어 약어와 줄임말. **`front-end` 만 바꾸면 안 된다** — 원문에 이미
+    #    「공통 front-end」 와 「front-end 만」 이 있어서 «공통 공통 전처리» ·
+    #    «공통 전처리 만» 이 된다. 눈으로 보고 잡았다(docs/17 §3).
+    ("공통 front-end", "공통 전처리"),
+    ("front-end 만 쓰는", "전처리만 쓰는"),
+    ("front-end", "공통 전처리"),
+    ("(Holm 보정 p < 0.05)", "(다중비교 보정 후 p < 0.05)"),
+    ("(Holm)", "(다중비교 보정)"),
+    ("M06\nresunet1d", "U-Net\n(M06)"),
+    ("M08\nwavelet_unet", "Wavelet U-Net\n(M08)"),
+    ("R-peak 기준 시간", "R 봉우리 기준 시간"),
+    ("회색 = 참조", "회색 = 참값"),
+    ("(출력 - 참조)", "(출력 - 참값)"),
+]
+
+
+def present_text(s: str) -> str:
+    """발표용 렌더에서 그림에 닿는 모든 문자열이 지나는 자리."""
+    for a, b in PRESENT_TERMS:
+        s = s.replace(a, b)
+    return s
+
+
+def install_present_sink():
+    """`Text.set_text` 하나만 감싼다.
+
+    제목·축·범례·주석이 전부 결국 여기를 지난다. 리터럴마다 감싸면 f-string
+    으로 조립된 제목의 **계산된 부분**이 그대로 빠져나가는데, 그런 제목이
+    이 파일에만 여섯이다(S7 · S9 · S10 …). 눈금 숫자도 지나가지만 바꿀 말이
+    없어 무해하다.
+    """
+    from matplotlib.text import Text
+    if getattr(Text.set_text, "_present", False):
+        return
+    orig = Text.set_text
+
+    def patched(self, s):
+        return orig(self, present_text(s) if isinstance(s, str) else s)
+
+    patched._present = True
+    Text.set_text = patched
+
+
+def slide_style(present: bool = False):
     """한글 폰트가 있으면 쓰고, 없으면 **영문 라벨로 자동 대체**한다.
 
     컨테이너에 폰트가 없으면 한글이 두부(□)로 렌더된다. 그림은 나오는데
@@ -116,7 +206,15 @@ def slide_style():
     if ko is None:
         print("[slides] 한글 폰트가 없다 — 영문 라벨로 대체한다 "
               "(apt-get install -y fonts-nanum)")
-    return (NAME_KO, TXT_KO) if ko else (NAME_EN, TXT_EN)
+        # 발표용은 **한글이 전부**다. 영문으로 떨어지면 목적을 잃으므로 알린다.
+        if present:
+            print("[slides] 발표용(--present)인데 한글 폰트가 없다 — "
+                  "영문으로 나간다. 이대로 쓰지 말 것")
+        return NAME_EN, TXT_EN
+    if present:
+        install_present_sink()
+        return NAME_PRESENT, TXT_PRESENT
+    return NAME_KO, TXT_KO
 
 
 NAME, TXT = {}, {}
@@ -403,6 +501,7 @@ def s5_crossover():
     from ecgdn.eval.stats import compare_methods
 
     fig, ax = plt.subplots(figsize=(9.5, 5.4))
+    zeros: list[tuple[float, str]] = []
     styles = {"d0": (C["M01"], "D0  합성 ECG", "o", "-"),
               "d1": (C["M04"], "D1  MIT-BIH 실기록", "s", "-")}
     for tag, (col, lab, mk, ls) in styles.items():
@@ -437,11 +536,18 @@ def s5_crossover():
             if ys[i] > 0 >= ys[i + 1]:
                 zx = xs[i] + (xs[i + 1] - xs[i]) * ys[i] / (ys[i] - ys[i + 1])
                 ax.axvline(zx, color=col, ls=":", lw=1.6, zorder=2)
-                ax.annotate(f"{zx:.0f} dB", (zx, ax.get_ylim()[0]), color=col,
-                            fontsize=10.5, fontweight="bold", ha="center",
-                            xytext=(0, 6), textcoords="offset points")
+                zeros.append((zx, col))
                 break
     ax.axhline(0, color=INK2, lw=1.2, zorder=2)
+    # **라벨은 두 곡선을 다 그린 뒤에 얹는다.** 곡선마다 바로 적으면 그때의
+    # `get_ylim()` 을 쓰는데, 첫 곡선(D0)을 그릴 때는 축이 아직 -0.5 까지밖에
+    # 안 내려가 있다 — 그래서 «20 dB» 가 바닥이 아니라 0 근처, 표식 위에
+    # 얹혔다. 눈으로 보고 잡았다(docs/17 §3 — 「라벨 겹침」).
+    y0 = ax.get_ylim()[0]
+    for zx, col in zeros:
+        ax.annotate(f"{zx:.0f} dB", (zx, y0), color=col,
+                    fontsize=10.5, fontweight="bold", ha="center",
+                    xytext=(0, 6), textcoords="offset points")
     ax.set_xlabel(TXT["in_snr"]); ax.set_ylabel(TXT["gain"])
     ax.set_title("딥러닝(M08)이 공통 front-end 위에 더하는 것\n"
                  "채운 표식 = 통계적으로 유의 (paired Wilcoxon + Holm, 22 기록)",
@@ -1361,18 +1467,23 @@ def s10_loss_by_noise(TXT):
 
 def main() -> int:
     import argparse
-    global NAME, TXT
+    global NAME, TXT, OUT
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", nargs="*", default=None,
                     help="S1 S2 ... 일부만 생성")
     ap.add_argument("--snr", type=float, default=-5.0,
                     help="파형 그림의 입력 SNR (기본 -5 dB — 차이가 보이는 구간)")
+    ap.add_argument("--present", action="store_true",
+                    help="발표용 말로 렌더해 results/slides_present/ 에 쓴다 "
+                         "(보고서 그림은 건드리지 않는다)")
     a = ap.parse_args()
+    if a.present:
+        OUT = PRESENT_OUT
     want = set(a.only) if a.only else {"S1", "S2", "S3", "S4", "S5", "S6",
                                        "S7", "S8", "S9", "S10", "S11", "S12",
                                        "S13", "S14"}
 
-    NAME, TXT = slide_style()
+    NAME, TXT = slide_style(present=a.present)
     ensure_dir(OUT)
 
     # 필요한 조건만 준비한다 (Sameni EKS 가 느리다).
@@ -1426,7 +1537,10 @@ def main() -> int:
         "scripts/make_slides.py", "scripts/run_exp.py", "ecgdn/data/dataset.py",
         "ecgdn/methods/frontend.py", "ecgdn/eval/engine.py",
         "ecgdn/models/losses.py"])
-    write_index()
+    # 색인(`docs/93`)은 보고서용 묶음의 것이다. 발표용이 덮어쓰면 두 묶음의
+    # 설명이 한 문서에서 섞인다 — 발표용의 설계는 `docs/94_presentation.md` 다.
+    if not a.present:
+        write_index()
     return 0
 
 

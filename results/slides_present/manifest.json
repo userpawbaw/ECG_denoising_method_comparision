@@ -13,7 +13,7 @@
   "config": {
     "only": null,
     "snr": -5.0,
-    "present": false
+    "present": true
   },
   "sources": {
     "scripts/make_slides.py": "d03abb6c5ed16fc0",
