@@ -556,7 +556,8 @@ function draw(){
     const yAt = v => h / 2 - Math.max(-mv, Math.min(mv, v)) * scaleY;
 
     const line = (arr, color, lw) => {
-      g.beginPath(); g.strokeStyle = color; g.lineWidth = lw;
+      // 이음은 round — miter 는 예각 꼭짓점에서 선을 뻗어 없던 진폭을 찍는다 (UF-14 · UD-20)
+      g.beginPath(); g.strokeStyle = color; g.lineWidth = lw; g.lineJoin = "round";
       for (let i = 0; i < arr.length; i++){
         const x = i * pxPerSec / B.fs;
         i ? g.lineTo(x, yAt(arr[i])) : g.moveTo(x, yAt(arr[i]));
@@ -672,7 +673,7 @@ function sweepPanel(p, i1, i0){
 
   const seg = (v, style, lw, from) => {
     if (!v) return;
-    g.beginPath(); g.strokeStyle = style; g.lineWidth = lw;
+    g.beginPath(); g.strokeStyle = style; g.lineWidth = lw; g.lineJoin = "round";
     let pen = false;
     for (let i = Math.max(from, 0); i <= i1; i++){
       const k = ((i % n) + n) % n;
@@ -791,7 +792,7 @@ function drawMini(visible, dataSec, a, n){
   let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < total; i += 7){ const v = ref[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
   const span = (hi - lo) || 1;
-  g.beginPath(); g.strokeStyle = css("--ink-3"); g.lineWidth = 1; g.globalAlpha = .5;
+  g.beginPath(); g.strokeStyle = css("--ink-3"); g.lineWidth = 1; g.globalAlpha = .5; g.lineJoin = "round";
   for (let x = 0; x < w; x++){
     const i = Math.floor(x / w * total);
     const y = h - 2 - (ref[i] - lo) / span * (h - 4);

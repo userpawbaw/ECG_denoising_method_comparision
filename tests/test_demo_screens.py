@@ -512,6 +512,91 @@ def test_gain_label_tells_the_gain_actually_drawn(browser):
         "뷰포트가 바뀌어 레인 높이가 달라진 것이다. 장면 고르기를 다시 볼 것")
 
 
+# ------------------------------------------------------------------ 봉우리 이음
+# 파형 선이 **그린 표본보다 높이 뻗지 않는가** (UF-14 · UD-20). 캔버스 기본 이음(miter)은
+# 예각 꼭짓점에서 선을 뾰족하게 늘려, 표본이 없는 높이까지 잉크를 찍는다.
+#
+# **은행 98 장면 전부**로 잰다. 처음엔 반각 7~14° 삼각 봉우리로 재려 했는데 miter 와
+# round 의 차이가 ≈1 px 뿐이라 검사가 **고치기 전 코드에서도 통과**했다 — 이 결함은 대칭
+# 봉우리가 아니라 **전원선 60 Hz 지그재그**(250 Hz 에서 주기당 4 표본) 같은 실제 모양에서 난다.
+# 고치기 전 실측: layout_b 10 칩 25/98 장면이 >1.5 px(최대 +2.95), index.html 15/98(최대 +4.56).
+# round 는 두 화면 모두 0/98(최대 +0.66).
+_INK_EXTENT = """
+  const ink = (cv) => {
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    let top = -1, bot = -1;
+    for (let y = 0; y < cv.height; y++){
+      for (let x = 0; x < cv.width; x++){
+        if (d[(y * cv.width + x) * 4 + 3] > 128){ if (top < 0) top = y; bot = y; break; }
+      }
+    }
+    return (bot - top + 1) / (window.devicePixelRatio || 1);
+  };
+"""
+_OVERSHOOT_JS = {
+    # 레인 그대로 — 입력 레인의 잉크 폭 vs 그린 표본의 y 극값 폭
+    "ui/layout_b.html": """async () => {""" + _INK_EXTENT + """
+      const out = [];
+      for (const s of B.scenes){
+        state.axis = s.axis; state.cond = s.cond; state.snr = s.snr;
+        state.gain = 10; state.showRef = false; render();
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const p = panels[0];
+        let lo = Infinity, hi = -Infinity;
+        for (let i = p.a; i < p.a + p.n; i++){ const y = p.yAt(p.sig[i]); if (y < lo) lo = y; if (y > hi) hi = y; }
+        out.push([s.id, ink(p.cv) - (hi - lo) - 1.2]);
+      }
+      return out;
+    }""",
+    # 본 화면 — 레인 그리기 함수 draw(cv, sig, ref, color, ylim) 에 은행 입력을 그대로 준다
+    "index.html": """async () => {""" + _INK_EXTENT + """
+      const dec = (b64, sc) => {
+        const s = atob(b64), n = s.length >> 1, o = new Float32Array(n);
+        for (let i = 0; i < n; i++){
+          let v = s.charCodeAt(2 * i) | (s.charCodeAt(2 * i + 1) << 8);
+          if (v & 0x8000) v -= 0x10000;
+          o[i] = v * sc;
+        }
+        return o;
+      };
+      const cv = document.createElement('canvas'), h = 120;
+      cv.style.cssText = 'position:fixed;left:0;top:0;width:1400px;height:' + h + 'px';
+      document.body.append(cv);
+      state.start = 0;
+      const out = [];
+      for (const s of B.scenes){
+        const sig = dec(s.traces.input, s.scale);
+        const n = Math.min(sig.length, Math.round(state.win * B.fs));
+        let lo = Infinity, hi = -Infinity;
+        for (let i = 0; i < n; i++){ const y = yAt(sig[i], h, s.ylim); if (y < lo) lo = y; if (y > hi) hi = y; }
+        draw(cv, sig, null, '#000', s.ylim);
+        out.push([s.id, ink(cv) - (hi - lo) - 1.1]);
+      }
+      cv.remove();
+      return out;
+    }""",
+}
+
+
+@pytest.mark.parametrize("name", [n for n in _OVERSHOOT_JS if n in IDS])
+def test_waveform_line_does_not_reach_beyond_its_samples(browser, name):
+    """파형의 잉크가 **그린 표본의 높이 + 선 굵기**를 넘지 않아야 한다 — 98 장면 전부.
+
+    miter 이음은 예각 꼭짓점에서 선 끝을 뻗어 **없던 진폭**을 찍는다. 이 저장소의
+    렌더러 다섯 중 셋(`card_core.js` · `live.html` · `mockup_expo.html`)은 이미 round 였고,
+    시안과 본 화면 둘만 빠져 있었다 (UD-20).
+    """
+    page = new_page(browser)
+    settle_page(page, _screen(name))
+    rows = page.evaluate(_OVERSHOOT_JS[name])
+    page.close()
+    assert len(rows) == 98, f"{name}: 장면을 {len(rows)} 개만 쟀다"
+    bad = [(i, round(o, 2)) for i, o in rows if o > 1.5]
+    assert not bad, (
+        f"{name}: {len(bad)}/98 장면에서 선이 표본보다 1.5 px 넘게 뻗었다 — 최대 "
+        f"{max(o for _, o in bad):+.2f} px, 예 {bad[:3]}. 예각 꼭짓점의 miter 이음이다(UF-14)")
+
+
 # ------------------------------------------------------------------ 갤러리
 GALLERY = ROOT / "demo" / "ui" / "gallery.html"
 

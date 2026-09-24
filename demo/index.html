@@ -252,8 +252,9 @@ function draw(cv, sig, ref, color, ylim){
   sig = sig.subarray(a, b); if (ref) ref = ref.subarray(a, b);
   const [g, w, h] = fit(cv);
   g.clearRect(0, 0, w, h); cv.__fresh = false;
+  // 이음은 round — miter 는 예각 꼭짓점에서 선을 뻗어 없던 진폭을 찍는다 (UF-14 · UD-20)
   const line = (v, col, lw) => {
-    g.beginPath(); g.strokeStyle = col; g.lineWidth = lw;
+    g.beginPath(); g.strokeStyle = col; g.lineWidth = lw; g.lineJoin = "round";
     for (let i = 0; i < v.length; i++) {
       const x = i * w / (v.length - 1);
       i ? g.lineTo(x, yAt(v[i], h, ylim)) : g.moveTo(x, yAt(v[i], h, ylim));
@@ -295,7 +296,7 @@ function sweep(p, i1, i0){
   if (p.cv.__fresh) { g.clearRect(0, 0, w, h); p.cv.__fresh = false; }
   const seg = (v, col, lw) => {
     if (!v) return;
-    g.beginPath(); g.strokeStyle = col; g.lineWidth = lw;
+    g.beginPath(); g.strokeStyle = col; g.lineWidth = lw; g.lineJoin = "round";
     let pen = false;
     for (let i = Math.max(i0 - 1, 0); i <= i1; i++) {
       const k = ((i % n) + n) % n;
