@@ -21,6 +21,7 @@
 | **C3** | `psd_logdist` | 무엇을 지웠는지는 스펙트럼에만 보인다 | EXP-C(d0) — 잡음 0 입력 |
 | **C4** | `qrs_dur_err_ms + floor_p95 · hr_err_bpm` | «차이가 없다» 의 두 종류 — 지표가 못 재는 것과 실제로 없는 것 | EXP-C(d1) + results/d1/metric_floor + EXP-B(d1) |
 | **C5** | `beat_cc(V) − beat_cc(N)` | 합성에서만 보이던 위험 — 실데이터에서는 재현되지 않았다 (F-8 · F-28) | EXP-E P3(d0 · d1) — PVC 형태 보존 |
+| **C7** | `r_amp_err_pct · beat_cc · beat_cc_p05 · qrs_dur_err_ms` | 형태 지표가 겨냥하는 손상이 다르다 — 한 자는 잡고 다른 자는 놓친 실제 사례 셋 | EXP-C(d0) 잡음 0 · EXP-B(d1) 임펄스 — 구간 중앙값 (평균은 S032 하나에 끌린다, F-55) |
 
 ```bash
 python3 scripts/build_metric_cards.py            # 여섯 장

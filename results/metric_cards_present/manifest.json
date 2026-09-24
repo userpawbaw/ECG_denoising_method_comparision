@@ -2,7 +2,7 @@
   "env": {
     "python": "3.11.15",
     "platform": "Linux-6.18.44-fc-v37-x86_64-with-glibc2.39",
-    "git": "8ccaf7d",
+    "git": "87acc05",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -13,11 +13,12 @@
   "config": {
     "cards": [
       "C2_r_amp_err",
-      "C3_psd_logdist"
+      "C3_psd_logdist",
+      "C7_shape_rulers"
     ],
     "present": true
   },
   "sources": {
-    "/home/user/ECG_denoising_method_comparision/scripts/build_metric_cards.py": "0d89c40e10912d87"
+    "/home/user/ECG_denoising_method_comparision/scripts/build_metric_cards.py": "31bcf4876f2e6411"
   }
 }

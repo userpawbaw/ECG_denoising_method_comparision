@@ -47,7 +47,7 @@ OUT = ROOT / "results" / "metric_cards"
 # 시연 카드는 저장소 용어(`r_amp_err_pct` · `EXP-C(d0)` · `M02`)로 적혀 있어서
 # 발표장에서는 읽히지 않는다(docs/94 U-5).
 PRESENT_OUT = ROOT / "results" / "metric_cards_present"
-PRESENT_CARDS = ("C2", "C3")    # C4 · C5 는 막대 눈금이 전부 코드라 따로 손봐야 한다
+PRESENT_CARDS = ("C2", "C3", "C7")    # C4 · C5 는 막대 눈금이 전부 코드라 따로 손봐야 한다
 
 # **글자 전체가 같을 때만** 바꾸는 것. 범례의 `M04` 처럼 코드 하나만 있는 글자를
 # 부분 치환으로 바꾸면, 이미 바뀐 «SWT wavelet (M04)» 가 다시 걸려 이중으로 된다.
@@ -578,10 +578,183 @@ def c5_pvc():
     return save(fig, "C5_pvc_damage")
 
 
-# **다섯 장이다.** C6(하류 과제)은 C4 에 흡수했다 — 둘 다 «차이가 없다» 를
+# **C1–C5 다섯 장에 C7 이 더해졌다.** C6(하류 과제)은 C4 에 흡수했다 — 둘 다 «차이가 없다» 를
 # 말해 중복이었고, 합치자 «못 재는 것 / 실제로 없는 것» 이라는 구분이 생겼다.
+
+# =============================================================== C7
+# (C6 번호는 C4 에 흡수된 옛 카드의 자리라 비워 둔다 — 위 주석.)
+# **«모양이 살아 있나» 를 재는 자가 왜 여럿인가.** 같은 층(형태 보존)에 있지만
+# **겨냥하는 손상이 다르다.** 칸마다 «한 자는 잡고 다른 자는 놓친» 실제 사례를
+# 하나씩 놓는다.
+#
+#   ① R 봉우리 높이 — Bandpass 가 봉우리를 깎았는데 박동 모양 상관은 0.997
+#   ② 박동별 모양 상관 — 임펄스가 박동 사이를 때려 R 봉우리는 멀쩡한데(두 방법
+#      비슷), 박동 하나하나를 보면 SWT 쪽만 무너진 박동이 있다. **평균 박동의
+#      상관(beat_cc)은 둘 다 0.999 라 이것을 못 본다** — 평균이 가린다
+#   ③ QRS 폭 — Sameni 칼만이 폭을 넓혔는데 박동 모양 상관은 0.998
+#
+# **숫자는 구간 중앙값이다.** 평균을 쓰면 기록 하나(S032, QRS 가 음의 방향인
+# 합성 기록)에서 무너진 방법이 «모양이 나쁜 방법» 으로 보인다 — 처음 판에서
+# 실제로 그렇게 그렸다(F-55).
+#
+# **③ 은 d0 에서만** 그린다. QRS 폭 자의 분해능이 d0 에서는 1 ms 미만, d1 에서는
+# 수십 ms 라 방법 간 차이보다 크다(F-16). 두 값은 `floor.csv` 에서 읽는다.
+C7_ROWS = [("r_amp_err_pct", "R 봉우리 높이 오차", "{:.1f} %"),
+           ("beat_cc", "평균 박동 모양 상관", "{:.3f}"),
+           ("beat_cc_p05", "박동별 모양 상관 (하위 5 %)", "{:.3f}"),
+           ("qrs_dur_err_ms", "QRS 폭 오차", "{:.1f} ms")]
+
+
+def _qrs_edges(v: np.ndarray, r: np.ndarray, j: int):
+    """박동 j 의 QRS 시작·끝 (샘플). 지표와 같은 delineator(neurokit2 dwt)."""
+    import warnings
+
+    import neurokit2 as nk
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        _, info = nk.ecg_delineate(v, rpeaks=r, sampling_rate=int(FS), method="dwt")
+    on = np.asarray(info.get("ECG_R_Onsets", []), float)
+    off = np.asarray(info.get("ECG_R_Offsets", []), float)
+    k = int(np.argmin(np.abs(r - j)))
+    if k >= min(on.size, off.size) or not (np.isfinite(on[k]) and np.isfinite(off[k])):
+        return None
+    return float(on[k]), float(off[k])
+
+
+def _medians(tag: str, exp: str, cond: str | None = None) -> pd.DataFrame:
+    df = pd.read_parquet(ROOT / "results" / tag / exp / "metrics.parquet")
+    if cond is not None:
+        df = df[df.cond == cond]
+    return df.pivot_table(index="method", columns="metric", values="value",
+                          aggfunc="median")
+
+
+def _rows(fig, x0, y0, vals: dict, hit: str, cols: list[tuple[str, str]],
+          skip: dict[str, str] | None = None):
+    """지표 줄. `hit` 인 줄만 빨갛게 — 그 칸이 보여 주는 자다.
+
+    `skip` 은 그 칸에서 **읽으면 안 되는** 줄과 이유다. 값을 지우고 이유를 적는다.
+    """
+    skip = skip or {}
+    for i, (met, name, fmt) in enumerate(C7_ROWS):
+        if met in skip:
+            fig.text(x0, y0 - i * 0.045, f"{name} — {skip[met]}", fontsize=9,
+                     color=MUTE, style="italic")
+            continue
+        if met not in vals[cols[0][0]]:
+            continue
+        y = y0 - i * 0.045
+        on = met == hit
+        fig.text(x0, y, name, fontsize=9.5, color=BAD if on else MUTE)
+        for k, (m, _) in enumerate(cols):
+            fig.text(x0 + 0.155 + k * 0.07, y, fmt.format(vals[m][met]),
+                     fontsize=10.5, fontweight="bold" if on else "normal",
+                     color=BAD if on else INK)
+    if len(cols) > 1:
+        for k, (_, lab) in enumerate(cols):
+            fig.text(x0 + 0.155 + k * 0.07, y0 + 0.042, lab, fontsize=8.5, color=MUTE)
+
+
+def c7_shape_rulers(tag: str = "d0"):
+    """자마다 겨냥이 다르다 — 한 자는 잡고 다른 자는 놓친 실제 사례 셋."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from make_slides import prepare
+    from run_exp import build_methods
+
+    from ecgdn.config import BEAT_PRE_MS
+    from ecgdn.eval.morphology import beat_matrix
+    from ecgdn.eval.rpeak import detect_rpeaks
+
+    tc = _medians(tag, "exp_c")
+    ti = _medians("d1", "exp_b", "impulse")
+    n_c = int(pd.read_parquet(ROOT / "results" / tag / "exp_c" / "metrics.parquet")
+              .query("method == 'M01' and metric == 'beat_cc'").shape[0])
+    floor = floor_of(tag, "qrs_dur_err_ms")
+    floor_d1 = floor_of("d1", "qrs_dur_err_ms")
+    pick = lambda t, m: {k: float(t.loc[m, k]) for k, _, _ in C7_ROWS if k in t.columns}
+
+    x, lo, hi, beat = pick_teaching_beat(tag, pad_s=10.0)
+    ref = fe(x)
+    built = build_methods({"methods": ["M01", "M05"], "frontend": True}, tag)
+    outs = {m: np.asarray(built[m](x, FS, {}), float).ravel() for m in ("M01", "M05")}
+    r = np.asarray(detect_rpeaks(ref, FS), dtype=int)
+    j = lo + int(0.20 * FS)
+    j = int(r[np.argmin(np.abs(r - j))]) if r.size else j
+    tt = (np.arange(hi - lo) / FS) * 1000
+
+    fig = card("⑦ 모양을 재는 자가 여럿인 이유 — 겨냥하는 손상이 다르다",
+               f"칸마다 «한 자는 잡고 다른 자는 놓친» 실제 사례 · 숫자는 구간 중앙값 "
+               f"(합성 ECG 잡음 0 입력 {n_c} 구간 / 실기록 임펄스 10 dB 44 구간)",
+               figsize=(14.5, 6.8))
+
+    # ① R 봉우리 — Bandpass
+    ax = fig.add_axes([0.035, 0.40, 0.28, 0.40])
+    ax.plot(tt, ref[lo:hi], color=CLEAN, lw=4.5, label="참값")
+    ax.plot(tt, outs["M01"][lo:hi], color=C["M01"], lw=1.8, label="출력")
+    ax.set_yticks([]); ax.set_xlabel("ms", labelpad=1)
+    ax.legend(frameon=False, loc="upper right", fontsize=9)
+    ax.set_title("① Bandpass 0.5-40 Hz (M01) — 합성 · 잡음 0", fontsize=11,
+                 color=C["M01"], fontweight="bold", loc="left")
+    _rows(fig, 0.035, 0.27, {"M01": pick(tc, "M01")}, "r_amp_err_pct",
+          [("M01", "")])
+
+    # ② 박동별 상관 — 임펄스, SWT vs 딥러닝 (실기록)
+    d = prepare("mitdb", 10.0, "impulse", methods=("M04",))
+    fs_ = d["fs"]
+    rp = d["r_peaks"]
+    B_ref, _ = beat_matrix(d["x"], rp, fs_)
+    tb = (np.arange(B_ref.shape[1]) / fs_) * 1000 - BEAT_PRE_MS   # R = 0 ms
+    for k, (m, lab) in enumerate((("M04", "SWT wavelet (M04)"),
+                                   ("M08", "딥러닝 Wavelet U-Net (M08)"))):
+        B, _ = beat_matrix(d["outs"][m], rp, fs_)
+        ax = fig.add_axes([0.365, 0.62 - k * 0.22, 0.28, 0.18])
+        for row in B:
+            ax.plot(tb, row, color=C[m], lw=0.5, alpha=0.35)
+        ax.plot(tb, np.median(B_ref, axis=0), color=CLEAN, lw=3.0)
+        ax.set_yticks([])
+        if k == 0:
+            ax.tick_params(labelbottom=False)
+        ax.text(0.99, 0.92, lab, transform=ax.transAxes, ha="right", va="top",
+                fontsize=9.5, color=C[m], fontweight="bold")
+        lim = np.percentile(np.abs(B_ref), 99.5) * 1.6
+        ax.set_ylim(-lim, lim)
+        if k == 1:
+            ax.set_xlabel("ms (R 봉우리 = 0)", labelpad=1)
+    fig.text(0.365, 0.83, f"② 임펄스 잡음 — 실기록 {d['record']} · 10 dB · 박동 전부 겹침",
+             fontsize=11, color=INK, fontweight="bold")
+    _rows(fig, 0.365, 0.27, {"M04": pick(ti, "M04"), "M08": pick(ti, "M08")},
+          "beat_cc_p05", [("M04", "SWT"), ("M08", "딥러닝")],
+          skip={"qrs_dur_err_ms": f"실기록은 자의 분해능({floor_d1:.0f} ms) 밖이라 싣지 않는다"})
+
+    # ③ QRS 폭 — Sameni 칼만
+    ax = fig.add_axes([0.695, 0.40, 0.28, 0.40])
+    ax.plot(tt, ref[lo:hi], color=CLEAN, lw=4.5)
+    ax.plot(tt, outs["M05"][lo:hi], color=C["M05"], lw=1.8)
+    lo_y, hi_y = float(ref[lo:hi].min()), float(ref[lo:hi].max())
+    sp = hi_y - lo_y
+    for e, col, dy in ((_qrs_edges(ref, r, j), CLEAN, 0.10),
+                       (_qrs_edges(outs["M05"], r, j), C["M05"], 0.19)):
+        if e is None:
+            continue
+        a_, b_ = ((np.array(e) - lo) / FS) * 1000
+        ax.plot([a_, b_], [lo_y - dy * sp] * 2, color=col, lw=4, solid_capstyle="butt")
+    ax.set_ylim(lo_y - 0.26 * sp, hi_y + 0.08 * sp)
+    ax.text(0.99, 0.03, "막대 = QRS 폭 (회색 참값 · 노랑 출력)", transform=ax.transAxes,
+            ha="right", fontsize=8.5, color=MUTE)
+    ax.set_yticks([]); ax.set_xlabel("ms", labelpad=1)
+    ax.set_title("③ Sameni 칼만필터 (M05) — 합성 · 잡음 0", fontsize=11,
+                 color=C["M05"], fontweight="bold", loc="left")
+    v5 = pick(tc, "M05")
+    _rows(fig, 0.695, 0.27, {"M05": v5}, "qrs_dur_err_ms", [("M05", "")])
+
+    punch(fig, "① 높이가 깎여도 모양 상관은 1 에 가깝다.  ② 임펄스가 박동 사이를 때리면 R 봉우리도, 평균 박동도 멀쩡하다 — "
+               "박동 하나하나를 봐야 보인다.\n③ 폭이 넓어져도 모양 상관은 거의 그대로다.  "
+               f"그래서 자를 여럿 둔다. (QRS 폭 자의 분해능: 합성 {floor:.2f} ms, 실기록 {floor_d1:.0f} ms — 실기록에서는 이 자가 방법을 못 가른다)")
+    return save(fig, "C7_shape_rulers")
+
+
 CARDS = {"C1": c1_gain_bias, "C2": c2_r_amp, "C3": c3_psd,
-         "C4": c4_floor, "C5": c5_pvc}
+         "C4": c4_floor, "C5": c5_pvc, "C7": c7_shape_rulers}
 
 # 카드마다 (지표, 무엇을 잡나, 근거). 문서는 **이 표에서 생성**한다 — 손으로
 # 쓰면 카드와 문서가 갈라지고 그것을 알아챌 방법이 없다(F-9 계열).
@@ -598,6 +771,9 @@ INDEX = [
     ("C5", "beat_cc(V) − beat_cc(N)",
      "합성에서만 보이던 위험 — 실데이터에서는 재현되지 않았다 (F-8 · F-28)",
      "EXP-E P3(d0 · d1) — PVC 형태 보존"),
+    ("C7", "r_amp_err_pct · beat_cc · beat_cc_p05 · qrs_dur_err_ms",
+     "형태 지표가 겨냥하는 손상이 다르다 — 한 자는 잡고 다른 자는 놓친 실제 사례 셋",
+     "EXP-C(d0) 잡음 0 · EXP-B(d1) 임펄스 — 구간 중앙값 (평균은 S032 하나에 끌린다, F-55)"),
 ]
 
 
