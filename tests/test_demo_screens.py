@@ -428,6 +428,90 @@ def test_sweep_glows_behind_the_cursor(browser):
         f"{cooled:.1f} (실측은 ≈155 → ≈129 다)")
 
 
+# ------------------------------------------------------------------ 이득 라벨
+# footer 의 이득이 **실제로 그린 이득**인가 (UF-13 · UD-19). 공식과 대 보면 안 된다 —
+# 누가 나중에 draw() 의 배율을 따로 바꿔도 공식은 그대로 맞는다. 그래서 캔버스의
+# **잉크 세로 폭**을 재서 라벨의 숫자와 견준다.
+#
+# 재는 신호는 **은행의 심전도가 아니라 사인파**다. 뾰족한 R 피크에서는 캔버스의 기본
+# 이음(miter)이 선을 최대 +5 px 삐져나오게 해서(UF-14), 심전도로 재면 이득이 아니라
+# 꼭짓점 그리기를 재게 된다. 사인의 마루는 평평해 이음이 안 튄다. 장면·창(±mv)·
+# 레인 높이는 **진짜**이고, 그 안에 그리는 모양만 바꾼다.
+_GAIN_CASE_JS = """async ([sid, gain]) => {
+  const s = B.scenes.find(x => x.id === sid);
+  state.axis = s.axis; state.cond = s.cond; state.snr = s.snr;
+  state.gain = gain; state.showRef = false; render();
+  // render() 는 draw() 를 다음 프레임에 부른다 — 기다리지 않으면 지난 장면을 잰다.
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const p = panels[0];
+  const amp = 0.9 * p.mv;                                  // 창 안 — 안 잘린다
+  for (let i = 0; i < p.sig.length; i++) p.sig[i] = amp * Math.sin(2 * Math.PI * i / B.fs);
+  draw();                                                  // 같은 장면·같은 이득으로 다시
+  const cv = p.cv, dpr = window.devicePixelRatio || 1;
+  const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  let top = -1, bot = -1;
+  for (let y = 0; y < cv.height; y++){
+    for (let x = 0; x < cv.width; x++){
+      if (d[(y * cv.width + x) * 4 + 3] > 128){ if (top < 0) top = y; bot = y; break; }
+    }
+  }
+  return {key: p.key, inkPx: (bot - top + 1) / dpr, spanMv: 2 * amp,
+          label: document.getElementById('f-scale').textContent};
+}"""
+
+
+@pytest.mark.skipif(SWEEP not in IDS, reason="레인 화면이 아직 없다")
+def test_gain_label_tells_the_gain_actually_drawn(browser):
+    """footer 가 적는 이득과 대칸이 **캔버스에 그려진 것**과 맞아야 한다.
+
+    고치기 전의 `layout_b` 는 레인이 창(±mV)을 못 담으면 이득을 줄여 그리면서
+    footer 에는 고른 값(`10 mm/mV`)을 적었다 — **42/98 장면**, d1 에서는 43 % 까지
+    (UF-13). 그리고 「대칸 × 0.5 mV」가 문자열로 박혀 있어 5·20 칩에서는 **모든
+    장면**에서 틀렸다. 격자는 mm 고정이라 대칸이 뜻하는 mV 는 이득을 따라가야 한다.
+
+    줄어드는 경우와 안 줄어드는 경우를 **둘 다** 지나가야 이 검사가 뜻이 있다 —
+    뷰포트가 바뀌어 한쪽만 남으면 그 사실을 실패로 알린다.
+    """
+    import re
+    PX_MM = 96 / 25.4
+    s = _screen(SWEEP)
+    page = new_page(browser)
+    settle_page(page, s)
+    windows = dict(page.evaluate("() => B.scenes.map(s => [s.id, snapMv(s.ylim)])"))
+    small = next(i for i, mv in windows.items() if mv == 1.5)
+    large = next(i for i, mv in windows.items() if mv == 4.0)
+
+    seen = set()
+    for sid, gain in ((small, 10), (large, 10), (small, 5), (small, 20)):
+        r = page.evaluate(_GAIN_CASE_JS, [sid, gain])
+        assert r["key"] == "input", f"첫 레인이 입력이 아니다 ({r['key']})"
+        m_g = re.search(r"(\d+(?:\.\d+)?) mm/mV", r["label"])
+        m_b = re.search(r"× (\d+(?:\.\d+)?) mV", r["label"])
+        assert m_g and m_b, f"라벨을 못 읽었다: {r['label']!r}"
+        told, box = float(m_g.group(1)), float(m_b.group(1))
+
+        # 선 굵기(1.2 px)만큼 잉크가 더 넓다 — 픽셀로 2 px 까지 허용한다. 라벨이 틀리면
+        # 어긋남은 그보다 훨씬 크다(10 을 적고 4.3 으로 그리면 60 px 넘게 난다).
+        expect = r["spanMv"] * told * PX_MM
+        assert abs(r["inkPx"] - expect) <= 2.0, (
+            f"{sid} · 칩 {gain}: 라벨 {told} mm/mV 면 {expect:.1f} px 여야 하는데 "
+            f"그려진 폭은 {r['inkPx']:.1f} px 다 — {r['label']!r}")
+        assert abs(box - 5 / told) <= 0.011, (
+            f"{sid} · 칩 {gain}: 대칸 5 mm 는 {5 / told:.2f} mV 인데 라벨은 {box} mV")
+
+        reduced = told < gain - 1e-9
+        assert ("에서 줄임" in r["label"]) == reduced, (
+            f"{sid} · 칩 {gain}: 줄었는지({reduced})와 라벨의 「줄임」 표시가 다르다 — {r['label']!r}")
+        if not reduced and gain == 10:
+            assert "10 mm/mV · 대칸 0.10 s × 0.5 mV" in r["label"], (
+                f"안 줄었을 때 라벨이 예전과 달라졌다 — {r['label']!r}")
+        seen.add(reduced)
+    page.close()
+    assert seen == {True, False}, (
+        f"줄어든 경우와 안 줄어든 경우를 둘 다 지나가지 못했다 ({seen}) — "
+        "뷰포트가 바뀌어 레인 높이가 달라진 것이다. 장면 고르기를 다시 볼 것")
+
+
 # ------------------------------------------------------------------ 갤러리
 GALLERY = ROOT / "demo" / "ui" / "gallery.html"
 

@@ -346,6 +346,12 @@ function decode(b64, scale){
    은행의 ylim 은 임의값(예: 0.949)이라 그대로 쓰면 대칸이 0.5 mV 를 뜻하지 못한다. */
 const snapMv = y => [0.5, 1.0, 1.5, 2.0, 3.0, 4.0].find(v => v >= y) || Math.ceil(y);
 
+/* 실제로 그릴 이득(mm/mV) — 고른 이득과 레인이 담을 수 있는 이득 중 **작은 쪽**이다.
+   레인이 창(±mv)을 못 담으면 줄여서 맞추고, 남아도 올리지 않는다. footer 는 이 값을
+   적는다 — 고른 값을 적으면 42/98 장면에서 라벨이 거짓이 된다 (UF-13 · UD-19).
+   DOM 을 안 읽는다 — 검사가 이것을 부른다 (docs/17 §8). */
+const drawnGain = (mv, gain, laneH) => Math.min(gain, laneH / 2 / (mv * PX_MM));
+
 function chip(label, on, fn, {title, swatch, disabled} = {}){
   const b = document.createElement("button");
   b.className = "chip"; b.setAttribute("aria-pressed", String(on));
@@ -510,7 +516,6 @@ function draw(){
   const s = current();
   const pxPerSec = state.speed * PX_MM;
   const mv = snapMv(s.ylim);
-  const halfPx = mv * state.gain * PX_MM;          // 중심에서 위/아래 픽셀
 
   // 격자: 대칸 5 mm · 소칸 1 mm — **규약이 크기를 정한다**
   document.documentElement.style.setProperty("--bold", (5 * PX_MM).toFixed(2) + "px");
@@ -529,6 +534,10 @@ function draw(){
   const n = Math.min(clean.length, Math.round(visible * B.fs));
   const a = Math.max(0, Math.min(state.start, clean.length - n));
 
+  // 레인 사이 이득은 **하나**다 — 가장 낮은 레인에 맞춘다. 레인 높이가 갈려도 레인마다
+  // 이득이 달라지지 않고, footer 가 적는 값 하나가 모든 레인에 참이다 (UD-19).
+  const gainDrawn = drawnGain(mv, state.gain, Math.min(...panels.map(p => p.plot.clientHeight)));
+
   for (const p of panels){
     const dpr = window.devicePixelRatio || 1;
     const w = p.plot.clientWidth, h = p.plot.clientHeight;
@@ -541,8 +550,9 @@ function draw(){
 
     const sig = p.sig.subarray(a, a + n);
     const ref = clean.subarray(a, a + n);
-    // 세로: **mV → mm → px**. 화면 높이가 남으면 이득을 올려 채운다.
-    const scaleY = Math.min(h / 2 / halfPx, 1) * state.gain * PX_MM;
+    // 세로: **mV → mm → px**, 이득은 위에서 정한 하나(`gainDrawn`). 올리지는 않는다 —
+    // 더 크게 보려면 사람이 이득 칩(20 mm/mV)을 고른다.
+    const scaleY = gainDrawn * PX_MM;
     const yAt = v => h / 2 - Math.max(-mv, Math.min(mv, v)) * scaleY;
 
     const line = (arr, color, lw) => {
@@ -580,10 +590,16 @@ function draw(){
   }
 
   drawMini(visible, dataSec, a, n);
+  // 이득과 대칸은 **그린 값**으로 적는다. 격자는 mm 고정(대칸 5 mm)이라 대칸이 뜻하는 mV 는
+  // 이득을 따라간다 — 10 에서 0.5 mV, 8.6 이면 0.58 mV, 5 칩이면 1 mV (UD-19).
+  const reduced = gainDrawn < state.gain - 1e-9;
+  const gainTxt = reduced
+    ? `${gainDrawn.toFixed(1)} mm/mV (${state.gain} 에서 줄임)`
+    : `${state.gain} mm/mV`;
   $("f-scale").textContent =
-    `${state.speed} mm/s · ${state.gain} mm/mV · 대칸 ` +
-    `${(5 / state.speed).toFixed(2)} s × 0.5 mV · 화면 ${visible.toFixed(1)} s ` +
-    `/ 은행 ${dataSec.toFixed(0)} s · ±${mv} mV`;
+    `${state.speed} mm/s · ${gainTxt} · 대칸 ` +
+    `${(5 / state.speed).toFixed(2)} s × ${+(5 / gainDrawn).toFixed(2)} mV · ` +
+    `화면 ${visible.toFixed(1)} s / 은행 ${dataSec.toFixed(0)} s · ±${mv} mV`;
 }
 
 /* ── 재생 ──────────────────────────────────────────────────────
