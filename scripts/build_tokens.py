@@ -94,6 +94,10 @@ def render_css(p: dict) -> str:
     L.append("  /* type */")
     for fam, stack in p["typography"]["families"].items():
         L.append(f"  --font-{fam}: {stack};")
+    # 읽는 거리로 정한 크기 (UD-21). 인치가 정해지면 palette.json 한 줄만 바꾼다.
+    for name, size in p["typography"].get("reading", {}).items():
+        if name != "_":
+            L.append(f"  --t-{name}: {size};")
     L.append("}")
     L.append("")
 

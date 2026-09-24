@@ -740,7 +740,7 @@ python3 scripts/build_demo_bank.py # 축 평균이 채워진 은행 재생성
 | job | 무엇 | 체크아웃 |
 |---|---|---|
 | `fast` | `pytest tests/` + `check_records.py` | 전체 (무결성 검사가 `results/`·`data/` 를 본다) |
-| `screens` | `pytest tests/test_demo_screens.py -m screens` + **스크린샷 42 장 업로드** | 성긴 체크아웃 `demo`·`scripts`·`tests` (400 MB 절약) |
+| `screens` | `pytest tests/test_demo_screens.py -m screens` + **스크린샷 48 장 업로드** | 성긴 체크아웃 `demo`·`scripts`·`tests` (400 MB 절약) |
 
 `screens` 는 **torch 를 안 깐다** — 화면 경로가 읽는 것은 `playwright` 뿐이다.
 
@@ -877,7 +877,7 @@ python3 scripts/exp_is_current.py exp_a d1   # 이 실험이 지금 설정 그�
 | **시연 화면 아티팩트** | `https://claude.ai/artifact/8k1bdcp4EEGfRjj5Cvvnuh` | **링크가 사라진다.** `demo/ui/layout_b.html` 을 다시 올리면 되지만 **URL 이 바뀐다** — 휴대폰에서 눌러 보려고 만든 것이다 (`docs/ui/00_index.md` 참조) |
 | **watchdog Routine** | `trig_01Gjws8KnUfSZ1uGP7yNGPD6` (이 세션에 묶임, 꺼짐) | 새로 만들면 된다. 프롬프트 본문은 Routine 안에만 있다 |
 | `results/ext/nofe_d1/*/best.pt` 8 개 | **컨테이너 디스크에만** (`.gitignore:102` 가 sweep 체크포인트를 무시한다) | **이제 안 잃어도 된다** — ② 의 parquet 둘이 커밋돼 있어 숫자는 보존됐다. 체크포인트가 필요한 새 질문이 생기면 ①을 다시 돌려야 한다(8 판 ≈ 4 h) |
-| `results/screens/` 스크린샷 42 장 | gitignore | **재생성된다** — `python3 scripts/shoot_screens.py --all` |
+| `results/screens/` 스크린샷 48 장 | gitignore | **재생성된다** — `python3 scripts/shoot_screens.py --all` |
 | scratchpad 의 중간 스크린샷·로그 | `/tmp/.../scratchpad/` | 재생성되거나, 결론이 이미 기록에 있다 |
 
 ### 10.2 이 세션이 **범위를 벗어났다**

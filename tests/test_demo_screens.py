@@ -303,7 +303,9 @@ def test_explicit_dark_choice_darkens_the_page(browser, name):
 
 
 # ------------------------------------------------------------------ 스윕
-SWEEP = "ui/layout_b.html"
+# §2(비교 구역)의 스윕이다. 첫 뷰포트가 attract(§1)가 된 뒤로는 **§2 를 곧장 연다**
+# (`#compare`) — 보는 자리를 검사도 본다 (UD-21).
+SWEEP = "ui/layout_b.html#compare"
 
 # 커서 앞 잉크량을 열 단위로 재는 탐침. **알파로 가중한다** — `destination-out` 은
 # RGB 를 그대로 두고 알파만 깎으므로, RGB 만 보면 완전히 지워진 픽셀도 «순백» 으로
@@ -534,8 +536,8 @@ _INK_EXTENT = """
   };
 """
 _OVERSHOOT_JS = {
-    # 레인 그대로 — 입력 레인의 잉크 폭 vs 그린 표본의 y 극값 폭
-    "ui/layout_b.html": """async () => {""" + _INK_EXTENT + """
+    # 레인 그대로 — 입력 레인의 잉크 폭 vs 그린 표본의 y 극값 폭 (§2 — UD-21)
+    "ui/layout_b.html#compare": """async () => {""" + _INK_EXTENT + """
       const out = [];
       for (const s of B.scenes){
         state.axis = s.axis; state.cond = s.cond; state.snr = s.snr;
@@ -615,3 +617,285 @@ def test_gallery_lists_every_screen():
     missing = [s.name for s in SCREENS
                if s.name not in src and Path(s.name).name not in src]
     assert not missing, f"갤러리가 안 싣는 화면: {missing}"
+
+
+# ------------------------------------------------------------------ 두 구역 (UD-21)
+# 첫 뷰포트가 attract(§1)이고 스크롤하면 방법 비교(§2)다. 아래 검사는 UD-21 변경 계약의
+# 수용 기준을 하나씩 문다 — 번호는 계약의 번호다.
+ATTRACT = "ui/layout_b.html"
+COMPARE = "ui/layout_b.html#compare"
+_needs_two = pytest.mark.skipif(ATTRACT not in IDS or COMPARE not in IDS,
+                                reason="두 구역 화면이 아직 없다")
+_REAL = (1920, 910)              # 실기 뷰포트 — 1920×1080 에서 브라우저 크롬을 뺀 값
+_MIN = (1280, 720)               # 최소 방어
+
+_ATTRACT_HASH = """() => {
+  let h = 0;
+  for (const cv of document.querySelectorAll('#attract canvas')){
+    if (!cv.width || !cv.height) continue;
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    for (let i = 0; i < d.length; i += 4 * 53) h = (h * 31 + d[i] + d[i + 3]) | 0;
+  }
+  return h;
+}"""
+
+
+def _open(browser, name, *, size=_REAL, reduced="no-preference", theme="light"):
+    page = new_page(browser, width=size[0], height=size[1],
+                    reduced_motion=reduced, theme=theme)
+    errors = settle_page(page, _screen(name))
+    return page, errors
+
+
+def _arrive(page, section: str, timeout: int = 4000):
+    """그 구역의 윗변이 뷰포트 윗변에 **닿을 때까지** 기다린다 — 부드러운 스크롤이 끝나야 한다."""
+    page.wait_for_function(
+        f"() => Math.abs(document.getElementById('{section}').getBoundingClientRect().top) < 2",
+        timeout=timeout)
+    page.wait_for_timeout(200)
+
+
+@_needs_two
+def test_first_viewport_is_the_attract_with_its_honesty_line(browser):
+    """① 첫 뷰포트가 §1 이고, 「연구 시연 · 진단 용도 아님」과 「저장된 결과」가 그 안에 보인다.
+
+    「재생」과 시계는 **한 요소 · 같은 크기**다 — 「재생」이 작으면 실시간 오독이 산다(UD-11 A5).
+    크기는 3 m 읽기 줄(`--t-far` 69 px)이다.
+    """
+    page, errors = _open(browser, ATTRACT)
+    r = page.evaluate("""() => {
+      const box = id => { const b = document.getElementById(id).getBoundingClientRect();
+        return b.height > 0 && b.top >= -1 && b.bottom <= innerHeight + 1; };
+      const px = id => parseFloat(getComputedStyle(document.getElementById(id)).fontSize);
+      return {y: scrollY, rule: document.getElementById('a-rule').textContent, ruleIn: box('a-rule'),
+              clock: document.getElementById('a-clock').textContent, clockIn: box('a-clock'),
+              clockPx: px('a-clock'), findPx: px('a-find'), find: document.getElementById('a-find').textContent};
+    }""")
+    page.close()
+    assert not errors, errors
+    assert r["y"] == 0, f"첫 뷰포트가 §1 이 아니다 (scrollY={r['y']})"
+    assert "연구 시연 · 진단 용도 아님" in r["rule"] and r["ruleIn"], r
+    assert "저장된 결과" in r["clock"] and r["clockIn"], r
+    assert r["clock"].startswith("재생"), f"「재생」이 시계와 한 줄이 아니다: {r['clock']!r}"
+    assert r["clockPx"] >= 69 and r["findPx"] >= 69, r
+    assert r["find"], "발견 줄이 비었다"
+
+
+@_needs_two
+@pytest.mark.parametrize("size", [_REAL, _MIN], ids=["1920x910", "1280x720"])
+def test_attract_never_reduces_the_gain(browser, size):
+    """② §1 은 10 mm/mV 에서 **이득을 줄이지 않는다** — 담지 못하는 장면은 순환에서 뺀다.
+
+    담을 수 있는 장면은 **다** 들고 못 담는 장면은 **하나도** 안 든다. 실기 뷰포트에서는
+    후보 다섯이 전부 든다. 최소 방어 크기에서는 몇 개가 드는지를 못 박지 않는다 —
+    전원선·기저선(±1.5 mV)은 레인 안쪽 113.4 px 가 필요한데 레인이 112 px 라
+    1~2 px 로 갈린다. 비지만 않으면 된다.
+    """
+    page, _ = _open(browser, ATTRACT, size=size)
+    r = page.evaluate("""() => ({
+      laneH: A.laneH, pxmm: PX_MM,
+      cand: attractCandidates(B.scenes).map(s => s.id),
+      fit: attractCandidates(B.scenes).map(s => attractFits(s, A.laneH)),
+      cycle: A.cycle.map(s => s.id),
+      gains: A.cycle.map(s => drawnGain(snapMv(s.ylim), A_GAIN, A.laneH)),
+      scaleY: A.lanes.map(p => p.scaleY),
+      plotH: [...document.querySelectorAll('#attract .a-plot')].map(p => p.clientHeight)})""")
+    page.close()
+    assert r["cand"] and all(c.startswith("d0-") for c in r["cand"]), r["cand"]
+    assert "d0-em_synth-10" not in r["cand"], "UF-15 — 제목·문장이 은행 수치와 어긋난 장면"
+    assert r["laneH"] == min(r["plotH"]), "순환을 짠 레인 높이와 그린 레인 높이가 다르다"
+    assert r["cycle"], "순환이 비었다"
+    assert r["cycle"] == [c for c, ok in zip(r["cand"], r["fit"]) if ok], r
+    assert all(abs(g - 10) < 1e-9 for g in r["gains"]), r["gains"]
+    assert all(abs(s - 10 * r["pxmm"]) < 1e-9 for s in r["scaleY"]), r["scaleY"]
+    if size == _REAL:
+        assert len(r["cycle"]) == len(r["cand"]) == 5, r
+
+
+@_needs_two
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_attract_draws_without_method_colour(browser, theme):
+    """③ §1 캔버스에 **방법 색이 없다**(B5) — 잉크의 채도가 방법 색 최소 채도의 절반 미만이다.
+
+    레인은 무채이고 위치와 이름으로 가른다. 잔광 톤업은 검정/흰색 쪽으로만 섞이므로
+    무채를 벗어나지 않는다.
+    """
+    page, _ = _open(browser, ATTRACT, theme=theme)
+    page.wait_for_timeout(1500)
+    r = page.evaluate("""() => {
+      const chroma = h => { const m = /^#?([0-9a-f]{6})$/i.exec((h || '').trim()); if (!m) return null;
+        const v = parseInt(m[1], 16), c = [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+        return Math.max(...c) - Math.min(...c); };
+      const st = getComputedStyle(document.documentElement);
+      const methods = B.methods.map(m => chroma(st.getPropertyValue(
+        `--method-${m.toLowerCase().replace(/_/g, '-')}`))).filter(v => v !== null);
+      let ink = 0, worst = 0;
+      for (const cv of document.querySelectorAll('#attract canvas')){
+        const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+        for (let i = 0; i < d.length; i += 4){
+          if (d[i + 3] < 128) continue;
+          ink++;
+          worst = Math.max(worst, Math.max(d[i], d[i+1], d[i+2]) - Math.min(d[i], d[i+1], d[i+2]));
+        }
+      }
+      return {ink, worst, minMethod: Math.min(...methods), nMethods: methods.length};
+    }""")
+    page.close()
+    assert r["ink"] > 500, f"§1 캔버스가 비었다 — 이 검사가 아무것도 안 잰다 ({r})"
+    assert r["nMethods"] >= 7, r
+    assert r["worst"] < r["minMethod"] / 2, (
+        f"§1 잉크의 채도 {r['worst']} — 방법 색(최소 {r['minMethod']})에 가깝다. B5 는 무채다")
+
+
+@_needs_two
+def test_attract_makes_no_live_claim(loaded):
+    """④ §1 은 저장된 결과의 재생이다 — 「LIVE」 · 「실시간」 · 「측정 중」을 쓰지 않는다."""
+    page, _ = loaded[ATTRACT]
+    text = page.evaluate("() => document.getElementById('attract').innerText")
+    for word in ("LIVE", "Live", "실시간", "측정 중"):
+        assert word not in text, f"§1 에 「{word}」가 있다"
+
+
+@_needs_two
+def test_click_and_keys_move_between_the_two_sections(browser):
+    """⑤ 클릭 · `↓` · `Space` · `PageDown` → §2 가 뷰포트 맨 위, `↑` · `PageUp` · `Home` → §1.
+
+    키는 **브라우저 기본 스크롤과 snap** 이 옮긴다 — 화면이 키를 가로채지 않는다.
+    """
+    page, _ = _open(browser, ATTRACT)
+    page.mouse.click(960, 450)                        # §1 의 한가운데 — 레인 위
+    _arrive(page, "compare")
+    for key, where in (("ArrowUp", "attract"), ("ArrowDown", "compare"), ("Home", "attract"),
+                       ("PageDown", "compare"), ("PageUp", "attract"), ("Space", "compare")):
+        page.keyboard.press(key)
+        try:
+            _arrive(page, where)
+        except Exception:
+            y = page.evaluate("() => scrollY")
+            page.close()
+            pytest.fail(f"`{key}` 뒤에 {where} 로 가지 않았다 (scrollY={y})")
+    page.close()
+
+
+@_needs_two
+def test_compare_fragment_opens_the_comparison_as_it_was(browser):
+    """⑥ `#compare` 로 열면 첫 뷰포트가 §2 이고, §1 은 돌지 않으며, §2 는 **넘겨받은 것이 없다**.
+
+    곧장 연 §2 는 예전 한 화면과 같은 첫 장면이다 — §2 전용 검사가 여기서 돈다.
+    """
+    page, errors = _open(browser, COMPARE)
+    r = page.evaluate("""() => ({top: document.getElementById('compare').getBoundingClientRect().top,
+      id: current().id, first: B.scenes[0].id, pair: state.pair, running: A.visible || !!A.raf})""")
+    page.close()
+    assert not errors, errors
+    assert abs(r["top"]) < 2, r
+    assert r["id"] == r["first"] and r["pair"] == ["M04", "M06"], r
+    assert not r["running"], "§2 가 보이는데 §1 이 돈다"
+
+
+@_needs_two
+def test_reload_after_visiting_compare_starts_again_at_the_attract(browser):
+    """⑦ §2 로 간 뒤 **새로고침하면 §1 이 첫 화면**이다 — 담당자의 초기화가 새로고침이다(UD-18 추기).
+
+    이동이 주소에 `#compare` 를 남기거나 브라우저가 스크롤 위치를 되살리면 이것이 깨진다.
+    """
+    page, _ = _open(browser, ATTRACT)
+    page.mouse.click(960, 450)
+    _arrive(page, "compare")
+    assert page.evaluate("() => location.hash") == "", "이동이 주소에 조각을 남겼다"
+    page.reload()
+    settle(page, animated=True)
+    y = page.evaluate("() => scrollY")
+    page.close()
+    assert y == 0, f"새로고침했는데 §1 이 아니다 (scrollY={y})"
+
+
+@_needs_two
+def test_entering_compare_carries_the_attract_scene(browser):
+    """⑧ §2 로 들어가면 §2 의 축·조건·SNR 이 **§1 의 그 순간 장면**이고 쌍이 M04 · M06 이다(A8).
+
+    기본값과 우연히 같지 않게 §1 을 셋째 장면으로 보내고, §2 는 일부러 흩어 둔다.
+    """
+    page, _ = _open(browser, ATTRACT)
+    want = page.evaluate("""() => {
+      attractGo(2);
+      state.pair = ['M01', 'M02']; state.cond = 'pli'; render();
+      const s = attractScene(); return {axis: s.axis, cond: s.cond, snr: s.snr};
+    }""")
+    page.mouse.click(960, 450)
+    _arrive(page, "compare")
+    got = page.evaluate("() => ({axis: state.axis, cond: state.cond, snr: state.snr, pair: state.pair})")
+    page.close()
+    assert {k: got[k] for k in want} == want, (got, want)
+    assert got["pair"] == ["M04", "M06"], got
+
+
+@_needs_two
+@pytest.mark.parametrize("how", ["fragment", "click"])
+def test_attract_stops_while_the_comparison_is_in_view(browser, how):
+    """⑨ §2 가 보이는 동안 §1 캔버스가 **안 바뀐다** — 안 보이는 구역은 그리지 않는다."""
+    page, _ = _open(browser, COMPARE if how == "fragment" else ATTRACT)
+    if how == "click":
+        page.mouse.click(960, 450)
+        _arrive(page, "compare")
+    before = page.evaluate(_ATTRACT_HASH)
+    page.wait_for_timeout(1500)
+    after = page.evaluate(_ATTRACT_HASH)
+    running = page.evaluate("() => A.visible || !!A.raf")
+    page.close()
+    assert before == after and not running, "§2 가 보이는데 §1 이 계속 그린다"
+
+
+@_needs_two
+def test_reduced_motion_holds_the_attract_still_and_jumps(browser):
+    """⑩ reduced-motion 이면 §1 이 **정지 화면**이고(시계도 「정지」), 구역 이동은 **점프**다."""
+    page, _ = _open(browser, ATTRACT, reduced="reduce")
+    r = page.evaluate("""() => ({sb: getComputedStyle(document.documentElement).scrollBehavior,
+      clock: document.getElementById('a-clock').textContent})""")
+    before = page.evaluate(_ATTRACT_HASH)
+    page.wait_for_timeout(1500)
+    after = page.evaluate(_ATTRACT_HASH)
+    page.mouse.click(960, 450)
+    page.wait_for_timeout(120)                        # 부드러운 스크롤이면 아직 가는 중이다
+    top = page.evaluate("() => document.getElementById('compare').getBoundingClientRect().top")
+    page.close()
+    assert r["sb"] == "auto", f"reduced-motion 인데 scroll-behavior 가 {r['sb']}"
+    assert r["clock"].startswith("정지"), f"정지 화면인데 시계가 「{r['clock']}」"
+    assert before == after, "reduced-motion 인데 §1 이 움직인다"
+    assert abs(top) < 2, f"reduced-motion 인데 이동이 점프가 아니다 (120 ms 뒤 top={top})"
+
+
+@_needs_two
+def test_no_control_is_named_scroll_any_more(loaded):
+    """⑪ 재생 칩 「스크롤」은 「흐름」이 됐다 — 페이지 스크롤과 같은 낱말이 다른 뜻이면 안 된다."""
+    page, _ = loaded[COMPARE]
+    assert page.get_by_role("button", name="스크롤", exact=True).count() == 0
+    assert page.get_by_role("button", name="흐름", exact=True).count() == 1
+
+
+@_needs_two
+def test_attract_holds_a_finished_sweep_then_moves_to_the_next_scene(browser):
+    """순환 — 한 바퀴를 다 그리면 **멈춰 보이고**, 멈춤이 끝나면 지우고 다음 장면이다.
+
+    멈춘 화면은 한 장면을 **끝까지** 담아야 한다(오른쪽 끝에 잉크가 있다). 다음 장면은
+    처음부터 다시 그리므로 커서 앞은 비어 있다 — 두 장면을 잇는 파형은 없다(모핑 금지).
+    """
+    page, _ = _open(browser, ATTRACT)
+    edge = """() => { const p = A.lanes[2], d = p.g.getImageData(0, 0, p.cv.width, p.cv.height).data;
+      const col = x => { let s = 0; for (let y = 0; y < p.cv.height; y++) s += d[(y * p.cv.width + x) * 4 + 3] > 128;
+        return s; };
+      const xEnd = Math.floor((A.n - 3) * p.pxPerSec / B.fs);
+      return {k: A.k, held: A.held, id: attractScene().id, find: document.getElementById('a-find').textContent,
+              end: col(xEnd)}; }"""
+    first = page.evaluate("() => attractScene().id")
+    page.evaluate("() => { A.t0 -= (A.n / B.fs) * 1000; }")          # 바퀴 끝으로
+    page.wait_for_timeout(300)
+    held = page.evaluate(edge)
+    page.evaluate("() => { A.t0 -= A_HOLD_S * 1000; }")              # 멈춤 끝으로
+    page.wait_for_timeout(300)
+    nxt = page.evaluate(edge)
+    page.close()
+    assert held["held"] and held["id"] == first and held["end"] > 0, held
+    assert nxt["k"] == 1 and nxt["id"] != first and not nxt["held"], nxt
+    assert nxt["end"] == 0, "다음 장면인데 오른쪽 끝에 지난 장면의 잉크가 남았다"
+    assert nxt["find"] and nxt["find"] != held["find"], "장면이 바뀌었는데 발견 줄이 그대로다"

@@ -11,6 +11,9 @@
     3 세로를 mV 로, 이득도 규약 값     7 컨트롤 위계 · 8px 간격 · 수치 격상
     4 emphasis — 비교하는 둘만 강조
 
+  **UD-21 부터 구역이 둘이다** — 첫 구역은 attract(§1, 3 m 에서 보는 요약)이고 위 일곱은
+  스크롤하면 나오는 둘째 구역(§2, 방법 비교)에 있다. `#compare` 로 열면 §2 에서 시작한다.
+
   시연 산출물과 같은 제약을 쓴다 — 서버 없이 file:// 로 열리고 계산이 없다.
   색은 tokens.css(원본 ui/palette.json)에서 온다.
 -->
@@ -60,10 +63,18 @@
   }
 
   *{box-sizing:border-box}
-  html,body{height:100%}
+  /* ── 두 구역 (UD-21) — 한 화면 고정을 풀고 뷰포트 두 장을 snap 으로 오간다.
+     구역마다 뷰포트 한 장이라 §2 는 예전 한 화면과 **같은 상자**를 받는다.
+     스크롤 막대는 숨긴다 — 보이면 §2 폭이 줄어 한 번에 보이는 시간이 바뀐다.
+     reduced-motion 이면 부드러운 스크롤 없이 **점프**한다. */
+  html{scroll-snap-type:y mandatory;scrollbar-width:none}
+  html::-webkit-scrollbar{display:none}
+  @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
   body{margin:0;background:var(--bg);color:var(--ink);
-    font:var(--t-body)/1.5 var(--font-sans);
-    display:flex;flex-direction:column;overflow:hidden}
+    font:var(--t-body)/1.5 var(--font-sans)}
+  .sec{height:100vh;height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;
+    overflow:hidden}
+  #compare{display:flex;flex-direction:column}
   .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 
   /* ── 머리 — 화면에서 가장 작은 자리를 쓴다 ── */
@@ -191,11 +202,12 @@
   .lane .who span{font-size:var(--t-tick);color:var(--ink-3);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .lane .who .db{font-size:var(--t-tick);color:var(--ink-2);font-weight:600}
-  .plot{position:relative;min-width:0;border:1px solid var(--line);
+  .plot,.a-plot{position:relative;min-width:0;border:1px solid var(--line);
     border-radius:2px;background:var(--panel);overflow:hidden}
   /* 격자는 **규약이 정한 크기**다 — JS 가 --fine/--bold 를 px 로 넣는다.
-     캔버스 밖에 두는 이유: 스윕의 지우개가 캔버스를 지우기 때문(index.html 과 같다). */
-  .plot::before{content:"";position:absolute;inset:0;pointer-events:none;
+     캔버스 밖에 두는 이유: 스윕의 지우개가 캔버스를 지우기 때문(index.html 과 같다).
+     §1 의 레인(.a-plot)도 **같은 격자**다 — 같은 mm 라야 §2 로 이어진다(UD-21). */
+  .plot::before,.a-plot::before{content:"";position:absolute;inset:0;pointer-events:none;
     background:
       repeating-linear-gradient(to right,var(--grid-bold) 0 1px,transparent 1px var(--bold)),
       repeating-linear-gradient(to bottom,var(--grid-bold) 0 1px,transparent 1px var(--bold)),
@@ -238,8 +250,52 @@
   footer .scale{margin-left:auto}
   footer a{color:var(--accent)}
   .empty{padding:var(--s8);color:var(--ink-3)}
+
+  /* ── §1 attract (UD-21) — 3 m 에서 읽는 구역 ─────────────────────
+     세로 예산은 UD-21 ④ 의 자 그대로다: 위아래 24 · 좌우 64 · 줄 사이 16 · 레인 사이 8.
+     글줄 넷(발견 · 조건 · 시계 · 규약)이 250 px 이고 나머지를 레인 셋이 나눈다.
+     **방법 색을 안 쓴다**(B5) — 레인은 무채이고 위치와 이름으로 가른다. */
+  #attract{display:flex;flex-direction:column;gap:16px;padding:24px 64px;cursor:pointer}
+  /* 글줄 높이는 **글자가 없어도** 같다(min-height) — 레인 높이를 재는 순간 줄이 비어 있으면
+     레인이 커 보여서, 담지 못하는 장면이 순환에 들어간다. 실제로 그랬다(232 px 로 쟀는데 175). */
+  .a-find{margin:0;font-size:var(--t-far);font-weight:700;line-height:1.15;
+    min-height:calc(var(--t-far) * 1.15);letter-spacing:-.02em;white-space:nowrap}
+  .a-cond,.a-rule{margin:0;font-size:var(--t-near);line-height:1.3;color:var(--ink-2);
+    min-height:calc(var(--t-near) * 1.3);white-space:nowrap}
+  /* 레인 이름 칸을 **셋이 한 폭으로** 쓴다 — 레인마다 따로 재면 격자 시작점이 어긋난다 */
+  .a-lanes{flex:1;min-height:0;display:grid;
+    grid-template-columns:max-content minmax(0,1fr);grid-auto-rows:minmax(0,1fr);
+    column-gap:24px;row-gap:8px}
+  .a-who{display:flex;flex-direction:column;justify-content:center;min-width:0}
+  .a-who b{font-size:var(--t-far);font-weight:700;line-height:1}
+  .a-who span{font-size:var(--t-near);line-height:1.2;color:var(--ink-2)}
+  .a-empty{grid-column:1 / -1;align-self:center;font-size:var(--t-near);color:var(--ink-3)}
+  /* 「재생」과 시계는 **같은 줄 · 같은 크기**다 — 「재생」이 작으면 실시간 오독이 산다(UD-11 A5).
+     tabular 숫자는 Plex 의 기본이지만 적어 둔다 — 서체를 바꾸면 그 성질이 안 따라온다. */
+  .a-clock{display:flex;align-items:baseline;gap:24px;white-space:nowrap;
+    min-height:calc(var(--t-far) * 1.15)}
+  .a-play{font-size:var(--t-far);font-weight:700;line-height:1.15;
+    font-variant-numeric:tabular-nums}
+  .a-cue{margin-left:auto;font-size:var(--t-near);font-weight:600;line-height:1;
+    color:var(--accent);text-decoration:none;border-radius:3px}
+  .a-cue:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 </style>
 
+<!-- §1 attract (UD-21) — 첫 화면. 누르거나 스크롤하면 §2 로 내려간다.
+     글자는 전부 은행의 제목에서 온다 — 화면이 주장을 지어내지 않는다(F-28). -->
+<section id="attract" class="sec" aria-label="요약 — 저장된 결과를 재생한다">
+  <p class="a-find" id="a-find"></p>
+  <p class="a-cond" id="a-cond"></p>
+  <div class="a-lanes" id="a-lanes"></div>
+  <div class="a-clock">
+    <span class="a-play" id="a-clock"></span>
+    <a class="a-cue" id="a-cue" href="#compare">↓ 방법 비교</a>
+  </div>
+  <p class="a-rule" id="a-rule"></p>
+</section>
+
+<!-- §2 방법 비교 — 예전 한 화면을 **감싸기만** 했다. 안은 그대로다(UD-21). -->
+<section id="compare" class="sec" aria-label="방법 비교">
 <header>
   <h1>ECG denoising — 방법 비교</h1>
   <span class="sub" id="sub"></span>
@@ -280,6 +336,7 @@
   <span id="f-note"></span>
   <span class="scale mono" id="f-scale"></span>
 </footer>
+</section>
 
 <div class="tip" id="tip"></div>
 <dialog id="dlg">
@@ -409,7 +466,9 @@ function buildControls(){
   $("play-chips").replaceChildren(...[
     ["off",    "정지",   "구간 전체를 한 번에 — 방법 간 비교는 이 모드에서"],
     ["sweep",  "스윕",   "감시장치처럼 커서가 좌→우로 지나가며 그린다. **커서 속도가 곧 위의 mm/s** 다"],
-    ["scroll", "스크롤", "파형이 오른쪽에서 들어와 왼쪽으로 흐른다"],
+    // 「스크롤」이던 이름이다 — 페이지 스크롤과 같은 낱말이 다른 뜻이 되어 바꿨다(UD-21).
+    // 상태 값 `scroll` 은 안 바꾼다 — 화면 밖으로 안 나가는 이름이다.
+    ["scroll", "흐름",   "파형이 오른쪽에서 들어와 왼쪽으로 흐른다"],
   ].map(([k, n, tip]) => chip(n, state.play === k, () => {
     state.play = k;      // resetAnim 은 render() 가 layout·draw 뒤에 부른다
   }, {title: tip})));
@@ -664,7 +723,9 @@ function resetAnim(){
   if (state.play !== "off") animRAF = requestAnimationFrame(tick);
 }
 
-function sweepPanel(p, i1, i0){
+/* `showRef` · `fade` 는 §1 이 끈다 — 참값을 안 겹치고, 한 바퀴만 그리므로 지울 지난 바퀴가
+   없다. 페이드를 켜 두면 바퀴 끝에서 띠가 감겨 **그 장면의 첫머리를 지운다**(UD-21). */
+function sweepPanel(p, i1, i0, {showRef = state.showRef, fade = true} = {}){
   const g = p.g, w = p.w, h = p.h, n = p.n, total = p.sig.length;
   if (p.fresh){ g.clearRect(0, 0, w, h); p.fresh = false; }
   const pps = p.pxPerSec / B.fs;                  // 표본 하나가 차지하는 px
@@ -691,13 +752,13 @@ function sweepPanel(p, i1, i0){
     // 감기지 않은 보통의 경우에만 꼬리를 다시 칠한다. 감기는 프레임은 한 번뿐이라
     // 그냥 증분으로 두는 편이 깜빡임이 없다.
     g.clearRect(xTail, 0, x1 - xTail + 2, h);
-    if (state.showRef) seg(p.ref, css("--role-clean"), 2.2, i1 - tailN);
+    if (showRef) seg(p.ref, css("--role-clean"), 2.2, i1 - tailN);
     const grad = g.createLinearGradient(xTail, 0, x1, 0);
     grad.addColorStop(0, p.color);                // 멀리 = 평소 색
     grad.addColorStop(1, tone(p.color, isDark() ? GLOW_DARK : GLOW_LIGHT));
     seg(p.sig, grad, 1.2, i1 - tailN);
   } else {
-    if (state.showRef) seg(p.ref, css("--role-clean"), 2.2, i0 - 1);
+    if (showRef) seg(p.ref, css("--role-clean"), 2.2, i0 - 1);
     seg(p.sig, p.color, 1.2, i0 - 1);
   }
 
@@ -710,6 +771,7 @@ function sweepPanel(p, i1, i0){
      지우는 일은 페이드가 한다. 같은 픽셀이 매 프레임 다시 칠해지고 커서가
      가까워질수록 계수가 커지므로 곱이 지수로 떨어진다 — 커서가 닿을 때쯤엔
      남는 것이 없다. 딱 잘라 지우는 것과 결과는 같고 경계만 없다. */
+  if (!fade) return;
   const fadePx = FADE * w, gapPx = GAP * w;
 
   // 캔버스를 한 바퀴 감아 도는 띠. 넘치는 만큼은 왼쪽 끝에서 이어 칠한다.
@@ -882,6 +944,230 @@ function hover(){
   $("main").addEventListener("pointerleave", leave);
 }
 
+/* ── §1 attract (UD-21) ─────────────────────────────────────────
+   합성 심전도(d0) ★ 장면을 **은행 순서로** 한 스윕씩 돌린다. 레인은 입력 · M04 · M06
+   셋이다 — 「장면마다 최고인 방법」은 highlight 12 중 4 번이 oracle(B01)이라 대표로 못
+   세우고, §2 의 기본 쌍 M04 · M06 은 제목 12 중 11 과 맞는다. 둘을 같이 세우면 「이 방법이
+   최고」로 읽히지 않고, 장면이 바뀔 때 이기는 쪽이 뒤집히는 것이 보인다.
+
+   **이득은 10 mm/mV 에서 줄이지 않는다.** 담지 못하는 장면은 순환에서 뺀다 — attract 는
+   3 m 에서 보는 구역이라 규약 줄을 읽는 사람이 없고, 줄인 이득을 라벨이 말해도(UD-19)
+   못 읽으면 몰래 줄인 것과 같다. `em_synth` 는 제목·문장이 은행 수치와 어긋나 뺀다(UF-15). */
+const A_SPEED = 50, A_GAIN = 10, A_AXIS = "d0", A_SKIP = ["em_synth"];
+const A_LANES = [["input", "입력", "잡음 섞인 신호"], ["M04", "고전", "M04"],
+                 ["M06", "딥러닝", "M06"]];
+const A_AXIS_NAME = {d0: "합성 심전도", d1: "MIT-BIH 실제 기록"};
+const A_HOLD_S = 3;       // 다 그린 뒤 멈춰 보이는 시간 — 비교는 정지 화면에서 한다
+
+/* 순환에 들 장면 — **DOM 을 안 읽는다**(검사가 부른다, docs/17 §8). */
+const attractFits = (s, laneH) => drawnGain(snapMv(s.ylim), A_GAIN, laneH) >= A_GAIN - 1e-9;
+const attractCandidates = all =>
+  all.filter(s => s.axis === A_AXIS && s.highlight && !A_SKIP.includes(s.cond));
+const attractCycle = (all, laneH) => attractCandidates(all).filter(s => attractFits(s, laneH));
+
+const A = {cycle: [], k: 0, lanes: [], laneH: 0, n: 0, sec: 0,
+           t0: 0, elapsed: 0, idx: 0, held: false, raf: 0, visible: false};
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const attractScene = () => A.cycle[A.k] || null;
+
+/* 레인 셋을 세우고, 그 높이로 담을 수 있는 장면만 순환에 넣는다. */
+function attractLayout(){
+  const box = $("a-lanes");
+  box.replaceChildren();
+  const cells = A_LANES.map(([key, fam, code]) => {
+    const who = document.createElement("div");
+    who.className = "a-who";
+    const b = document.createElement("b"); b.textContent = fam;
+    const sp = document.createElement("span"); sp.textContent = code;
+    who.append(b, sp);
+    const plot = document.createElement("div");
+    plot.className = "a-plot";
+    const cv = document.createElement("canvas");
+    plot.append(cv);
+    box.append(who, plot);
+    return {key, plot, cv};
+  });
+  A.laneH = Math.min(...cells.map(c => c.plot.clientHeight));
+  const keep = attractScene()?.id;
+  A.cycle = attractCycle(B.scenes, A.laneH);
+  if (!A.cycle.length){
+    const p = document.createElement("p");
+    p.className = "a-empty";
+    p.textContent = "이 화면 크기에서는 10 mm/mV 로 담을 장면이 없다 — 아래 방법 비교에서 본다";
+    box.replaceChildren(p);
+    A.lanes = [];
+    $("a-find").textContent = ""; $("a-cond").textContent = "";
+    $("a-clock").textContent = "저장된 결과";
+    return;
+  }
+  A.k = Math.max(0, A.cycle.findIndex(s => s.id === keep));
+  A.lanes = cells;
+  attractSetup();
+}
+
+/* 지금 장면을 레인에 싣는다 — 글자는 **은행 제목 그대로**, 「—」 앞은 조건 줄, 뒤는 발견 줄. */
+function attractSetup(){
+  const s = attractScene();
+  if (!s || !A.lanes.length) return;
+  const [cond, find] = s.title.split("—").map(t => t.trim());
+  $("a-find").textContent = find || cond;
+  $("a-cond").textContent = `${cond} · ${A_AXIS_NAME[s.axis] || s.axis}`;
+
+  const pps = A_SPEED * PX_MM, mv = snapMv(s.ylim), scaleY = A_GAIN * PX_MM;
+  const sigs = Object.fromEntries(A_LANES.map(([k]) => [k, decode(s.traces[k], s.scale)]));
+  const dataSec = sigs.input.length / B.fs;
+  // 데이터보다 넓으면 **그만큼만 쓴다** — §2 와 같은 규칙이다(없는 시간에 눈금을 세우지 않는다)
+  for (const p of A.lanes) p.plot.style.maxWidth = "";
+  const plotW = Math.min(A.lanes[0].plot.clientWidth, dataSec * pps);
+  for (const p of A.lanes) p.plot.style.maxWidth = plotW + "px";
+  A.sec = plotW / pps;
+  A.n = Math.min(sigs.input.length, Math.round(A.sec * B.fs));
+
+  const dpr = window.devicePixelRatio || 1;
+  for (const p of A.lanes){
+    const w = p.plot.clientWidth, h = p.plot.clientHeight;
+    p.cv.width = Math.round(w * dpr); p.cv.height = Math.round(h * dpr);
+    p.g = p.cv.getContext("2d");
+    p.g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    p.g.clearRect(0, 0, w, h);
+    p.w = w; p.h = h; p.n = A.n; p.pxPerSec = pps; p.mv = mv; p.scaleY = scaleY;
+    p.sig = sigs[p.key]; p.ref = p.sig;       // 참값은 안 겹친다(showRef:false)
+    p.yAt = v => h / 2 - Math.max(-mv, Math.min(mv, v)) * scaleY;
+    // **무채**(B5). 입력만 한 단계 옅게 — 신원은 이름이 알리고, 이것은 앞뒤만 가른다.
+    p.color = css(p.key === "input" ? "--ink-2" : "--ink");
+    p.fresh = true;
+  }
+  A.idx = 0; A.held = false; A.elapsed = 0; A.t0 = performance.now();
+  attractClock(0);
+}
+
+/* 시계는 **그리는 창과 같은 변수**를 센다 — 따로 도는 타이머면 「재생」이 거짓이 된다. */
+function attractClock(t){
+  const txt = reduceMotion()
+    ? `정지 · 저장된 결과 · ${A.sec.toFixed(1)} s 구간`
+    : `재생 · 저장된 결과 · ${t.toFixed(1)} s / ${A.sec.toFixed(1)} s`;
+  const el = $("a-clock");
+  if (el.textContent !== txt) el.textContent = txt;
+}
+
+function attractStatic(p){
+  const g = p.g, pps = p.pxPerSec / B.fs;
+  g.clearRect(0, 0, p.w, p.h);
+  g.beginPath(); g.strokeStyle = p.color; g.lineWidth = 1.2; g.lineJoin = "round";
+  for (let i = 0; i < p.n; i++){
+    const x = i * pps, y = p.yAt(p.sig[i]);
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke();
+}
+
+/* 한 바퀴 → 멈춤 → 다음 장면. 바퀴가 넘어갈 때 **지우고 새로** 그린다 — 두 장면 사이를
+   잇는 파형은 없는 신호다(모핑 · 크로스페이드 금지). 시각은 벽시계로 잰다. */
+function attractTick(){
+  A.raf = 0;
+  if (!A.visible || !A.lanes.length) return;
+  const el = (performance.now() - A.t0) / 1000;
+  const sweepS = A.n / B.fs;
+  if (el < sweepS){
+    const i1 = Math.min(Math.floor(el * B.fs), A.n - 1);
+    for (const p of A.lanes)
+      sweepPanel(p, i1, Math.max(A.idx, i1 - p.n), {showRef: false, fade: false});
+    A.idx = i1;
+    attractClock(i1 / B.fs);
+  } else if (!A.held){
+    // 다 그렸다 — 꼬리의 톤업을 걷고 한 색으로 멈춘다. 이 정지 화면이 비교하는 자리다
+    for (const p of A.lanes) attractStatic(p);
+    A.held = true;
+    attractClock(A.sec);
+  } else if (el >= sweepS + A_HOLD_S){
+    A.k = (A.k + 1) % A.cycle.length;
+    attractSetup();
+  }
+  A.raf = requestAnimationFrame(attractTick);
+}
+
+/* 보일 때만 돈다(IntersectionObserver). 숨으면 지난 시간을 적어 두고 돌아오면 거기서 잇는다.
+   **reduced-motion 이면 스스로 돌지 않는다** — 정지 화면 하나(WCAG 2.2.2 · 2.3.3). */
+function attractShow(v){
+  A.visible = v;
+  if (A.raf){ cancelAnimationFrame(A.raf); A.raf = 0; }
+  if (!A.lanes.length) return;
+  if (!v){ A.elapsed = (performance.now() - A.t0) / 1000; return; }
+  if (reduceMotion()){
+    for (const p of A.lanes) attractStatic(p);
+    attractClock(A.sec);
+    return;
+  }
+  A.t0 = performance.now() - A.elapsed * 1000;
+  A.raf = requestAnimationFrame(attractTick);
+}
+
+/* 검사와 발표자가 장면을 고를 때 쓴다 — 순환 안의 k 번째로 간다. */
+function attractGo(k){
+  if (!A.cycle.length) return;
+  A.k = ((k % A.cycle.length) + A.cycle.length) % A.cycle.length;
+  attractSetup();
+  attractShow(A.visible);
+}
+
+/* ── 구역 사이 이동 (UD-21) ─────────────────────────────────────
+   **키를 가로채지 않는다** — `↓` `Space` `PageDown` `↑` `PageUp` `Home` 은 브라우저 기본
+   스크롤이 하고 snap 이 구역에 맞춘다. §2 의 칩이 `Space` 를 쓴다.
+   **새로고침 = 초기화**(UD-18 추기): 이동이 주소에 `#compare` 를 남기지 않고 스크롤 복원을
+   끈다. 주소에 `#compare` 가 **처음부터** 있을 때만 §2 로 연다. */
+let active = null, handed = false;
+function dropHash(){
+  if (!location.hash) return;
+  try { history.replaceState(null, "", location.pathname + location.search); }
+  catch (e) { /* file:// 에서 막히면 주소만 남는다 — 화면은 그대로다 */ }
+}
+/* §2 에 들어갈 때 §1 이 보이던 장면과 쌍을 넘긴다(A8). 키보드로 §2 의 칸에 들어온
+   경우는 넘기지 않는다 — 다시 그리면 포커스를 가진 칩이 사라진다. */
+function enterCompare(){
+  if (handed) return;
+  handed = true;
+  const s = attractScene();
+  if (!s || $("compare").contains(document.activeElement)) return;
+  state.axis = s.axis; state.cond = s.cond; state.snr = s.snr;
+  state.pair = ["M04", "M06"]; state.start = 0;
+  render();
+}
+function goCompare(){
+  enterCompare();           // 먼저 넘겨서 §2 가 그 장면으로 들어온다
+  $("compare").scrollIntoView({block: "start"});   // 부드럽게/점프는 CSS 가 정한다
+  dropHash();
+}
+function attractInit(){
+  if (!B?.scenes?.length) return;
+  // 격자 크기 — §2 의 draw() 도 같은 값을 넣는다. §1 이 먼저 보이므로 여기서도 넣는다
+  document.documentElement.style.setProperty("--bold", (5 * PX_MM).toFixed(2) + "px");
+  document.documentElement.style.setProperty("--fine", PX_MM.toFixed(2) + "px");
+  $("a-rule").textContent = `${A_SPEED} mm/s · ${A_GAIN} mm/mV · 대칸 ` +
+    `${(5 / A_SPEED).toFixed(2)} s × ${5 / A_GAIN} mV · 연구 시연 · 진단 용도 아님`;
+  attractLayout();
+  if (location.hash === "#compare"){
+    $("compare").scrollIntoView({behavior: "instant", block: "start"});
+    active = "compare"; handed = true;
+  } else {
+    scrollTo({top: 0, behavior: "instant"});
+  }
+  $("attract").addEventListener("click", ev => { ev.preventDefault(); goCompare(); });
+  const ratio = {attract: 0, compare: 0};
+  const io = new IntersectionObserver(es => {
+    for (const e of es) ratio[e.target.id] = e.intersectionRatio;
+    const now = ratio.attract >= 0.5 ? "attract" : "compare";
+    if (now === active) return;
+    if (now === "compare") enterCompare();
+    else { handed = false; dropHash(); }
+    active = now;
+    attractShow(now === "attract");
+  }, {threshold: [0, 0.5, 1]});
+  io.observe($("attract")); io.observe($("compare"));
+  // **웹 글꼴이 실린 뒤 다시 잰다.** 대체 글꼴로 재면 이름 칸이 넓어(236 px) 레인 폭이 그 값에
+  // 굳는다 — 실제로 그랬다. 글꼴이 실리면 이름 칸이 204 px 로 줄어도 레인은 안 따라왔다.
+  document.fonts?.ready.then(() => { attractLayout(); attractShow(A.visible); });
+}
+
 let lastScene = null;
 function render(){
   if (!B || !B.scenes?.length){
@@ -902,6 +1188,11 @@ function render(){
 }
 
 // 크기가 바뀌면 스윕은 한 바퀴를 다시 돈다 — 캔버스 내용이 상태이기 때문이다.
-addEventListener("resize", () => { if (panels.length){ draw(); resetAnim(); } });
-render(); hover();
+// §1 은 레인 높이가 바뀌면 **담을 수 있는 장면**도 바뀌므로 순환을 다시 짠다(UD-21).
+addEventListener("resize", () => {
+  if (panels.length){ draw(); resetAnim(); }
+  if (B?.scenes?.length){ attractLayout(); attractShow(A.visible); }
+});
+history.scrollRestoration = "manual";        // 새로고침 = 초기화 (UD-18 추기 · UD-21)
+render(); hover(); attractInit();
 </script>

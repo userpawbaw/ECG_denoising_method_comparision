@@ -247,6 +247,16 @@
       "sans": "\"IBM Plex Sans KR\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
       "mono": "\"IBM Plex Mono\", ui-monospace, SFMono-Regular, Menlo, monospace"
     },
+    "reading": {
+      "_": [
+        "**읽는 거리로 정한 글자 크기** — 위의 scale(역할의 위계, [미정])과 다른 축이다.",
+        "far — 3 m 에서 읽는 줄(attract 의 발견 줄 · 재생 시계). 15.6″ · 1920 가정에서 69 px",
+        "      (docs/ui/02_benchmark.md §10 · UD-11). 인치가 정해지면 이 한 줄만 바꾼다 — 13.3″ 면 81 px.",
+        "near — 근거리 판독 줄(조건 · 규약 · 신호 · 레인 코드). UD-21."
+      ],
+      "far": "69px",
+      "near": "35px"
+    },
     "faces": {
       "_": [
         "tokens.css 의 @font-face 원본. dir 는 tokens.css 기준 상대 경로다.",

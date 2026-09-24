@@ -38,8 +38,12 @@ class Screen:
 
     def __init__(self, path: str, label: str, *, needs: tuple[str, ...] = (),
                  expect_canvas: bool = True, animated: bool = False,
-                 allow_console: tuple[str, ...] = (), note: str = ""):
+                 allow_console: tuple[str, ...] = (), note: str = "",
+                 fragment: str = ""):
         self.path = DEMO / path
+        # **한 파일의 다른 자리**를 따로 검사할 때 — `layout_b.html#compare` 는
+        # 첫 뷰포트가 attract(§1)인 같은 파일의 비교 구역(§2)이다 (UD-21).
+        self.fragment = fragment
         self.label = label
         self.needs = tuple(DEMO / n for n in needs)
         self.expect_canvas = expect_canvas
@@ -50,11 +54,18 @@ class Screen:
 
     @property
     def name(self) -> str:
-        return self.path.relative_to(DEMO).as_posix()
+        base = self.path.relative_to(DEMO).as_posix()
+        return f"{base}#{self.fragment}" if self.fragment else base
 
     @property
     def url(self) -> str:
-        return self.path.as_uri()
+        return self.path.as_uri() + (f"#{self.fragment}" if self.fragment else "")
+
+    @property
+    def stem(self) -> str:
+        """캡처 파일 이름. **`#` 을 안 쓴다** — 갤러리 링크에서 `#` 은 조각으로 읽힌다."""
+        base = self.path.relative_to(DEMO).as_posix().replace("/", "_").removesuffix(".html")
+        return f"{base}-{self.fragment}" if self.fragment else base
 
     def ready(self) -> bool:
         return self.path.exists() and all(n.exists() for n in self.needs)
@@ -81,10 +92,15 @@ SCREENS = [
            needs=("card_bank.js",)),
     Screen("cards/C_cardnews.html", "지표 카드 C — 카드뉴스",
            needs=("card_bank.js",)),
+    # 첫 뷰포트는 attract(§1)다 — 스윕이 스스로 돌므로 `animated` (UD-21).
     Screen("ui/layout_b.html", "3 단계 레이아웃 시안 — 경로 B (직접 구현)",
-           needs=("demo_bank.js",),
-           note="0 단계가 넘긴 일곱을 한 화면에 넣은 시안. 경로 A(Figma)와 짝지어 "
-                "비교한다 — docs/ui/01_system.md 6.3"),
+           needs=("demo_bank.js",), animated=True,
+           note="첫 구역이 attract(§1)이고 스크롤하면 방법 비교(§2)다 — UD-21. "
+                "0 단계가 넘긴 일곱은 §2 에 있다 — docs/ui/01_system.md 6.3"),
+    Screen("ui/layout_b.html", "3 단계 레이아웃 시안 — §2 방법 비교 구역",
+           needs=("demo_bank.js",), fragment="compare",
+           note="같은 파일을 `#compare` 로 연다. §2 전용 검사(스윕 · 이득 라벨 · 이음)가 "
+                "여기서 돈다 — UD-21"),
 ]
 
 

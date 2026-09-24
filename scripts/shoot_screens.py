@@ -77,8 +77,7 @@ def main(argv=None) -> int:
                     errors = settle(page, animated=s.animated)
                     unexpected = [e for e in errors
                                   if not any(p in e for p in s.allow_console)]
-                    stem = s.name.replace("/", "_").removesuffix(".html")
-                    f = OUT / f"{stem}__{w}__{theme}.png"
+                    f = OUT / f"{s.stem}__{w}__{theme}.png"
                     page.screenshot(path=str(f), full_page=a.full_page)
                     page.close()
                     made += 1

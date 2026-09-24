@@ -61,6 +61,8 @@
   /* type */
   --font-sans: "IBM Plex Sans KR", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --t-far: 69px;
+  --t-near: 35px;
 }
 
 /* 다크는 **자동 반전이 아니라 따로 고른 값**이다. 아직 계열과 표면만
