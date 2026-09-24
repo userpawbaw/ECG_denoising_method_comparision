@@ -899,3 +899,33 @@ def test_attract_holds_a_finished_sweep_then_moves_to_the_next_scene(browser):
     assert nxt["k"] == 1 and nxt["id"] != first and not nxt["held"], nxt
     assert nxt["end"] == 0, "다음 장면인데 오른쪽 끝에 지난 장면의 잉크가 남았다"
     assert nxt["find"] and nxt["find"] != held["find"], "장면이 바뀌었는데 발견 줄이 그대로다"
+
+
+@_needs_two
+def test_attract_fills_a_stretch_skipped_by_a_stall(browser):
+    """프레임이 밀려도 **건너뛴 구간을 그린다** — 창을 가렸다 돌아오면 rAF 가 멈췄다가 시각만 흘러 있다.
+
+    스윕은 매 프레임 커서 뒤 잔광 꼬리(0.42 s)만 다시 그리므로, 그보다 많이 건너뛰면 사이가
+    빈 채로 남았다 — 1 단계 녹화에서 실제로 보였다(레인 가운데 약 4 s 가 비었다).
+    """
+    page, _ = _open(browser, ATTRACT)
+    page.evaluate("() => attractGo(0)")
+    page.wait_for_timeout(1200)
+    a = page.evaluate("() => A.idx")
+    page.evaluate("() => { A.t0 -= 3000; }")          # 3 s 가 한 프레임 사이에 흐른다
+    page.wait_for_timeout(300)
+    r = page.evaluate("""(a) => {
+      const p = A.lanes[1], w = p.cv.width, h = p.cv.height, pps = p.pxPerSec / B.fs;
+      const d = p.g.getImageData(0, 0, w, h).data;
+      const x0 = Math.ceil((a + 5) * pps), x1 = Math.floor((A.idx - Math.round(TAIL_S * B.fs) - 5) * pps);
+      let empty = 0;
+      for (let x = x0; x <= x1; x++){
+        let ink = 0;
+        for (let y = 0; y < h; y++) if (d[(y * w + x) * 4 + 3] > 64){ ink = 1; break; }
+        if (!ink) empty++;
+      }
+      return {x0, x1, empty};
+    }""", a)
+    page.close()
+    assert r["x1"] - r["x0"] > 300, f"건너뛴 구간이 짧아 이 검사가 뜻이 없다: {r}"
+    assert r["empty"] == 0, f"건너뛴 구간에 빈 열이 {r['empty']} 개 — 꼬리만 다시 그렸다 ({r})"

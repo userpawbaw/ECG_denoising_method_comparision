@@ -1050,15 +1050,19 @@ function attractClock(t){
   if (el.textContent !== txt) el.textContent = txt;
 }
 
-function attractStatic(p){
-  const g = p.g, pps = p.pxPerSec / B.fs;
-  g.clearRect(0, 0, p.w, p.h);
+/* [from, to] 를 평소 색으로 긋는다 — 지우지 않는다. */
+function attractTrace(p, from, to){
+  const g = p.g, pps = p.pxPerSec / B.fs, a = Math.max(0, from), b = Math.min(to, p.n - 1);
   g.beginPath(); g.strokeStyle = p.color; g.lineWidth = 1.2; g.lineJoin = "round";
-  for (let i = 0; i < p.n; i++){
+  for (let i = a; i <= b; i++){
     const x = i * pps, y = p.yAt(p.sig[i]);
-    i ? g.lineTo(x, y) : g.moveTo(x, y);
+    i === a ? g.moveTo(x, y) : g.lineTo(x, y);
   }
   g.stroke();
+}
+function attractStatic(p){
+  p.g.clearRect(0, 0, p.w, p.h);
+  attractTrace(p, 0, p.n - 1);
 }
 
 /* 한 바퀴 → 멈춤 → 다음 장면. 바퀴가 넘어갈 때 **지우고 새로** 그린다 — 두 장면 사이를
@@ -1070,6 +1074,11 @@ function attractTick(){
   const sweepS = A.n / B.fs;
   if (el < sweepS){
     const i1 = Math.min(Math.floor(el * B.fs), A.n - 1);
+    /* 프레임이 **밀렸으면**(창을 가렸다 돌아오면 rAF 가 멈췄다가 시각만 흘러 있다) 건너뛴
+       구간을 먼저 긋는다. sweepPanel 은 매 프레임 커서 뒤 잔광 꼬리(TAIL_S)만 다시 그리므로,
+       그보다 많이 건너뛰면 사이가 **빈 채로** 남는다 — 녹화에서 실제로 보였다. */
+    if (i1 - A.idx > Math.round(TAIL_S * B.fs))
+      for (const p of A.lanes) attractTrace(p, A.idx - 1, i1);
     for (const p of A.lanes)
       sweepPanel(p, i1, Math.max(A.idx, i1 - p.n), {showRef: false, fade: false});
     A.idx = i1;
