@@ -67,6 +67,11 @@ ALWAYS_INTRINSIC = {"M_FE"}
 
 
 # --------------------------------------------------------------------- 방법
+# **미리 정한 방법별 hop** — 사용자가 따로 안 줘도 이 값으로 돈다. `--hop-for` 가 덮는다.
+# M05 · M05f 는 창(1024 샘플) 하나가 0.17~0.34 s 라 hop 12(초당 21 창)면 코어 3.5~7 개어치다.
+# hop 128(초당 2 창)에서 RTF 0.37 이었다 (F-57 · D-39). 지연은 (128 + d)/fs = 560 ms.
+DEFAULT_HOP = {"M05": 128, "M05f": 128}
+
 # 실시간 브리지가 아는 딥러닝 방법과 그 체크포인트 (`results/<axis>/<tag>/best.pt`)
 DL_TAGS = {"M06": "m06_l1", "M06L6": "m06_l6",
            "M08": "m08_l1", "M08L6": "m08_l6", "M09": "m09_l1"}
@@ -562,9 +567,9 @@ def main() -> int:
     ap.add_argument("--d", type=int, default=12, help="미래 문맥 [샘플]")
     ap.add_argument("--hop", type=int, default=12, help="추론 간격 [샘플]")
     ap.add_argument("--hop-for", metavar="M=N[,M=N]",
-        help="방법별 추론 간격 [샘플]. 예: M05=128 — 칼만(M05)은 창 하나가 0.2~0.3 s 라 "
-             "기본 12 로는 못 따라간다(F-57). 이 방법만 지연이 (N + d)/fs 로 늘고, "
-             "화면은 모든 방법을 가장 늦은 것에 맞춰 함께 그린다")
+        help="방법별 추론 간격 [샘플]을 덮어쓴다. 예: M05=96. 안 주면 미리 정한 값을 쓴다 "
+             "(M05 · M05f = 128 — 창 하나가 0.2~0.3 s 라 12 로는 못 따라간다, F-57). "
+             "그 방법만 지연이 (N + d)/fs 로 늘고, 화면은 가장 늦은 방법에 맞춰 함께 그린다")
     # **FE 의 블록은 추론과 분리한다.** FE 는 블록당 0.57 ms 라 자주 돌려도
     # 싸고, 블록 영위상의 지연·이음매가 이 값에 걸려 있다 — 교차 페이드가
     # hop 과 같으므로 hop 을 줄이면 **지연이 함께 준다** (F-36). 추론까지 같이
@@ -615,9 +620,15 @@ def main() -> int:
     for n in names:
         if n in ALWAYS_INTRINSIC:
             continue                       # 출력이 곧 FE 출력이다 (위 주석)
+        hop_n = hop_for.get(n, DEFAULT_HOP.get(n, args.hop))
+        if n == "M05S":
+            # **창 방식이 아니다** — 상태를 이어 가는 EKF 가 그 자체로 처리기다 (D-40).
+            # 미래 문맥(lag 36)·평활(d 12)은 스윕으로 고른 값을 쓴다.
+            from ecgdn.methods.kalman_stream import StreamingSameni
+            procs[n] = StreamingSameni(FS, hop=hop_n)
+            continue
         procs[n] = StreamProcessor(build_stream_method(n, args.axis), fs=FS,
-                                   hop=hop_for.get(n, args.hop), d=args.d,
-                                   frontend="none")
+                                   hop=hop_n, d=args.d, frontend="none")
     if not procs:
         raise SystemExit("처리기가 하나도 없다 — front-end 말고 다른 방법을 하나는 넣을 것")
 
@@ -636,10 +647,12 @@ def main() -> int:
     warm_s = max(p.warmup_s for p in procs.values())
     print(f"방법 {names} · 지연 {lat_ms:.0f} ms · warm-up {warm_s:.1f} s "
           f"· 추론 {next(iter(procs.values())).runs_per_s:.0f} 회/s")
-    for n, h in hop_for.items():
-        if n in procs:
-            print(f"  {n}: hop {h} 샘플 — 추론 {FS / h:.1f} 회/s · 이 방법의 지연 "
-                  f"{procs[n].latency_s * 1000:.0f} ms")
+    for n, pr in procs.items():
+        if pr.hop != args.hop or n == "M05S":
+            why = ("--hop-for" if n in hop_for else
+                   "스트리밍 EKF — 미래 문맥 + 평활" if n == "M05S" else "미리 정한 값")
+            print(f"  {n}: hop {pr.hop} 샘플 ({why}) — 이 방법의 지연 "
+                  f"{pr.latency_s * 1000:.0f} ms")
     if fe_names:
         print(f"  {fe_names} 는 front-end 출력 그대로다 — 필터가 곧 방법이다")
     print(f"  front-end: {args.fe} — {FE_MODES[args.fe]['label']} "

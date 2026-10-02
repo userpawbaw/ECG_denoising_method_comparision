@@ -171,7 +171,8 @@ const LABEL = {
   raw:'입력 — 전극에서 온 그대로 (front-end 이전)',
   M_FE:'공통 front-end (0.5–100 Hz + auto notch)',
   M01:'대역통과 + notch',
-  M02:'Savitzky–Golay', M03:'DWT', M04:'SWT + QRS 보호', M05:'Sameni EKS',
+  M02:'Savitzky–Golay', M03:'DWT', M04:'SWT + QRS 보호', M05:'Sameni EKS (창 · hop 128)',
+  M05S:'Sameni EKF · 스트리밍 (미래 144 ms + 고정 지연 평활)',
   M06:'ResUNet1D (딥러닝)', M06L6:'ResUNet1D · clean 보존 손실',
   M08:'wavelet-subband U-Net', M09:'CNN + Transformer',
 };
