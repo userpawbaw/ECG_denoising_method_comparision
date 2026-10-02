@@ -69,4 +69,24 @@ def test_bridge_presets_m05_hop_and_builds_m05s_as_a_stream():
     src = (ROOT / "scripts" / "serial_bridge.py").read_text()
     assert 'DEFAULT_HOP = {"M05": 128, "M05f": 128}' in src
     assert "hop_for.get(n, DEFAULT_HOP.get(n, args.hop))" in src
-    assert "StreamingSameni(FS, hop=hop_n)" in src
+    assert "StreamingSameni(FS, hop=hop_n, background=True)" in src
+
+
+def test_fitting_never_blocks_the_stream_in_background_mode():
+    """실보드에서 «시작 20 초 안에 멈췄다가 돌아온다» 였다 (O-38). init 순간 본체에서 wfdb import
+    (약 1 s) + XQRS + least_squares 가 돌아 push 하나가 0.5~1.9 s 걸렸다. 백그라운드면 짧아야 한다."""
+    _, y = _case(seed=0, snr_in=0.0, dur=20)
+    x = FrontEnd()(y, FS)
+    s = StreamingSameni(FS, background=True)
+    worst = 0.0
+    for i in range(0, x.size, 12):
+        t = time.perf_counter()
+        s.push(x[i:i + 12])
+        worst = max(worst, time.perf_counter() - t)
+        time.sleep(0.0005)                 # 작업 스레드에 숨 쉴 틈 (실시간이면 48 ms 다)
+    t_end = time.perf_counter() + 10.0
+    while s.p is None and time.perf_counter() < t_end:
+        s.push(np.zeros(0))
+        time.sleep(0.01)
+    assert s.p is not None, "백그라운드 적합이 끝나지 않았다"
+    assert worst < 0.3, f"push 하나가 {worst * 1000:.0f} ms 막혔다 — 적합이 본체에서 돈다"

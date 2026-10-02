@@ -625,7 +625,7 @@ def main() -> int:
             # **창 방식이 아니다** — 상태를 이어 가는 EKF 가 그 자체로 처리기다 (D-40).
             # 미래 문맥(lag 36)·평활(d 12)은 스윕으로 고른 값을 쓴다.
             from ecgdn.methods.kalman_stream import StreamingSameni
-            procs[n] = StreamingSameni(FS, hop=hop_n)
+            procs[n] = StreamingSameni(FS, hop=hop_n, background=True)
             continue
         procs[n] = StreamProcessor(build_stream_method(n, args.axis), fs=FS,
                                    hop=hop_n, d=args.d, frontend="none")

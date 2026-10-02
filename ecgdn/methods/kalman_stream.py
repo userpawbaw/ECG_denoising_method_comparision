@@ -44,7 +44,7 @@ def _wrap1(x: float) -> float:
 def fit_params(x: np.ndarray, r_peaks: np.ndarray, fs: float, scale: float | None = None,
                init: ECGKernel = DEFAULT_KERNEL, n_kernels: int = 7,
                q_scale: float = 1.0, r_scale: float = 1.0,
-               phase_sigma_ms: float = 12.0) -> dict[str, Any] | None:
+               phase_sigma_ms: float = 12.0, max_nfev: int = 4000) -> dict[str, Any] | None:
     """M05 `_run` 의 적합부와 **같은 식**으로 커널 · Q · R 을 구한다. R 피크가 3 개 미만이면 None.
 
     `scale` 을 주면 그 값으로 정규화한다 — 재적합 때 스케일을 바꾸지 않기 위해서다
@@ -61,7 +61,7 @@ def fit_params(x: np.ndarray, r_peaks: np.ndarray, fs: float, scale: float | Non
     z = x / scale
     grid, tmpl_raw, _ = phase_average(z, theta)
     tmpl = tmpl_raw - float(tmpl_raw.mean())
-    fit = fit_kernels(grid, tmpl, n_kernels, init=init)
+    fit = fit_kernels(grid, tmpl, n_kernels, init=init, max_nfev=max_nfev)
     r_meas = SameniKalman._estimate_r(z, r) * r_scale
     pred = np.interp(theta, grid, fit.fitted, period=TWO_PI)
     resid_var = float(np.var(z - pred))
@@ -77,11 +77,45 @@ def fit_params(x: np.ndarray, r_peaks: np.ndarray, fs: float, scale: float | Non
                 kernel=fit.as_kernel())
 
 
+def _refine_peaks(x: np.ndarray, pk: np.ndarray, sgn: float, w: int) -> np.ndarray:
+    """XQRS 위치를 극성 쪽 최댓값(±w)으로 옮긴다 — 인과 검출기와 같은 규약."""
+    out = []
+    for v in pk:
+        lo, hi = max(0, v - w), min(x.size, v + w + 1)
+        out.append(lo + int(np.argmax(sgn * x[lo:hi])))
+    return np.unique(np.asarray(out, dtype=int))
+
+
+def _init_job(xa: np.ndarray, fs: float, conf: int) -> dict[str, Any] | None:
+    """init 적합 — XQRS · 극성 · 커널 · Q · R. **본체 스레드 밖에서 돌 수 있게** 입력만 받는다."""
+    from ..eval.rpeak import detect_rpeaks
+    pk = detect_rpeaks(xa, fs)
+    if pk.size < 3:
+        return None
+    # **위치 규약을 인과 검출기와 맞춘다** — 커널은 이 위상으로 적합되므로, 실시간
+    # 검출기가 다른 자리를 R 로 잡으면 템플릿 전체가 그만큼 밀린다.
+    sgn = 1.0 if np.median(xa[pk]) >= 0 else -1.0
+    pk = _refine_peaks(xa, pk, sgn, conf)
+    p = fit_params(xa, pk, fs)
+    if p is None or not np.isfinite(p["r2"]) or p["r2"] < 0.3:
+        return None
+    return dict(p=p, sgn=sgn, thr=0.5 * float(np.median(sgn * xa[pk])), peaks=pk)
+
+
+def _refit_job(xa: np.ndarray, pk: np.ndarray, fs: float, scale: float,
+               kernel: ECGKernel) -> dict[str, Any] | None:
+    """재적합. 이전 커널에서 출발하므로 반복 상한을 400 으로 둔다 (init 은 4000)."""
+    p = fit_params(xa, pk, fs, scale=scale, init=kernel, max_nfev=400)
+    if p is None or not np.isfinite(p["r2"]) or p["r2"] < 0.3:
+        return None
+    return p
+
+
 class StreamingSameni:
     """샘플이 들어오는 대로 EKF 를 한 걸음씩, hop 마다 고정 지연 RTS 로 내보낸다."""
 
     def __init__(self, fs: float = 250.0, hop: int = 12, d: int = 12,
-                 lag: int = 36, q_rr: bool = True,
+                 lag: int = 36, q_rr: bool = True, background: bool = False,
                  init_s: float = 1024 / 250, refit_s: float = 10.0,
                  refit_win_s: float = 8.0, keep_s: float = 12.0):
         self.fs = float(fs)
@@ -100,6 +134,22 @@ class StreamingSameni:
         self.refit_win = int(round(refit_win_s * fs))
         self.keep = int(round(keep_s * fs))
         self.origin = 0
+        # **적합(XQRS · least_squares)을 본체 스레드에서 돌리지 않는다** (실시간 전용).
+        # 본체에서 돌리면 init 때 0.5~1.9 s, 재적합 때 수십~수백 ms 동안 브리지가 멈춰
+        # 큐가 밀리고 RTF 와 도착 간격이 튀었다 — 실보드에서 «시작 20 초 안에 갑자기
+        # 멈췄다 돌아온다» 로 보였다 (O-38). 오프라인 대조는 결과가 실행마다 같아야
+        # 하므로 동기로 둔다.
+        self.background = bool(background)
+        self._pool = None
+        if self.background:
+            from concurrent.futures import ThreadPoolExecutor
+            self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="m05s-fit")
+        # **wfdb 를 미리 불러 둔다.** XQRS 를 처음 부를 때 import 가 약 1 s(윈도우는 더)
+        # 걸리는데, 그것이 init 순간에 일어났다. 처리기를 만들 때 치르면 포트를 열기 전이다.
+        try:
+            import wfdb.processing  # noqa: F401
+        except Exception:                                   # pragma: no cover
+            pass
         self.reset()
 
     # ----------------------------------------------------------- 브리지 인터페이스
@@ -136,6 +186,8 @@ class StreamingSameni:
         self._hist0 = 0
         self._x = None
         self._P = None
+        self._job = None               # (종류, 낸 시점 n_in, 창 시작, Future)
+        self._gen = getattr(self, "_gen", 0) + 1   # reset 전에 낸 작업의 결과는 버린다
 
     # ----------------------------------------------------------------- 입력
     def push(self, block: np.ndarray) -> np.ndarray:
@@ -144,6 +196,7 @@ class StreamingSameni:
             self.buf = np.concatenate([self.buf, block])
             self.n_in += block.size
         out: list[np.ndarray] = []
+        self._collect()
         if self.p is None:
             self._try_init()
         if self.p is not None:
@@ -196,14 +249,6 @@ class StreamingSameni:
         self.passthrough_until = end
         return seg
 
-    def _refine(self, x: np.ndarray, pk: np.ndarray) -> np.ndarray:
-        w = self.conf
-        out = []
-        for v in pk:
-            lo, hi = max(0, v - w), min(x.size, v + w + 1)
-            out.append(lo + int(np.argmax(self.sgn * x[lo:hi])))
-        return np.unique(np.asarray(out, dtype=int))
-
     def _detect_causal(self) -> None:
         """문턱(R 진폭 중앙값의 절반)을 넘으면 후보, 그 뒤 40 ms 안의 최댓값을 R 로 확정한다.
 
@@ -234,39 +279,59 @@ class StreamingSameni:
         if len(self.peaks) > 64:
             del self.peaks[:-64]
 
-    def _detect(self, a: int, b: int) -> np.ndarray:
-        from ..eval.rpeak import detect_rpeaks
-        pk = detect_rpeaks(self._x_abs(a, b), self.fs)
-        return pk + a
+    # ------------------------------------------------------- 적합 작업 (init · 재적합)
+    def _submit(self, kind: str, fn, *args) -> None:
+        a = args[-1]
+        args = args[:-1]
+        if self._pool is None:
+            self._apply(kind, self.n_in, a, fn(*args))
+            return
+        self._job = (kind, self.n_in, a, self._gen, self._pool.submit(fn, *args))
+
+    def _collect(self) -> None:
+        """끝난 작업이 있으면 그 결과를 적용한다 (본체 스레드에서만 상태를 바꾼다)."""
+        if self._job is None or not self._job[4].done():
+            return
+        kind, n_at, a, gen, fut = self._job
+        self._job = None
+        if gen != self._gen:
+            return
+        try:
+            res = fut.result()
+        except Exception:                                   # pragma: no cover
+            return
+        self._apply(kind, n_at, a, res)
+
+    def _apply(self, kind: str, n_at: int, a: int, res) -> None:
+        if res is None:
+            return
+        if kind == "refit":
+            self.p = res
+            self.n_refit += 1
+            return
+        # ---- init: 적합한 창은 [a, n_at). 그 뒤는 인과 검출기가 이어서 훑는다
+        self.p = res["p"]
+        self.sgn, self.thr = res["sgn"], res["thr"]
+        self.peaks = [int(v) + a for v in res["peaks"]]
+        self.n_det = n_at
+        self._cand = -1
+        self.t_refit = n_at
+        start = self.emitted                    # 아직 안 낸 곳부터 EKF 를 시작한다
+        self.n_fwd = start
+        self._hist, self._hist0 = [], start
+        x0 = self._x_abs(start, start + 1)[0] / self.p["scale"]
+        self._x = np.array([self._phase_obs(start)[0], x0])
+        self._P = np.diag([self.p["r_phase"], self.p["r_meas"]])
 
     def _try_init(self) -> None:
+        if self._job is not None:
+            return
         if self.n_in < self.init_n or self.n_in - self.t_init_try < self.init_n // 2:
             return
         self.t_init_try = self.n_in
         a = max(self.buf0, self.n_in - self.refit_win)
-        xa = self._x_abs(a, self.n_in)
-        pk = self._detect(a, self.n_in) - a
-        if pk.size < 3:
-            return
-        # **위치 규약을 인과 검출기와 맞춘다** — XQRS 위치를 극성 쪽 최댓값으로 옮긴다.
-        # 커널은 이 위상으로 적합되므로, 실시간 검출기가 다른 자리를 R 로 잡으면
-        # 템플릿 전체가 그만큼 밀린다.
-        self.sgn = 1.0 if np.median(xa[pk]) >= 0 else -1.0
-        pk = self._refine(xa, pk)
-        p = fit_params(xa, pk, self.fs)
-        if p is None or not np.isfinite(p["r2"]) or p["r2"] < 0.3:
-            return
-        self.p = p
-        self.thr = 0.5 * float(np.median(self.sgn * xa[pk]))
-        self.peaks = [int(v) + a for v in pk]
-        self.n_det = self.n_in
-        self.t_refit = self.n_in
-        start = self.emitted                    # 아직 안 낸 곳부터 EKF 를 시작한다
-        self.n_fwd = start
-        self._hist, self._hist0 = [], start
-        x0 = self._x_abs(start, start + 1)[0] / p["scale"]
-        self._x = np.array([self._phase_obs(start)[0], x0])
-        self._P = np.diag([p["r_phase"], p["r_meas"]])
+        self._submit("init", _init_job, self._x_abs(a, self.n_in).copy(), self.fs,
+                     self.conf, a)
 
     def _rr(self) -> tuple[float, float]:
         """최근 RR 의 중앙값 [샘플] 과 변동계수."""
@@ -299,16 +364,13 @@ class StreamingSameni:
         return _wrap1(TWO_PI * frac), extra
 
     def _maybe_refit(self) -> None:
-        if self.n_in - self.t_refit < self.refit_n:
+        if self._job is not None or self.n_in - self.t_refit < self.refit_n:
             return
         self.t_refit = self.n_in
         a = max(self.buf0, self.n_in - self.refit_win)
         pk = np.asarray([q for q in self.peaks if a <= q < self.n_in], dtype=int) - a
-        p = fit_params(self._x_abs(a, self.n_in), pk, self.fs, scale=self.p["scale"],
-                       init=self.p["kernel"])
-        if p is not None and np.isfinite(p["r2"]) and p["r2"] >= 0.3:
-            self.p = p
-            self.n_refit += 1
+        self._submit("refit", _refit_job, self._x_abs(a, self.n_in).copy(), pk, self.fs,
+                     self.p["scale"], self.p["kernel"], a)
 
     def _forward(self) -> None:
         p = self.p

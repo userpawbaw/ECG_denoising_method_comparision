@@ -124,7 +124,7 @@ def _kernel_sum(grid, alpha, b, th0):
 
 
 def fit_kernels(grid: np.ndarray, template: np.ndarray, n_kernels: int = 7,
-                init: ECGKernel = DEFAULT_KERNEL) -> KernelFit:
+                init: ECGKernel = DEFAULT_KERNEL, max_nfev: int = 4000) -> KernelFit:
     """phase-averaged template 에 Gaussian 커널 합을 최소자승 적합.
 
     **논문 기본값을 그대로 쓰지 않고 반드시 여기서 적합한다** (A-2 #3).
@@ -157,7 +157,7 @@ def fit_kernels(grid: np.ndarray, template: np.ndarray, n_kernels: int = 7,
         a, b, t = p[:n_kernels], p[n_kernels:2 * n_kernels], p[2 * n_kernels:]
         return _kernel_sum(grid, a, b, t) - tmpl
 
-    sol = least_squares(resid, p0, bounds=(lo, hi), method="trf", max_nfev=4000)
+    sol = least_squares(resid, p0, bounds=(lo, hi), method="trf", max_nfev=max_nfev)
     a, b, t = sol.x[:n_kernels], sol.x[n_kernels:2 * n_kernels], sol.x[2 * n_kernels:]
     fitted = _kernel_sum(grid, a, b, t)
     ss_res = float(np.sum((tmpl - fitted) ** 2))
