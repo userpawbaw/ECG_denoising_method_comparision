@@ -40,6 +40,9 @@ SELF = Path(__file__).name
 
 # 접두사로 묶는다. **직접 실행하는 것이 위로** 오게 한 순서다.
 GROUPS = [
+    ("실보드 점검 — 브리지보다 먼저", "보드를 꽂고 **브리지를 띄우기 전에** 돌린다. 보드가 그 포트·baud "
+     "에서 무슨 바이트를 내는지 본다. 절차는 `docs/30_realtime_demo.md` 6.2.1 의 0-1.",
+     ("probe_serial",)),
     ("시연 — 이 둘만 직접 띄운다", "실시간 시연(모드 A)의 실행 파일. 절차는 "
      "`docs/30_realtime_demo.md` 6.2~6.3.",
      ("fake_arduino", "serial_bridge")),
