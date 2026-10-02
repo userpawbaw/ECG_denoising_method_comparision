@@ -85,6 +85,7 @@
   <div><span class="k">재동기</span><span id="resync">0</span></div>
   <div><span class="k">처리 밀림</span><span id="qdrop">0</span></div>
   <div><span class="k">처리 여유 (RTF)</span><span id="rtf">—</span></div>
+  <div title="최근 2 초 동안 선에서 바이트가 안 온 가장 긴 간격. 화면은 끊기는데 손실이 0 이면 여기를 본다 (F-55)"><span class="k">도착 간격 (최대)</span><span id="gap">—</span></div>
 </div>
 
 <div class="bar ctl">
@@ -468,6 +469,13 @@ es.onmessage = ev => {
   el('qdrop').style.color = s.qdrop > 0 ? 'var(--bad)' : '';
   el('rtf').textContent  = s.rtf.toFixed(2) + (s.rtf > 0.9 ? '  ⚠ 못 따라간다' : '');
   el('rtf').style.color  = s.rtf > 0.9 ? 'var(--bad)' : '';
+  /* **선에서 바이트가 몇 ms 동안 안 왔나** (D-38 R4). 화면 갱신 간격(40 ms)의 다섯
+   * 배를 넘으면 칠한다 — 실보드에서 read 가 4096 B 를 기다릴 때 1640 ms 였다 (F-55).
+   * 낡은 브리지는 이 값을 안 보내므로 없으면 비워 둔다. */
+  if (Number.isFinite(s.gap_ms)){
+    el('gap').textContent = s.gap_ms + ' ms' + (s.gap_ms > 200 ? '  ⚠ 선이 뭉쳐 온다' : '');
+    el('gap').style.color = s.gap_ms > 200 ? 'var(--bad)' : '';
+  }
   dirty = true;
 };
 </script>

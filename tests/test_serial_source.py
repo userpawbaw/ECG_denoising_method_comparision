@@ -466,8 +466,6 @@ def _fill_until_full(read):
     return blocking
 
 
-@pytest.mark.xfail(strict=True, reason="F-55: SerialSource.read 가 아직 read(4096) 다. "
-                                       "D-38 의 R1 을 넣으면 통과한다 — 그때 이 표시를 지운다")
 def test_a_read_returns_promptly_even_if_the_driver_waits_for_a_full_buffer(board):
     """화면이 1.5 초마다만 바뀌던 실보드 증상 (F-55). 250 Hz ASCII 면 4096 B 는 1.5~1.6 s 다."""
     m = _load("serial_bridge")

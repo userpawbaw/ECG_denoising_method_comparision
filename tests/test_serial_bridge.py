@@ -215,3 +215,99 @@ def test_no_call_site_serialises_before_publishing():
     src = (ROOT / "scripts" / "serial_bridge.py").read_text()
     assert "hub.publish(json.dumps(" not in src, \
         "publish 앞에서 json.dumps 를 부르고 있다 (F-52)"
+
+
+# --------------------------------------- 도착 시각으로 재는 fs · 도착 간격 (D-38)
+def _feed(meter, fs, t0, t1, block_s, lag_s=0.0):
+    """`fs` 로 오는 선을 `block_s` 덩어리로 받는다. 누적은 처리 시점과 무관하다."""
+    t, cum = t0, int(fs * t0)
+    while t < t1:
+        t += block_s
+        cum = int(fs * t)          # 덩어리마다 반올림하면 그 오차를 재게 된다
+        meter.add(t, cum)          # 도착 시각 — lag 는 처리 쪽 사정이라 안 들어간다
+    return cum
+
+
+def test_rate_meter_is_not_fooled_by_a_backlog():
+    """F-55: 처리가 15 s 밀려도 **도착 시각**으로 재면 250 Hz 다 (전에는 36.5 · 71.5 Hz)."""
+    m = _mod()
+    r = m.RateMeter(10.0)
+    _feed(r, 250, 0.0, 30.0, 0.05)
+    assert abs(r.rate() - 250) < 2
+
+
+def test_rate_meter_is_not_biased_by_big_blocks():
+    """읽기가 1.64 s 덩어리여도(윈도우 read(4096)) 기울기는 그대로다."""
+    m = _mod()
+    r = m.RateMeter(10.0)
+    _feed(r, 250, 0.0, 40.0, 1.64)
+    assert abs(r.rate() - 250) < 3
+
+
+def test_rate_meter_needs_a_full_window_and_stays_bounded():
+    m = _mod()
+    r = m.RateMeter(10.0)
+    _feed(r, 250, 0.0, 5.0, 0.05)
+    assert r.rate() is None
+    _feed(r, 250, 5.0, 600.0, 0.05)
+    assert len(r.pts) < 500, "점이 세션 내내 자란다 (F-31 과 같은 모양)"
+
+
+def test_fs_check_warns_once_after_two_bad_windows_only():
+    m = _mod()
+    c = m.FsCheck(250, 10.0)
+    assert c.step(0.0, 500.0) is None          # 한 창만 어긋남
+    assert c.step(5.0, 500.0) is None          # 창이 겹친다 — 판정 안 함
+    assert c.step(10.0, 500.0) == 500.0        # 둘째 창 — 경고
+    assert c.step(20.0, 500.0) is None         # 한 번만
+    ok = m.FsCheck(250, 10.0)
+    assert all(ok.step(t, 251.0) is None for t in range(0, 100, 10))
+
+
+def test_fs_check_forgives_a_single_bad_window():
+    m = _mod()
+    c = m.FsCheck(250, 10.0)
+    assert c.step(0.0, 213.0) is None
+    assert c.step(10.0, 250.0) is None
+    assert c.step(20.0, 213.0) is None
+
+
+def test_gap_meter_reports_the_longest_silence():
+    m = _mod()
+    g = m.GapMeter(2.0)
+    for t in (0.0, 0.01, 0.02, 1.66, 1.67):
+        g.add(t)
+    assert abs(g.max_gap_ms(1.68) - 1640) < 1
+    for k in range(400):
+        g.add(1.68 + k * 0.01)
+    assert g.max_gap_ms(5.68) < 20, "2 s 지난 간격은 잊어야 한다"
+    assert g.max_gap_ms(6.68) > 900, "지금 기다리는 중인 것도 간격이다"
+
+
+def test_the_live_page_shows_the_arrival_gap():
+    html = (ROOT / "demo" / "live.html").read_text()
+    assert 'id="gap"' in html and "s.gap_ms" in html
+
+
+# ------------------------------------- 덩어리 크기가 값을 바꾸지 않는다 (F-56)
+@pytest.mark.parametrize("mode", ["zerophase", "median", "causal"])
+def test_front_end_output_does_not_depend_on_block_size(mode):
+    """윈도우 실보드는 372 샘플 덩어리로 왔다 (F-55). 블록 영위상이 그때 1 % 달랐고
+    2000 샘플에서는 죽었다 — 버퍼를 «뒤에서 keep 개» 로 잘랐기 때문이다 (F-56)."""
+    from ecgdn.realtime.frontend_modes import build_fe
+    x = np.random.default_rng(0).standard_normal(250 * 20)
+
+    def run(bs):
+        fe = build_fe(mode, 250, hop_s=6 / 250)
+        return np.concatenate([fe.push(x[i:i + bs]) for i in range(0, x.size, bs)])
+
+    ref = run(1)
+    for bs in (12, 95, 372, 2000):
+        np.testing.assert_array_equal(run(bs), ref, err_msg=f"{mode} · 덩어리 {bs}")
+
+
+def test_bridge_feeds_processors_in_hop_steps():
+    """`StreamProcessor` 는 덩어리가 크면 다른 값을 낸다(설계 — 확정된 만큼 바로 낸다).
+    브리지는 그래서 hop 씩 나눠 넣는다 (F-56). 그 줄이 빠지면 여기서 걸린다."""
+    src = (ROOT / "scripts" / "serial_bridge.py").read_text()
+    assert "p.push(x[j:j + args.hop]) for j in range(0, x.size, args.hop)" in src

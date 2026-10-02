@@ -175,10 +175,14 @@ class _Windowed(_Base):
                 self._n_out += self.hop
             else:
                 out.extend(self._blend(v, a, b))
-            # 더 필요 없는 과거는 버린다 — 무한히 자라면 안 된다
-            keep = self.past + self.hop + self.look + self.hop + self.xfade
-            if len(self._buf) > keep:
-                del self._buf[:len(self._buf) - keep]
+            # 더 필요 없는 과거는 버린다 — 무한히 자라면 안 된다.
+            # **기준은 «다음 창이 시작하는 절대 위치» 다.** 전에는 «뒤에서 keep 개»
+            # 를 남겼는데, 한 번에 큰 덩어리가 오면 아직 안 돈 창의 과거까지 잘렸다
+            # — 372 샘플 덩어리(윈도우 read(4096), F-55)에서 출력이 1 % 달라졌고,
+            # 2000 샘플에서는 죽었다 (F-56).
+            drop = (self._n_out - self.past - self.xfade) - base
+            if drop > 0:
+                del self._buf[:drop]
         return np.asarray(out, dtype=np.float64)
 
     def _blend(self, v, a, b) -> list[float]:

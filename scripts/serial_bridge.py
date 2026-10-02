@@ -129,8 +129,20 @@ class SerialSource:
         self.ser.reset_input_buffer()
 
     def read(self) -> bytes:
+        """**쌓인 만큼만** 받는다. 비었으면 10 ms 쉬고 빈손으로 돌아간다.
+
+        전에는 `read(4096)` 이었다. 리눅스 pyserial 은 `timeout=0.05` 를 마감으로
+        지켜 50 ms 마다 돌아오지만, 윈도우는 그것을 드라이버에 맡기고 — 실보드
+        에서 **4096 B 를 다 채울 때까지** 안 돌아왔다(1640 ms). 화면이 그 간격으로
+        만 바뀌었다 (F-55). `in_waiting` 만큼 달라고 하면 드라이버가 timeout 을
+        지키든 말든 막히지 않는다 (D-38 R1).
+        """
         try:
-            return self.ser.read(4096) or b""
+            n = self.ser.in_waiting
+            if n == 0:
+                time.sleep(0.01)
+                return b""
+            return self.ser.read(min(n, 4096)) or b""
         except (OSError, self._exc) as e:
             # 케이블이 빠졌거나 보드가 죽었다. 예외를 여기서 삼키면 읽기
             # 스레드만 죽고 본체는 그것을 모른 채 돈다 — 화면이 «연결됨» 인
@@ -218,6 +230,95 @@ class ReplaySource:
 
     def close(self) -> None:
         pass
+
+
+# ----------------------------------------------------------- 도착 계측 (D-38)
+class RateMeter:
+    """보드의 실측 샘플률을 **도착 시각**으로 잰다 (D-38 R2).
+
+    전에는 `처리한 샘플 수 ÷ 벽시계` 를 시작 10 s 뒤 한 번 쟀다. 그러면 본체가
+    밀린 만큼(큐에 쌓인 미처리분) 낮게 나와, 정확히 250 Hz 인 보드에서 36.5 Hz
+    경고가 떴다 (F-55). 처리는 늦어도 **도착은 안 늦는다.** 그래서 `(마지막 도착
+    시각, 그때까지 받은 누적 샘플)` 점을 쌓고, 두 점 사이의 기울기로 잰다.
+    """
+
+    def __init__(self, window_s: float = 10.0):
+        self.window_s = float(window_s)
+        self.pts: list[tuple[float, int]] = []
+
+    def add(self, t: float, cum: int) -> None:
+        if self.pts and t <= self.pts[-1][0]:
+            self.pts[-1] = (self.pts[-1][0], cum)       # 같은 도착 — 누적만 올린다
+            return
+        self.pts.append((t, cum))
+        # 창 두 개어치만 남긴다 (메모리 상한 — F-31)
+        while len(self.pts) > 2 and self.pts[-1][0] - self.pts[1][0] > 2 * self.window_s:
+            self.pts.pop(0)
+
+    def rate(self) -> float | None:
+        """최근 `window_s` 이상을 덮는 구간의 기울기. 아직 모자라면 None."""
+        if len(self.pts) < 2:
+            return None
+        t1, c1 = self.pts[-1]
+        for t0, c0 in reversed(self.pts[:-1]):
+            if t1 - t0 >= self.window_s:
+                return (c1 - c0) / (t1 - t0)
+        return None
+
+
+class FsCheck:
+    """`--board-fs` 와 실측이 **두 창 연속** 5 % 넘게 다르면 한 번 경고한다 (F-54 · D-38).
+
+    한 창만 보면 시작 직후의 덩어리 하나에 흔들린다. 창이 겹치지 않게 `window_s`
+    마다 한 번만 판정한다.
+    """
+
+    def __init__(self, want_hz: float, window_s: float = 10.0, tol: float = 0.05):
+        self.want = float(want_hz)
+        self.window_s = float(window_s)
+        self.tol = float(tol)
+        self.t_last: float | None = None
+        self.bad_streak = 0
+        self.warned = False
+
+    def step(self, t: float, rate: float | None) -> float | None:
+        """경고할 차례면 그 실측값을, 아니면 None 을 돌려준다."""
+        if rate is None or self.warned:
+            return None
+        if self.t_last is not None and t - self.t_last < self.window_s:
+            return None
+        self.t_last = t
+        if abs(rate - self.want) / self.want > self.tol:
+            self.bad_streak += 1
+        else:
+            self.bad_streak = 0
+        if self.bad_streak >= 2:
+            self.warned = True
+            return rate
+        return None
+
+
+class GapMeter:
+    """최근 `span_s` 동안 **read 사이의 최대 간격** [ms] (D-38 R4).
+
+    「화면은 끊기는데 손실 0」 (6.2.1) 을 말이 아니라 숫자로 보이게 한다.
+    F-55 의 실보드라면 1640 이 떴을 것이다.
+    """
+
+    def __init__(self, span_s: float = 2.0):
+        self.span_s = float(span_s)
+        self.ts: list[float] = []
+
+    def add(self, t: float) -> None:
+        self.ts.append(t)
+
+    def max_gap_ms(self, now: float) -> float:
+        while len(self.ts) > 2 and now - self.ts[1] > self.span_s:
+            self.ts.pop(0)
+        gaps = [b - a for a, b in zip(self.ts, self.ts[1:])]
+        if self.ts:
+            gaps.append(now - self.ts[-1])          # 지금도 기다리는 중이면 그것도 간격이다
+        return 1000.0 * max(gaps) if gaps else 0.0
 
 
 # --------------------------------------------------------------------- 정렬
@@ -445,6 +546,9 @@ def main() -> int:
                     help="아날로그 프런트엔드 총 이득 (AD8232 기본 약 1100)")
     ap.add_argument("--quiet", action="store_true",
         help="진행 줄을 안 찍는다 (파이프로 넘기면 자동으로 켜진다)")
+    ap.add_argument("--trace-io", metavar="FILE",
+        help="read 마다 (시각 · 바이트 · 큐 길이), publish 마다 (시각 · i · n · 도착 최대 간격) 을 "
+             "이 파일에 한 줄씩 적는다. 화면이 끊기거나 시작이 늦을 때 되짚는 기록 (D-38)")
     ap.add_argument("--diag", type=float, default=0.0,
                     help="N 초마다 버퍼 크기와 RSS 를 적는다 (성능 저하 추적용)")
     args = ap.parse_args()
@@ -507,12 +611,23 @@ def main() -> int:
         print(f"-> http://127.0.0.1:{args.http_port}/live.html")
 
     # ---- 읽기 스레드. **읽어서 큐에 넣기만 한다.**
-    q: queue.Queue = queue.Queue(maxsize=400)
+    # **상한은 개수가 아니라 시간이다.** 읽기가 «쌓인 만큼» 이 되면서(D-38 R1)
+    # 항목 하나가 50 ms 어치에서 약 10 ms 어치로 줄었다. 400 개로 두면 버팀이
+    # 20 s 에서 4 s 로 준다 — 그래서 2000 개(약 20 s)로 올린다.
+    q: queue.Queue = queue.Queue(maxsize=2000)
     stop = threading.Event()
     qdrop = [0]
 
     link_err: list[str] = []
     n_bytes = [0]                     # 선에서 온 **바이트** (샘플이 아니다)
+    # 리더 스레드와 본체가 같이 쓴다. **닫은 뒤 쓰지 않게** 잠금 안에서 확인한다.
+    trace = [open(args.trace_io, "w", encoding="utf-8") if args.trace_io else None]
+    trace_lock = threading.Lock()
+
+    def tr(line: str) -> None:
+        with trace_lock:
+            if trace[0]:
+                trace[0].write(line + "\n")
 
     def reader():
         # **선이 끊기면 여기서 끝내고 알린다.** 예외를 스레드 안에서 삼키면
@@ -523,8 +638,12 @@ def main() -> int:
                 if not data:
                     continue
                 n_bytes[0] += len(data)
+                t_arr = time.perf_counter()
+                if trace[0]:
+                    tr(f"R {t_arr:.4f} {len(data)} {q.qsize()}")
                 try:
-                    q.put_nowait(data)
+                    # **도착 시각을 같이 넣는다** — 처리가 밀려도 이 값은 안 밀린다 (R2)
+                    q.put_nowait((t_arr, data))
                 except queue.Full:
                     # 처리가 못 따라온다. **오래된 것을 버리고 센다** — 조용히
                     # 밀리면 화면이 점점 과거를 보이게 된다.
@@ -564,7 +683,9 @@ def main() -> int:
     n_board = 0                       # 보드가 보낸 샘플 (손실률의 분모)
     rtf_cpu = rtf_wall = rtf_core = 0.0   # warm-up 이후의 정상 상태
     core = 0.0
-    fs_checked = False                # 보드의 실측 fs 를 한 번 대조한다
+    rate_m = RateMeter(10.0)          # 도착 시각 기준 실측 fs (D-38 R2)
+    fs_chk = FsCheck(args.board_fs, 10.0)
+    gap_m = GapMeter(2.0)             # 도착 최대 간격 (D-38 R4)
     t_nodata = 0.0                    # «아무것도 안 나온다» 진단을 낸 시각
     try:
         while not stop.is_set():
@@ -592,9 +713,22 @@ def main() -> int:
                           f"  baud 가 다를 때도 같은 증상이 난다 "
                           f"(스케치의 SERIAL_BAUD 와 --baud {args.baud}).", flush=True)
             try:
-                data = q.get(timeout=0.5)
+                t_arr, data = q.get(timeout=0.5)
             except queue.Empty:
                 continue
+            # **쌓인 것을 한 번에 꺼낸다.** 읽기가 잘아져서(R1) 항목마다 파서·FE 를
+            # 돌리면 그 비용이 항목 수에 비례한다. 이어 붙여 한 번에 처리한다.
+            gap_m.add(t_arr)
+            parts = [data]
+            while len(parts) < 400:
+                try:
+                    t_arr, d2 = q.get_nowait()
+                except queue.Empty:
+                    break
+                gap_m.add(t_arr)
+                parts.append(d2)
+            if len(parts) > 1:
+                data = b"".join(parts)
             want = switch.take()
             if want and want != switch.mode:
                 # **화면을 다시 채운다.** 방법들의 내부 버퍼는 이전 front-end
@@ -622,6 +756,8 @@ def main() -> int:
                           f"+{fe_lat_ms:.0f} ms) · 화면을 다시 채운다")
             pre: SampleChunk = parser.feed(data)
             n_board += pre.x.size          # **보드 기준** 샘플 (채운 것 포함)
+            if time.perf_counter() - t_start > 2.0:   # 리셋·명령 직후는 뺀다
+                rate_m.add(t_arr, n_board)
             ch: SampleChunk = dec(pre)
             if ch.gap_unknown:
                 # 손실이 커서 시간축을 복구할 수 없다. 이어 붙이면 이후 전부가
@@ -654,9 +790,14 @@ def main() -> int:
                 continue
 
             t0, c0 = time.perf_counter(), time.process_time()
+            # **처리기에는 hop 씩 나눠 넣는다.** `StreamProcessor` 는 확정된 만큼 바로
+            # 내보내므로, 한 번에 여러 창을 넘기면 겹친 창이 더 더해진 **다른 값**을
+            # 낸다 (372 샘플 덩어리에서 최대 0.51 — F-56). 읽기가 잘든 굵든
+            # 화면의 값이 같게 하려고, 1 샘플씩 넣은 것과 같은 단위로 고정한다.
             for name in proc_names:
                 p = procs[name]
-                al.add(name, p.origin, p.push(x))
+                ys = [p.push(x[j:j + args.hop]) for j in range(0, x.size, args.hop)]
+                al.add(name, p.origin, np.concatenate(ys))
             for name in fe_names:
                 al.add(name, 0, x)          # FE 출력은 지연 없이 바로 확정된다
             cpu += time.perf_counter() - t0
@@ -675,6 +816,7 @@ def main() -> int:
                 continue
             k = len(next(iter(outs.values())))
             lo = idx - raw_base
+            gap_ms = gap_m.max_gap_ms(now)
             payload = {
                 "i": idx, "n": k, "fs": FS,
                 "raw": [round(v, 4) for v in raw[lo:lo + k]],
@@ -683,28 +825,28 @@ def main() -> int:
                 "stat": {**stat, "qdrop": qdrop[0], "sse_drop": hub.dropped,
                          "lat_ms": round(lat_ms + fe.latency_samples / FS * 1000.0, 1),
                          "fe": switch.mode,
-                         "rtf": round(cpu / max(el, 1e-9), 3)},
+                         "rtf": round(cpu / max(el, 1e-9), 3),
+                         "gap_ms": round(gap_ms)},
             }
-            # **보드가 정말 그 fs 로 주고 있는가.** `--board-fs` 는 보드에게
-            # 보내는 «명령» 일 뿐이라, 펌웨어가 그 명령을 모르면(구 버전) 보드는
-            # 원래 fs 를 계속 준다. 그러면 에러 없이 **시간축만 틀린다** —
-            # R-peak 간격이 배로 벌어지고 심박수가 절반으로 보인다 (F-54).
-            el_all = now - t_start
-            if not fs_checked and el_all > 10.0 and n_board > 0:
-                fs_checked = True
-                meas = n_board / el_all
-                if abs(meas - args.board_fs) / args.board_fs > 0.05:
-                    print(f"\n[warn] 보드의 실측 샘플률이 {meas:.1f} Hz 다 — "
-                          f"--board-fs {args.board_fs} 와 5 % 넘게 다르다. "
-                          f"시간축이 {args.board_fs / max(meas, 1e-9):.2f} 배 틀린다. "
-                          "스케치가 fs 명령('2'/'5'/'1')을 아는 판인지 확인할 것.",
-                          flush=True)
+            # **보드가 정말 그 fs 로 주고 있는가** (F-54). `--board-fs` 는 명령일
+            # 뿐이라 구 펌웨어는 안 듣는다 — 에러 없이 시간축만 틀린다.
+            # **도착 시각으로 잰다** (D-38 R2) — 처리한 샘플 ÷ 벽시계로 재면 본체가
+            # 밀린 만큼 낮게 나와 250 Hz 보드에 36.5 Hz 경고가 떴다 (F-55).
+            meas = fs_chk.step(now, rate_m.rate())
+            if meas is not None:
+                print(f"\n[warn] 보드의 실측 샘플률이 {meas:.1f} Hz 다 (도착 시각 기준, 10 s 창 둘) — "
+                      f"--board-fs {args.board_fs} 와 5 % 넘게 다르다. "
+                      f"시간축이 {args.board_fs / max(meas, 1e-9):.2f} 배 틀린다. "
+                      "스케치가 fs 명령('2'/'5'/'1')을 아는 판인지 확인할 것.",
+                      flush=True)
             if idx > (warm_s + 2.0) * FS:      # warm-up 과 첫 적재는 뺀다
                 rtf_cpu += cpu
                 rtf_core += core
                 rtf_wall += el
             cpu = core = 0.0
             hub.publish(payload)
+            if trace[0]:
+                tr(f"P {now:.4f} {idx} {k} {gap_ms:.0f}")
             if lo > 20 * FS:                     # 과거는 버린다 (메모리 상한)
                 raw = raw[lo:]
                 rawok = rawok[lo:]
@@ -727,12 +869,17 @@ def main() -> int:
                 print(f"\r  {idx/FS:7.1f}s  손실 {stat['lost']:5d}  "
                       f"lead-off {stat['leadoff']:5d}  깨짐 {stat['bad']:4d}  "
                       f"재동기 {stat['resync']:2d}  큐드롭 {qdrop[0]:3d}  "
-                      f"RTF {payload['stat']['rtf']:.2f}", end="", flush=True)
+                      f"RTF {payload['stat']['rtf']:.2f}  도착간격 {gap_ms:5.0f} ms",
+                      end="", flush=True)
     except KeyboardInterrupt:
         pass
     finally:
         stop.set()
         source.close()
+        with trace_lock:
+            if trace[0]:
+                trace[0].close()
+                trace[0] = None
     if link_err:
         # 화면에도 한 번 알리고 나간다 — 브라우저는 SSE 가 끊기면 «다시 붙는
         # 중» 만 보여 주므로, 왜 끊겼는지는 이 한 줄이 아니면 알 수 없다.
@@ -746,7 +893,13 @@ def main() -> int:
     # **손실·lead-off 는 보드 기준 샘플 수다.** 데시메이션을 하면 처리 쪽
     # 샘플 수와 단위가 달라지므로 분모를 섞으면 안 된다.
     el_all = max(time.perf_counter() - t_start, 1e-9)
-    print(f"\n보드 실측 {n_board / el_all:.1f} Hz (설정 {args.board_fs} Hz)")
+    pts = rate_m.pts
+    if len(pts) >= 2 and pts[-1][0] - pts[0][0] > 1.0:
+        # 도착 시각 기준 — 끝에 큐에 남은 미처리분이 안 섞인다 (D-38 R2)
+        print(f"\n보드 실측 {(pts[-1][1] - pts[0][1]) / (pts[-1][0] - pts[0][0]):.1f} Hz "
+              f"(설정 {args.board_fs} Hz, 도착 시각 기준)")
+    else:
+        print(f"\n보드 실측 {n_board / el_all:.1f} Hz (설정 {args.board_fs} Hz)")
     print(f"처리 {n_in} 샘플 ({dur:.1f} s @ {FS:g} Hz) · 보드 {n_board} 샘플 · "
           f"손실 {stat['lost']} ({100*stat['lost']/max(n_board,1):.2f} %) · "
           f"lead-off {stat['leadoff']} ({100*stat['leadoff']/max(n_board,1):.1f} %) · "
