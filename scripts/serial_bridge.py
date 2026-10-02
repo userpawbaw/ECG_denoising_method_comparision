@@ -93,6 +93,35 @@ def build_stream_method(mid: str, axis: str = "d1"):
     return reg_build(mid, use_frontend=False)
 
 
+def parse_hop_for(text: str | None, names: list[str]) -> dict[str, int]:
+    """`--hop-for M05=128,M04=24` -> `{"M05": 128, "M04": 24}`.
+
+    **틀린 값은 그 자리에서 고를 것을 말하고 끝낸다** (§9). 목록에 없는 방법에
+    hop 을 주면 조용히 무시하지 않는다 — 오타면 그 방법은 기본 hop 으로 돌아
+    화면을 멈추게 한다(F-57).
+    """
+    out: dict[str, int] = {}
+    if not text:
+        return out
+    for item in text.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if "=" not in item:
+            raise SystemExit(f"--hop-for 는 «방법=샘플» 이다 (예: M05=128). 받은 것: {item!r}")
+        k, v = (t.strip() for t in item.split("=", 1))
+        if k not in names:
+            raise SystemExit(f"--hop-for {k}: --methods 에 없다. 고를 수 있는 것: {names}")
+        try:
+            hop = int(v)
+        except ValueError:
+            raise SystemExit(f"--hop-for {k}={v}: hop 은 샘플 수(정수)다") from None
+        if not 1 <= hop <= 512:
+            raise SystemExit(f"--hop-for {k}={hop}: 1~512 샘플이어야 한다 (창이 1024 다)")
+        out[k] = hop
+    return out
+
+
 # ------------------------------------------------------------------- 입력원
 class LinkLost(RuntimeError):
     """선이 끊겼다 — 케이블·보드 쪽 문제. **조용히 멈추면 안 된다**(O-34)."""
@@ -532,6 +561,10 @@ def main() -> int:
                     help="front-end 모드. 화면에서 실행 중에도 바꿀 수 있다")
     ap.add_argument("--d", type=int, default=12, help="미래 문맥 [샘플]")
     ap.add_argument("--hop", type=int, default=12, help="추론 간격 [샘플]")
+    ap.add_argument("--hop-for", metavar="M=N[,M=N]",
+        help="방법별 추론 간격 [샘플]. 예: M05=128 — 칼만(M05)은 창 하나가 0.2~0.3 s 라 "
+             "기본 12 로는 못 따라간다(F-57). 이 방법만 지연이 (N + d)/fs 로 늘고, "
+             "화면은 모든 방법을 가장 늦은 것에 맞춰 함께 그린다")
     # **FE 의 블록은 추론과 분리한다.** FE 는 블록당 0.57 ms 라 자주 돌려도
     # 싸고, 블록 영위상의 지연·이음매가 이 값에 걸려 있다 — 교차 페이드가
     # hop 과 같으므로 hop 을 줄이면 **지연이 함께 준다** (F-36). 추론까지 같이
@@ -575,7 +608,7 @@ def main() -> int:
 
     # ---- front-end 는 여기서 **한 번만**. 방법은 한 번 만들어 재사용한다
     # (모델 적재가 비싸다) — 전환 때는 `reset()` 만 부른다.
-    hop_s = args.hop / FS
+    hop_for = parse_hop_for(args.hop_for, names)
     fe_hop_s = max(1, args.fe_hop) / FS
     fe = build_fe(args.fe, FS, hop_s=fe_hop_s)
     procs = {}
@@ -583,7 +616,8 @@ def main() -> int:
         if n in ALWAYS_INTRINSIC:
             continue                       # 출력이 곧 FE 출력이다 (위 주석)
         procs[n] = StreamProcessor(build_stream_method(n, args.axis), fs=FS,
-                                   hop=args.hop, d=args.d, frontend="none")
+                                   hop=hop_for.get(n, args.hop), d=args.d,
+                                   frontend="none")
     if not procs:
         raise SystemExit("처리기가 하나도 없다 — front-end 말고 다른 방법을 하나는 넣을 것")
 
@@ -594,10 +628,18 @@ def main() -> int:
                 [n for n in names if n not in intr and n in procs])
 
     fe_names, proc_names = split_names(args.fe)
-    lat_ms = 1000.0 * next(iter(procs.values())).latency_s
+    # **지연은 가장 늦은 방법의 것이다.** 정렬기가 모든 방법이 다 낸 구간만 내보내므로
+    # 화면은 그 방법을 기다린다 (`--hop-for` 로 hop 이 갈라지면 실제로 다르다).
+    lat_ms = 1000.0 * max(p.latency_s for p in procs.values())
+    # 처리기에 넣는 조각은 **가장 작은 hop** 이하여야 한 번에 창이 둘 이상 안 돈다 (F-56)
+    feed = min(p.hop for p in procs.values())
     warm_s = max(p.warmup_s for p in procs.values())
     print(f"방법 {names} · 지연 {lat_ms:.0f} ms · warm-up {warm_s:.1f} s "
           f"· 추론 {next(iter(procs.values())).runs_per_s:.0f} 회/s")
+    for n, h in hop_for.items():
+        if n in procs:
+            print(f"  {n}: hop {h} 샘플 — 추론 {FS / h:.1f} 회/s · 이 방법의 지연 "
+                  f"{procs[n].latency_s * 1000:.0f} ms")
     if fe_names:
         print(f"  {fe_names} 는 front-end 출력 그대로다 — 필터가 곧 방법이다")
     print(f"  front-end: {args.fe} — {FE_MODES[args.fe]['label']} "
@@ -693,6 +735,7 @@ def main() -> int:
     core = 0.0
     rate_m = RateMeter(10.0)          # 도착 시각 기준 실측 fs (D-38 R2)
     fs_chk = FsCheck(args.board_fs, 10.0)
+    qdrop_seen = 0
     gap_m = GapMeter(2.0)             # 도착 최대 간격 (D-38 R4)
     proc_t = {n: 0.0 for n in procs}  # 처리기별 누적 시간 — 창 하나의 비용을 낸다
     slow_warned = False
@@ -808,7 +851,7 @@ def main() -> int:
             for name in proc_names:
                 p = procs[name]
                 tp = time.perf_counter()
-                ys = [p.push(x[j:j + args.hop]) for j in range(0, x.size, args.hop)]
+                ys = [p.push(x[j:j + feed]) for j in range(0, x.size, feed)]
                 proc_t[name] += time.perf_counter() - tp
                 al.add(name, p.origin, np.concatenate(ys))
             # **못 따라가는 방법을 이름으로 말한다.** 정렬기는 가장 느린 방법을 기다리므로
@@ -826,13 +869,13 @@ def main() -> int:
                     if p.n_runs - r0n < 3:
                         continue
                     per = (proc_t[name] - t0n) / (p.n_runs - r0n)    # 창 하나 [s]
-                    need = per * FS / args.hop                    # 필요한 코어
+                    need = per * FS / p.hop                       # 필요한 코어
                     if need > 0.8:
                         hop_ok = int(np.ceil(per * FS / 0.7 / 16.0) * 16)
                         print(f"\n[warn] {name} 이 못 따라간다 — 창 하나 {per * 1000:.0f} ms × "
-                              f"초당 {FS / args.hop:.0f} 창 = 코어 {need:.1f} 개어치. "
+                              f"초당 {FS / p.hop:.0f} 창 = 코어 {need:.1f} 개어치. "
                               f"화면 전체가 이 방법을 기다리며 멈춘다.\n"
-                              f"  --hop {hop_ok} 로 띄우면 코어 0.7 개 안쪽이다 "
+                              f"  --hop-for {name}={hop_ok} 로 띄우면 코어 0.7 개 안쪽이다 "
                               f"(지연 {(hop_ok + args.d) / FS * 1000:.0f} ms). "
                               "또는 이 방법을 빼고 띄운다.", flush=True)
             for name in fe_names:
@@ -873,6 +916,12 @@ def main() -> int:
             # 뿐이라 구 펌웨어는 안 듣는다 — 에러 없이 시간축만 틀린다.
             # **도착 시각으로 잰다** (D-38 R2) — 처리한 샘플 ÷ 벽시계로 재면 본체가
             # 밀린 만큼 낮게 나와 250 Hz 보드에 36.5 Hz 경고가 떴다 (F-55).
+            # **큐에서 버린 덩어리는 파싱되지 않아 샘플 수에서 빠진다.** 그 창으로
+            # 재면 처리가 밀린 것이 «보드가 느리다» 로 보인다 (M05 hop 12 에서 196 Hz
+            # 경고가 떴다 — F-57). 큐드롭이 난 창은 판정하지 않고 처음부터 다시 센다.
+            if qdrop[0] != qdrop_seen:
+                qdrop_seen = qdrop[0]
+                fs_chk.bad_streak, fs_chk.t_last = 0, now
             meas = fs_chk.step(now, rate_m.rate())
             if meas is not None:
                 print(f"\n[warn] 보드의 실측 샘플률이 {meas:.1f} Hz 다 (도착 시각 기준, 10 s 창 둘) — "

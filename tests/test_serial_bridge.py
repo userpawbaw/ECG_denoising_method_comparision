@@ -310,7 +310,8 @@ def test_bridge_feeds_processors_in_hop_steps():
     """`StreamProcessor` 는 덩어리가 크면 다른 값을 낸다(설계 — 확정된 만큼 바로 낸다).
     브리지는 그래서 hop 씩 나눠 넣는다 (F-56). 그 줄이 빠지면 여기서 걸린다."""
     src = (ROOT / "scripts" / "serial_bridge.py").read_text()
-    assert "p.push(x[j:j + args.hop]) for j in range(0, x.size, args.hop)" in src
+    assert "p.push(x[j:j + feed]) for j in range(0, x.size, feed)" in src
+    assert "feed = min(p.hop for p in procs.values())" in src
 
 
 # ------------------------------- 브리지가 고를 수 있는 딥러닝은 실제로 올라온다 (O-37)
@@ -330,3 +331,14 @@ def test_bridge_names_dl_methods_by_their_own_id():
     m = _mod()
     pytest.importorskip("torch")
     assert m.build_stream_method("M06L6").name == "M06L6"
+
+
+# ------------------------------------------------------- 방법별 hop (--hop-for)
+def test_hop_for_parses_and_refuses_what_it_cannot_use():
+    m = _mod()
+    names = ["M_FE", "M04", "M05"]
+    assert m.parse_hop_for(None, names) == {}
+    assert m.parse_hop_for("M05=128, M04=24", names) == {"M05": 128, "M04": 24}
+    for bad in ("M05", "M06=64", "M05=abc", "M05=0", "M05=2000"):
+        with pytest.raises(SystemExit):
+            m.parse_hop_for(bad, names)
