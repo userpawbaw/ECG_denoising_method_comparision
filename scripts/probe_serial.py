@@ -4,6 +4,7 @@
     python scripts/probe_serial.py --list                  # 어떤 포트가 있나
     python scripts/probe_serial.py --port COM3             # 흔한 baud 를 차례로 시험
     python scripts/probe_serial.py --port COM3 --baud 115200
+    python scripts/probe_serial.py --port COM3 --read-timing   # read() 가 덩어리로 오는가 (F-55)
 
 브리지가 «바이트는 오는데 샘플이 하나도 안 맞는다» 고 할 때, 그 바이트가 **무엇인지**
 (줄 모양 · 칸 수 · baud) 를 한 번에 보여 준다. 브리지의 진단은 «안 맞는다» 까지만 말하고
@@ -123,6 +124,60 @@ def text_hint(a: dict) -> str:
     return "2 칸이지만 둘째 칸이 정수가 아니다. 브리지는 `t_ms,adc` 의 adc 를 정수로 읽는다."
 
 
+# ------------------------------------------------------------------ read() 시간 (F-55)
+def timing_summary(rows: list[tuple[float, int]]) -> dict:
+    """`(걸린 시간 s, 받은 B)` 목록을 요약한다. **빈 read 는 뺀다** — 기다리기만 한 호출이다."""
+    got = [(d, n) for d, n in rows if n > 0]
+    if not got:
+        return dict(calls=0, dur_med=0.0, dur_max=0.0, n_med=0, n_max=0)
+    ds = sorted(d for d, _ in got)
+    ns = sorted(n for _, n in got)
+    return dict(calls=len(got), dur_med=ds[len(ds) // 2], dur_max=ds[-1],
+                n_med=ns[len(ns) // 2], n_max=ns[-1])
+
+
+def timing_verdict(a: dict, size: int = 4096) -> str:
+    """`read(size)` 가 **요청 크기를 다 채울 때까지** 막히는가.
+
+    브리지는 `timeout=0.05` 로 열어 50 ms 마다 돌아오기를 기대한다. 그런데 돌아오는
+    것이 매번 `size` 바이트이고 한 번에 수백 ms 가 걸리면, 화면은 그 간격으로만
+    갱신된다 (250 Hz ASCII 11 B/줄이면 4096 B = 1.49 s).
+    """
+    if a["calls"] == 0:
+        return "none"
+    if a["n_med"] >= size and a["dur_med"] > 0.2:
+        return "blocks"
+    return "ok"
+
+
+def read_timing(serial, port: str, baud: int, seconds: float) -> tuple[list, list]:
+    """**브리지와 같은 방식으로** 포트를 열고, 두 가지 읽기를 차례로 잰다.
+
+    A: `read(4096)` — 지금의 `SerialSource.read`.
+    B: `read(in_waiting or 1)` — 쌓인 만큼만 달라고 한다.
+    """
+    s = serial.Serial(port, baud, timeout=0.05)
+    out = []
+    try:
+        time.sleep(2.0)                     # DTR 리셋 + 부팅 (브리지의 settle_s 와 같다)
+        s.reset_input_buffer()
+        s.write(b"2")                       # 250 Hz
+        s.write(b"a")                       # ASCII
+        time.sleep(0.2)
+        s.reset_input_buffer()
+        for how in ("A", "B"):
+            rows = []
+            t_end = time.perf_counter() + seconds
+            while time.perf_counter() < t_end:
+                t0 = time.perf_counter()
+                d = s.read(4096) if how == "A" else s.read(s.in_waiting or 1)
+                rows.append((time.perf_counter() - t0, len(d)))
+            out.append(rows)
+    finally:
+        s.close()
+    return out[0], out[1]
+
+
 # ------------------------------------------------------------------ 입출력
 def listen(serial, port: str, baud: int, seconds: float) -> bytes:
     """포트를 열어 `seconds` 동안 받은 바이트를 돌려준다."""
@@ -205,6 +260,10 @@ def main() -> int:
                     help="baud 마다 듣는 시간 [s]. 보드가 리셋돼 부팅하는 약 1.5 s 가 들어 있으니 "
                          "3 s 밑으로 줄이지 말 것")
     ap.add_argument("--list", action="store_true", help="열 수 있는 포트를 보여 주고 끝낸다")
+    ap.add_argument("--read-timing", action="store_true",
+                    help="형식 점검 대신 read() 한 번이 몇 ms · 몇 B 인지 잰다. 브리지와 같이 열고 "
+                         "250 Hz ASCII 로 바꾼 뒤 read(4096) 와 read(in_waiting) 를 --seconds 씩. "
+                         "화면이 1~2 초마다만 바뀔 때 쓴다 (F-55). baud 는 --baud 의 첫 값")
     args = ap.parse_args()
 
     try:
@@ -220,6 +279,30 @@ def main() -> int:
             return 0
         print("\n--port 가 필요하다. 예:  python scripts/probe_serial.py --port <위의 이름>")
         return 2
+    if args.read_timing:
+        baud = args.baud[0] if args.baud != COMMON_BAUDS else 115200
+        secs = max(args.seconds, 5.0)
+        print(f"포트 {args.port} · baud {baud} - 보드를 250 Hz ASCII 로 두고 read() 를 잰다 "
+              f"(A {secs:g} s, B {secs:g} s)")
+        try:
+            ra, rb = read_timing(serial, args.port, baud, secs)
+        except serial.SerialException as e:
+            print(f"포트를 못 연다: {e}\n  -> 브리지 · IDE 시리얼 모니터를 닫을 것")
+            return 1
+        sa, sb = timing_summary(ra), timing_summary(rb)
+        for name, sm in (("A read(4096)", sa), ("B read(in_waiting)", sb)):
+            print(f"  {name:<19} 호출 {sm['calls']:5d} · 걸린 시간 중앙 {1000*sm['dur_med']:6.0f} ms "
+                  f"최대 {1000*sm['dur_max']:6.0f} ms · 크기 중앙 {sm['n_med']:5d} B 최대 {sm['n_max']:5d} B")
+        v = timing_verdict(sa)
+        if v == "blocks":
+            print("결론: 이 PC 에서는 read(4096) 가 **4096 B 를 다 채울 때까지 막힌다** "
+                  "(timeout=0.05 가 안 먹는다).\n  화면이 그 간격으로만 갱신되는 원인이다 (F-55).")
+        elif v == "ok":
+            print("결론: read(4096) 가 50 ms 안팎에서 돌아온다 -> 화면이 끊기는 원인은 읽기가 아니다.\n"
+                  "  브라우저 쪽(F-55 측정 절차의 2 단계)을 볼 것.")
+        else:
+            print("결론: 바이트가 안 온다 -> 먼저 이 스크립트를 --read-timing 없이 돌려 형식을 볼 것.")
+        return 0
     if args.seconds < 3.0:
         print("[warn] --seconds 가 3 s 보다 짧으면 부팅과 배너를 놓친다.")
 

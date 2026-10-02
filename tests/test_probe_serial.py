@@ -285,3 +285,24 @@ def test_main_tells_which_ports_exist_when_the_port_cannot_be_opened(monkeypatch
                           "--baud", "115200", "--seconds", "3")
     assert code == 1
     assert "포트를 못 연다" in out and "열 수 있는 포트" in out
+
+
+# ------------------------------------------------------------------ --read-timing (F-55)
+def test_read_timing_says_blocks_when_every_read_fills_the_request():
+    """윈도우 실보드에서 녹화로 잰 모양 — 4096 B 를 1.49 s 마다 (F-55)."""
+    p = _load()
+    s = p.timing_summary([(1.49, 4096)] * 8 + [(0.05, 0)])
+    assert s["n_med"] == 4096 and s["calls"] == 8
+    assert p.timing_verdict(s) == "blocks"
+
+
+def test_read_timing_says_ok_when_reads_return_on_the_timeout():
+    """리눅스 pyserial + 가상 보드에서 잰 모양 — 50 ms · 132 B."""
+    p = _load()
+    s = p.timing_summary([(0.05, 132)] * 50)
+    assert p.timing_verdict(s) == "ok"
+
+
+def test_read_timing_ignores_empty_reads_and_reports_none_without_bytes():
+    p = _load()
+    assert p.timing_verdict(p.timing_summary([(0.05, 0)] * 10)) == "none"

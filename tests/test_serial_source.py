@@ -449,3 +449,36 @@ def test_windows_without_attach_says_to_install_com0com():
     finally:
         os.openpty = real
 
+
+
+# ----------------------------------------------- 읽기가 덩어리로 막히지 않는가 (F-55)
+def _fill_until_full(read):
+    """**윈도우 실보드에서 관측한 의미** — `read(n)` 이 n 바이트를 다 채울 때까지 막힌다.
+
+    리눅스 pyserial 은 `timeout` 을 마감으로 지켜 50 ms 에 돌아오므로, 이 의미는
+    가상 포트로는 저절로 안 나온다. 그래서 여기서 덮어씌운다 (F-55).
+    """
+    def blocking(size=1):
+        out = bytearray()
+        while len(out) < size:
+            out += read(size - len(out))
+        return bytes(out)
+    return blocking
+
+
+@pytest.mark.xfail(strict=True, reason="F-55: SerialSource.read 가 아직 read(4096) 다. "
+                                       "D-38 의 R1 을 넣으면 통과한다 — 그때 이 표시를 지운다")
+def test_a_read_returns_promptly_even_if_the_driver_waits_for_a_full_buffer(board):
+    """화면이 1.5 초마다만 바뀌던 실보드 증상 (F-55). 250 Hz ASCII 면 4096 B 는 1.5~1.6 s 다."""
+    m = _load("serial_bridge")
+    src = m.SerialSource(board.port, 115200, 250, False, settle_s=0.3)
+    try:
+        src.ser.read = _fill_until_full(src.ser.read)
+        time.sleep(0.1)                      # 바이트가 조금은 쌓여 있게
+        t0 = time.perf_counter()
+        d = src.read()
+        dt = time.perf_counter() - t0
+        assert d, "아무것도 못 받았다"
+        assert dt < 0.2, f"read() 한 번이 {dt * 1000:.0f} ms 막혔다 ({len(d)} B) — 화면이 그 간격으로만 바뀐다"
+    finally:
+        src.close()
