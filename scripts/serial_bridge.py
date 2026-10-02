@@ -67,20 +67,28 @@ ALWAYS_INTRINSIC = {"M_FE"}
 
 
 # --------------------------------------------------------------------- 방법
+# 실시간 브리지가 아는 딥러닝 방법과 그 체크포인트 (`results/<axis>/<tag>/best.pt`)
+DL_TAGS = {"M06": "m06_l1", "M06L6": "m06_l6",
+           "M08": "m08_l1", "M08L6": "m08_l6", "M09": "m09_l1"}
+
+
 def build_stream_method(mid: str, axis: str = "d1"):
     """**front-end 를 끈 채로** 방법을 만든다.
 
     `scripts/verify_stream_processor.py` 의 `build_nofe` 와 같은 규칙이다 —
     실시간 경로에서 FE 는 스트림 앞단에서 한 번만 돈다(F-25).
     """
-    if mid.startswith("M06") or mid.startswith("M08") or mid.startswith("M09"):
+    if mid in DL_TAGS:
         from ecgdn.methods.dl_wrapper import DLDenoiser
-        tag = {"M06": "m06_l1", "M06L6": "m06_l6",
-               "M08": "m08_l1", "M08L6": "m08_l6", "M09": "m09_l1"}[mid]
-        ck = ROOT / "results" / axis / tag / "best.pt"
+        ck = ROOT / "results" / axis / DL_TAGS[mid] / "best.pt"
         if not ck.exists():
             raise FileNotFoundError(f"{mid}: 체크포인트가 없다 -> {ck}")
-        return DLDenoiser(ckpt=ck, name=mid.rstrip("L6") or "M06", frontend=False)
+        # 이름은 표시에만 쓴다. 전에는 `mid.rstrip("L6")` 이라 문자 집합으로 깎여
+        # `M06` 도 `M06L6` 도 `M0` 이 됐다.
+        return DLDenoiser(ckpt=ck, name=mid, frontend=False)
+    if mid in ("M07", "M10"):
+        raise SystemExit(f"{mid} 는 실시간 브리지에 아직 안 이어 놨다 (체크포인트는 있다). "
+                         f"딥러닝은 {sorted(DL_TAGS)} 중에서 고른다.")
     from ecgdn.methods import build as reg_build
     return reg_build(mid, use_frontend=False)
 
@@ -675,7 +683,7 @@ def main() -> int:
     raw_base = 0                      # raw[0] 의 절대 인덱스
     stat = dict(lost=0, leadoff=0, bad=0, resync=0)
     t_frame = time.perf_counter()
-    t_start = t_diag = t_frame
+    t_start = t_diag = t_pub = t_frame
     cpu = 0.0
     n_in = 0                          # 처리기에 들어간 250 Hz 샘플 (= FE 가 낸 수)
     n_input = 0                       # front-end 에 들어간 250 Hz 샘플. `n_in` 과
@@ -686,6 +694,9 @@ def main() -> int:
     rate_m = RateMeter(10.0)          # 도착 시각 기준 실측 fs (D-38 R2)
     fs_chk = FsCheck(args.board_fs, 10.0)
     gap_m = GapMeter(2.0)             # 도착 최대 간격 (D-38 R4)
+    proc_t = {n: 0.0 for n in procs}  # 처리기별 누적 시간 — 창 하나의 비용을 낸다
+    slow_warned = False
+    slow_base: dict | None = None     # warm-up 뒤 기준점 — 첫 호출의 준비 비용을 뺀다
     t_nodata = 0.0                    # «아무것도 안 나온다» 진단을 낸 시각
     try:
         while not stop.is_set():
@@ -796,8 +807,34 @@ def main() -> int:
             # 화면의 값이 같게 하려고, 1 샘플씩 넣은 것과 같은 단위로 고정한다.
             for name in proc_names:
                 p = procs[name]
+                tp = time.perf_counter()
                 ys = [p.push(x[j:j + args.hop]) for j in range(0, x.size, args.hop)]
+                proc_t[name] += time.perf_counter() - tp
                 al.add(name, p.origin, np.concatenate(ys))
+            # **못 따라가는 방법을 이름으로 말한다.** 정렬기는 가장 느린 방법을 기다리므로
+            # 하나만 밀려도 화면 전체가 멈춘다 — 그런데 RTF 는 1.00 으로 붙어 «왜» 를
+            # 안 말한다. M05(칼만 평활)는 창 하나가 약 0.2 s 라 hop 12(초당 21 창)
+            # 에서 코어 4 개어치가 든다 (F-57).
+            t_rel = time.perf_counter() - t_start
+            if slow_base is None and t_rel > warm_s + 1.0:
+                slow_base = {n: (proc_t[n], procs[n].n_runs) for n in procs}
+            if not slow_warned and slow_base is not None and t_rel > warm_s + 4.0:
+                slow_warned = True
+                for name in proc_names:
+                    p = procs[name]
+                    t0n, r0n = slow_base.get(name, (0.0, 0))
+                    if p.n_runs - r0n < 3:
+                        continue
+                    per = (proc_t[name] - t0n) / (p.n_runs - r0n)    # 창 하나 [s]
+                    need = per * FS / args.hop                    # 필요한 코어
+                    if need > 0.8:
+                        hop_ok = int(np.ceil(per * FS / 0.7 / 16.0) * 16)
+                        print(f"\n[warn] {name} 이 못 따라간다 — 창 하나 {per * 1000:.0f} ms × "
+                              f"초당 {FS / args.hop:.0f} 창 = 코어 {need:.1f} 개어치. "
+                              f"화면 전체가 이 방법을 기다리며 멈춘다.\n"
+                              f"  --hop {hop_ok} 로 띄우면 코어 0.7 개 안쪽이다 "
+                              f"(지연 {(hop_ok + args.d) / FS * 1000:.0f} ms). "
+                              "또는 이 방법을 빼고 띄운다.", flush=True)
             for name in fe_names:
                 al.add(name, 0, x)          # FE 출력은 지연 없이 바로 확정된다
             cpu += time.perf_counter() - t0
@@ -809,8 +846,12 @@ def main() -> int:
             now = time.perf_counter()
             if now - t_frame < 1.0 / args.fps:
                 continue
-            el = now - t_frame
             t_frame = now
+            # **RTF 의 벽시계는 «지난 publish 부터» 다.** `cpu` 는 출력이 없는 프레임
+            # 에서도 쌓이고 publish 때만 0 이 되므로, 분모도 같은 구간이어야 한다.
+            # 전에는 프레임 간격(40 ms)을 썼다 — hop 이 커서 출력 없는 프레임이 많으면
+            # RTF 가 부풀었다 (M05 hop 128: 단독 0.30 인데 0.85 로 보였다 — F-57).
+            el = now - t_pub
             idx, outs = al.take()
             if not outs:
                 continue
@@ -844,6 +885,7 @@ def main() -> int:
                 rtf_core += core
                 rtf_wall += el
             cpu = core = 0.0
+            t_pub = now
             hub.publish(payload)
             if trace[0]:
                 tr(f"P {now:.4f} {idx} {k} {gap_ms:.0f}")

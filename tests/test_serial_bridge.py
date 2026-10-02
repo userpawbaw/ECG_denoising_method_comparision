@@ -311,3 +311,22 @@ def test_bridge_feeds_processors_in_hop_steps():
     브리지는 그래서 hop 씩 나눠 넣는다 (F-56). 그 줄이 빠지면 여기서 걸린다."""
     src = (ROOT / "scripts" / "serial_bridge.py").read_text()
     assert "p.push(x[j:j + args.hop]) for j in range(0, x.size, args.hop)" in src
+
+
+# ------------------------------- 브리지가 고를 수 있는 딥러닝은 실제로 올라온다 (O-37)
+def test_every_bridge_dl_checkpoint_loads_strictly():
+    """`n_blocks` 를 넣으며 키가 `enc.0.c1` -> `enc.0.0.c1` 로 바뀌어 옛 `best.pt` 가 전부
+    적재에서 죽었다. 학습 테스트는 새로 만든 모델만 저장·적재하므로 못 잡았다 (O-37)."""
+    pytest.importorskip("torch")
+    from ecgdn.methods.dl_wrapper import load_checkpoint
+    m = _mod()
+    for mid, tag in m.DL_TAGS.items():
+        ck = ROOT / "results" / "d1" / tag / "best.pt"
+        assert ck.exists(), f"{mid}: {ck} 가 없다"
+        load_checkpoint(ck)                     # strict — 키가 하나라도 어긋나면 죽는다
+
+
+def test_bridge_names_dl_methods_by_their_own_id():
+    m = _mod()
+    pytest.importorskip("torch")
+    assert m.build_stream_method("M06L6").name == "M06L6"

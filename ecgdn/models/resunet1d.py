@@ -57,6 +57,11 @@ class ResUNet1D(nn.Module):
             self.up.append(Up(chs[i], chs[i - 1], k))
             self.dec.append(self._stack(chs[i - 1], k, n_blocks, cond_dim,
                                         cin=2 * chs[i - 1]))
+        # **옛 체크포인트를 읽는다.** `n_blocks` 를 넣으며(e78cdea) 인코더를 늘
+        # `Sequential` 로 감싸서 키가 `enc.0.c1` -> `enc.0.0.c1` 로 바뀌었다. 그 전에
+        # 학습한 `best.pt`(M06 · M08 전부)가 **적재 단계에서 죽었고**, 실시간 브리지
+        # 에서 처음 드러났다 (O-37). 구조는 같으므로 이름만 옮긴다.
+        self._register_load_state_dict_pre_hook(self._upgrade_legacy_keys)
         self.head = nn.Conv1d(chs[0], out_ch, 1)
         nn.init.zeros_(self.head.weight)
         nn.init.zeros_(self.head.bias)      # 초기 출력 = 0 -> 초기 x̂ = y (identity 근방에서 시작)
@@ -67,6 +72,16 @@ class ResUNet1D(nn.Module):
         self._rf = receptive_field(
             [k_stem] + per_level_k * depth + [k] * (2 * n_bottleneck),
             [1] + per_level_s * depth + [1] * (2 * n_bottleneck))
+
+    def _upgrade_legacy_keys(self, state_dict, prefix, *_args) -> None:
+        """`{prefix}enc.{i}.c1.weight` (블록 하나를 바로 둔 옛 모양) -> `{prefix}enc.{i}.0.c1.weight`."""
+        if self.cond or self.n_blocks != 1:
+            return                                  # 옛 모양은 이 둘에서만 나온다
+        head = prefix + "enc."
+        for key in [k for k in state_dict if k.startswith(head)]:
+            rest = key[len(head):].split(".")
+            if len(rest) >= 3 and rest[0].isdigit() and not rest[1].isdigit():
+                state_dict[head + rest[0] + ".0." + ".".join(rest[1:])] = state_dict.pop(key)
 
     def _stack(self, ch: int, k: int, n: int, cond_dim: int,
                cin: int | None = None) -> nn.Module:

@@ -1398,3 +1398,31 @@ ps -eo pid,args | grep -F "serial_bridg[e].py" | awk '{print $1}' | xargs -r kil
 **남는 위험** — 이것은 저장소 안 도구가 아니라 **손으로 치는 한 줄**이라
 테스트로 막을 수 없다. 다섯 번 다 같은 자리다. 값싼 방어는 **띄울 때 PID 를
 적어 두는 것** 하나뿐이고, 그것을 안 해서 매번 찾다가 당했다.
+
+---
+
+## O-37. 딥러닝 체크포인트가 **3 주 동안 전부 안 올라갔다** — 모델 코드가 키 이름을 바꿨다
+
+| 시점 | 잃은 것 | 재발 방지 |
+|---|---|---|
+| 사용자가 실보드 브리지에서 `--methods ...,M06` 을 처음 고르고 | 시연 준비 시간. 09-13 이후 `results/d1` 의 `best.pt` 를 읽는 모든 경로(브리지 · `measure_stream_latency.py` · 재평가) | `tests/test_serial_bridge.py::test_every_bridge_dl_checkpoint_loads_strictly` — 브리지가 고를 수 있는 다섯 체크포인트를 **엄격 적재**한다 |
+
+**증상** — 사용자 PC 에서는 torch DLL 오류(WinError 1114)가 먼저 났다. 그것은
+환경 문제라 따로다. 여기서 같은 명령을 돌리니 그다음 단계에서 M06 · M06L6 · M08 ·
+M08L6 이 `load_state_dict` 로 죽었다 — `Missing key(s): enc.0.0.c1.weight …
+Unexpected key(s): enc.0.c1.weight …` `[측정]`. M09 만 올라왔다(다른 구조).
+
+**원인** — `n_blocks`(해상도당 ResBlock 수, D-28 5 번)를 넣은 커밋 e78cdea(09-13)가
+인코더 단을 **늘** `nn.Sequential` 로 감쌌다. 그래서 블록이 하나여도 키에 `.0` 이 끼었다.
+그 커밋의 주석은 「끄면 종래와 state_dict 키까지 같다」고 적었지만, 그것은 **조건화**
+(`cond`)에 대한 말이었고 `n_blocks=1` 에는 맞지 않았다. 학습 테스트는 새로 만든 모델을
+저장했다 다시 읽기만 하므로, **옛 체크포인트를 읽는 검사가 하나도 없었다.**
+
+**조치** — `ResUNet1D` 에 적재 전 훅(`_upgrade_legacy_keys`)을 달아 옛 이름
+`enc.{i}.c1` 을 `enc.{i}.0.c1` 로 옮긴다. 구조는 같으므로 이름만 바뀐다. M08 의
+`backbone` 에도 같은 훅이 걸린다. 다섯 체크포인트가 strict 로 올라가고 실시간으로
+돈다(RTF 0.24~0.28, `--replay synth`) `[측정]`.
+
+**같이 고친 것** — 브리지가 딥러닝 이름을 `mid.rstrip("L6")` 로 만들어 `M06` 도
+`M06L6` 도 `M0` 이 됐다(`rstrip` 은 접미사가 아니라 문자 집합을 깎는다). M07 · M10 은
+체크포인트가 있지만 브리지에 안 이어 놨다 — 이제 KeyError 대신 그렇다고 말한다.
