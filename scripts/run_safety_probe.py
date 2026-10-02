@@ -119,8 +119,10 @@ def probe_p3(items, methods, snr_db, banks, out_rows):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("-c", "--config", default="configs/exp_e.yaml")
-    ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("-c", "--config", default="configs/exp_e.yaml",
+                    help="탐침 설정 YAML (configs/)")
+    ap.add_argument("--limit", type=int, default=None,
+        help="앞에서 N 개만 돌린다 (빠른 확인용)")
     ap.add_argument("--source", default=None, choices=("auto", "synthetic", "mitdb"),
                     help="config 의 data.source 를 덮어쓴다")
     args = ap.parse_args()

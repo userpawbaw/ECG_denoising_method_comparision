@@ -20,15 +20,21 @@ from ecgdn.utils import ensure_dir
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", required=True, help="예: /dev/ttyACM0, COM3")
-    ap.add_argument("--baud", type=int, default=115200)
-    ap.add_argument("--session", required=True, choices=sorted(SESSIONS))
+    ap.add_argument("--baud", type=int, default=115200,
+        help="시리얼 속도. 스케치의 SERIAL_BAUD 와 맞춘다")
+    ap.add_argument("--session", required=True, choices=sorted(SESSIONS),
+        help="기록 세션 이름. CSV 헤더와 파일명에 들어간다")
     ap.add_argument("--dur", type=float, default=300.0, help="기록 길이 [s]")
     ap.add_argument("--fs", type=float, required=True, help="스케치의 FS_HZ 와 같은 값")
-    ap.add_argument("--adc-bits", type=int, default=10)
-    ap.add_argument("--vref", type=float, default=5.0)
+    ap.add_argument("--adc-bits", type=int, default=10,
+        help="ADC 분해능 [bit]. CSV 헤더에 적힌다")
+    ap.add_argument("--vref", type=float, default=5.0,
+        help="ADC 기준 전압 [V]. CSV 헤더에 적힌다")
     ap.add_argument("--gain", type=float, default=1100.0, help="아날로그 프런트엔드 총 이득")
-    ap.add_argument("--note", default="")
-    ap.add_argument("--out", default="data/arduino")
+    ap.add_argument("--note", default="",
+        help="CSV 헤더에 남길 메모 (자세·상태 등)")
+    ap.add_argument("--out", default="data/arduino",
+        help="CSV 를 둘 곳. **data/arduino/ 는 git 에 넣지 않는다**")
     args = ap.parse_args()
 
     try:

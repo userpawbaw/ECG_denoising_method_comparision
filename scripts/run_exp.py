@@ -176,9 +176,11 @@ def save_partial(out: Path, fp: str, new_rows: list[dict], upto: int) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("-c", "--config", required=True)
+    ap.add_argument("-c", "--config", required=True,
+                    help="실험 설정 YAML (configs/)")
     ap.add_argument("--limit", type=int, default=None, help="평가 항목 수 상한 (연습용)")
-    ap.add_argument("--out", default=None)
+    ap.add_argument("--out", default=None,
+        help="산출물을 둘 곳")
     ap.add_argument("--source", default=None, choices=("auto", "synthetic", "mitdb"),
                     help="config 의 data.source 를 덮어쓴다. 재현성을 위해 명시를 권한다")
     args = ap.parse_args()

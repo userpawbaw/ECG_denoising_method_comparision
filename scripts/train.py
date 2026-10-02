@@ -56,12 +56,18 @@ def build_datasets(cfg: dict):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("-c", "--config", required=True)
-    ap.add_argument("--epochs", type=int, default=None)
-    ap.add_argument("--out", default=None)
-    ap.add_argument("--device", default=None)
-    ap.add_argument("--threads", type=int, default=None)
-    ap.add_argument("--workers", type=int, default=0)
+    ap.add_argument("-c", "--config", required=True,
+                    help="학습 설정 YAML (configs/). **어느 축인지가 여기서 정해진다**")
+    ap.add_argument("--epochs", type=int, default=None,
+        help="설정의 epoch 수를 덮어쓴다")
+    ap.add_argument("--out", default=None,
+        help="체크포인트와 학습 이력을 둘 곳")
+    ap.add_argument("--device", default=None,
+        help="cpu · cuda. 없으면 있는 것을 고른다")
+    ap.add_argument("--threads", type=int, default=None,
+        help="torch 스레드 수. 0 이면 torch 기본값")
+    ap.add_argument("--workers", type=int, default=0,
+        help="DataLoader 워커 수")
     ap.add_argument("--source", default=None, choices=("auto", "synthetic", "mitdb"),
                     help="config 의 data.source 를 덮어쓴다. 재현성을 위해 명시를 권한다")
     ap.add_argument("--resume", action="store_true",

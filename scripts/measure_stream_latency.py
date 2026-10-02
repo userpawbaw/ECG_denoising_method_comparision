@@ -83,9 +83,12 @@ def curve(axis: str, src: str, ckpt: str, name: str, *, n=512, seed=0, half=8):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--axis", choices=("d0", "d1", "both"), default="both")
-    ap.add_argument("--seeds", type=int, default=3)
-    ap.add_argument("--out", default="results/stream_latency.json")
+    ap.add_argument("--axis", choices=("d0", "d1", "both"), default="both",
+        help="데이터 축 (d0 = 합성 · d1 = MIT-BIH). 산출물 경로가 갈린다")
+    ap.add_argument("--seeds", type=int, default=3,
+        help="seed 를 몇 개 쓸 것인가")
+    ap.add_argument("--out", default="results/stream_latency.json",
+        help="산출물을 둘 곳")
     a = ap.parse_args()
 
     axes = [("d0", "synthetic"), ("d1", "mitdb")]

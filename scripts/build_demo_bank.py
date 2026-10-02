@@ -415,12 +415,14 @@ def build_scene(scene, tag, src, banks, methods, record, sel) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--axis", nargs="*", default=["d0", "d1"], choices=("d0", "d1"))
+    ap.add_argument("--axis", nargs="*", default=["d0", "d1"], choices=("d0", "d1"),
+        help="데이터 축 (d0 = 합성 · d1 = MIT-BIH). 산출물 경로가 갈린다")
     ap.add_argument("--conds", nargs="*", default=None,
                     help="잡음 종류 부분집합 (확인용)")
     ap.add_argument("--snrs", nargs="*", type=float, default=None,
                     help="입력 SNR 부분집합 (확인용)")
-    ap.add_argument("--out", default="demo/demo_bank.js")
+    ap.add_argument("--out", default="demo/demo_bank.js",
+        help="산출물을 둘 곳")
     args = ap.parse_args()
 
     want = [s for s in scene_specs()

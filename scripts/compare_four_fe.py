@@ -139,7 +139,8 @@ def figure(tag: str, out: Path, seconds: float = 30.0, show_s: float = 6.0,
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--axis", nargs="*", default=["d1", "d0"])
+    ap.add_argument("--axis", nargs="*", default=["d1", "d0"],
+        help="데이터 축 (d0 = 합성 · d1 = MIT-BIH). 산출물 경로가 갈린다")
     ap.add_argument("--recenter", choices=("none", "dc", "both"), default="both",
                     help="none=손대지 않음, dc=직류 1 개만 뺌, both=둘 다 만듦")
     a = ap.parse_args()

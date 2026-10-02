@@ -604,7 +604,8 @@ def write_index(made: list[str]) -> Path:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", nargs="*", default=None, choices=sorted(CARDS))
+    ap.add_argument("--only", nargs="*", default=None, choices=sorted(CARDS),
+        help="이 이름의 카드만 다시 만든다")
     a = ap.parse_args()
     made = []
     for k in (a.only or sorted(CARDS)):
