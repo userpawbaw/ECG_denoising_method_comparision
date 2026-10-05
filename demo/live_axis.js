@@ -151,10 +151,65 @@
     return { m: m, peak: Math.min(mx, (bin + 1) * W * mad * SPIKE), n: n };
   }
 
+  // ------------------------------------------------- 스윕 표현 (D-41, v2.2.1 규약)
+  /* **지우기 경계** — ECG Signal Studio v2.2.1 `engine.ts visiblePoints` 의 값 그대로.
+   * 커서 앞 GAP_S 는 비우고, 그 앞 FADE_S 동안 옛 주기가 투명도 0 -> 1 로 돌아온다.
+   * 사용자가 이미 만족한 표현이다 (그 저장소 docs/22 §1). */
+  var SWEEP_GAP_S = 0.12, SWEEP_FADE_S = 0.08;
+
+  /** 나이 `age`(= head - 절대 인덱스, 0 이 가장 새 것)인 샘플의 투명도. 스윕 전용. */
+  function sweepAlpha(age, cap, fs, soft) {
+    var d = cap - age;                       // 커서 앞으로 몇 칸 떨어졌나 (1..cap)
+    var gap = SWEEP_GAP_S * fs, fade = SWEEP_FADE_S * fs;
+    if (d > 0 && d < gap) return 0;
+    if (d >= gap && d < gap + fade) return soft ? (d - gap) / fade : 0;
+    return 1;
+  }
+
+  /* **선단 밝기 (잔광)** — 그 저장소 docs/22 UI-02 의 시작값: 폭은 그림 너비의 2~3 %
+   * (24~48 px), 선단에서 원색에 흰색 25~40 %. 넓은 흰 띠 · halo 없이 가는 선 그대로. */
+  var GLOW_FRAC = 0.025, GLOW_MIN_PX = 24, GLOW_MAX_PX = 48, GLOW_MAX = 0.35;
+
+  /** 선단 밝기가 걸리는 폭 [샘플]. 그림 너비 `pw`[px] 에 `cap` 샘플이 펼쳐져 있다. */
+  function glowWidth(pw, cap) {
+    if (!(pw > 0)) return 0;
+    var px = Math.min(GLOW_MAX_PX, Math.max(GLOW_MIN_PX, GLOW_FRAC * pw));
+    return Math.max(1, Math.round(px / pw * cap));
+  }
+
+  /** 나이 `age` 인 샘플에 섞을 흰색 비율 (0..GLOW_MAX).
+   *
+   *  **위치가 아니라 나이로 정한다.** 위치로 정하면 wrap 때 커서 근처의 옛 주기가
+   *  새 표본처럼 빛난다. 그리고 **현재 주기 안만** 빛난다 — `pos`(커서가 이번 주기에서
+   *  간 칸 수)보다 오래된 것은 오른쪽 끝으로 넘어간 꼬리라, 그것까지 빛나면 화면
+   *  양 끝에 빛이 갈라져 보인다. */
+  function glowMix(age, width, pos) {
+    if (!(width > 0) || age < 0 || age >= width || age > pos) return 0;
+    var u = 1 - age / width;
+    return GLOW_MAX * u * u;
+  }
+
+  /** 스트림이 멈추면 장식을 정리한다 — 0.3 s 까지 그대로, 그 뒤 0.3 s 동안 0 으로. */
+  function glowLive(sinceMs) {
+    if (!(sinceMs > 300)) return 1;
+    return Math.max(0, 1 - (sinceMs - 300) / 300);
+  }
+
+  /** `#rrggbb` 에 흰색을 `f` 만큼 섞은 `rgb(...)`. */
+  function mixWhite(hex, f) {
+    var n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    f = Math.max(0, Math.min(1, f));
+    return "rgb(" + Math.round(r + (255 - r) * f) + "," + Math.round(g + (255 - g) * f) + ","
+      + Math.round(b + (255 - b) * f) + ")";
+  }
+
   var api = {
     STEPS: STEPS, STEP_MAX: STEP_MAX, LO: LO, HI: HI, AIM: AIM, HOLD_MS: HOLD_MS,
     ladder: ladder, makeGain: makeGain, makeCenter: makeCenter,
     windowStart: windowStart, absAt: absAt, have: have, scan: scan, SPIKE: SPIKE,
+    SWEEP_GAP_S: SWEEP_GAP_S, SWEEP_FADE_S: SWEEP_FADE_S, sweepAlpha: sweepAlpha,
+    GLOW_MAX: GLOW_MAX, glowWidth: glowWidth, glowMix: glowMix, glowLive: glowLive,
+    mixWhite: mixWhite,
   };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.LiveAxis = api;

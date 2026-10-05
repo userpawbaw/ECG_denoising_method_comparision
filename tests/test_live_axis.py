@@ -269,3 +269,46 @@ def test_gain_waits_for_something_to_measure():
     assert r["empty"] == 0, "잴 것이 없는데 이득을 잡았다"
     assert r["firstReal"] > 0.4, "첫 표본이 오면 **기다리지 않고** 바로 잡아야 한다"
     assert r["changes"] == 1
+
+
+# ------------------------------------------------- 스윕 표현 (D-41, v2.2.1 규약)
+def test_sweep_erase_boundary_matches_signal_studio_v221():
+    """v2.2.1 `engine.ts`: d(커서 앞 칸) 가 gap(0.12 s) 안이면 0, 다음 fade(0.08 s) 동안 0 -> 1."""
+    r = run_js("""
+      const fs = 250, cap = 2500, gap = 0.12 * fs, fade = 0.08 * fs;
+      const at = d => AX.sweepAlpha(cap - d, cap, fs, true);
+      console.log(JSON.stringify({
+        newest: AX.sweepAlpha(0, cap, fs, true),
+        inGap: at(gap - 1), fadeMid: at(gap + fade / 2), after: at(gap + fade + 1),
+        hard: AX.sweepAlpha(cap - (gap + fade / 2), cap, fs, false)}));""")
+    assert r["newest"] == 1 and r["inGap"] == 0 and r["after"] == 1
+    assert abs(r["fadeMid"] - 0.5) < 1e-9
+    assert r["hard"] == 0, "«경계 부드럽게» 를 끄면 fade 구간도 비어야 한다"
+
+
+def test_leading_glow_follows_age_and_never_lights_the_old_cycle():
+    """선단 밝기는 **나이**로 정한다 — 옛 주기(나이 ≈ cap)는 어떤 위치에서도 빛나지 않는다."""
+    r = run_js("""
+      const cap = 2500, w = AX.glowWidth(1300, cap);
+      console.log(JSON.stringify({
+        w, wSmall: AX.glowWidth(400, cap), wBig: AX.glowWidth(4000, cap),
+        head: AX.glowMix(0, w, 500), mid: AX.glowMix(Math.floor(w / 2), w, 500),
+        edge: AX.glowMix(w, w, 500), old: AX.glowMix(cap - 5, w, 500),
+        wrapped: AX.glowMix(10, w, 3), max: AX.GLOW_MAX}));""")
+    js_round = lambda v: int(v + 0.5)                           # JS Math.round (파이썬 round 는 짝수로)
+    assert r["w"] == js_round(32.5 / 1300 * 2500)               # 2.5 % × 1300 px = 32.5 px
+    assert r["wSmall"] == js_round(24 / 400 * 2500)             # 24 px 하한
+    assert r["wBig"] == js_round(48 / 4000 * 2500)              # 48 px 상한
+    assert r["head"] == r["max"] and 0.25 <= r["max"] <= 0.40   # docs/22: 흰색 25~40 %
+    assert 0 < r["mid"] < r["head"]
+    assert r["edge"] == 0 and r["old"] == 0
+    assert r["wrapped"] == 0, "wrap 직후 오른쪽 끝으로 넘어간 꼬리는 빛나지 않는다"
+
+
+def test_glow_clears_when_the_stream_stops_and_colour_mix_is_exact():
+    r = run_js("""
+      console.log(JSON.stringify({
+        live: AX.glowLive(100), half: AX.glowLive(450), gone: AX.glowLive(700),
+        mix: AX.mixWhite('#000000', 0.4), none: AX.mixWhite('#67e7c3', 0)}));""")
+    assert r["live"] == 1 and abs(r["half"] - 0.5) < 1e-9 and r["gone"] == 0
+    assert r["mix"] == "rgb(102,102,102)" and r["none"] == "rgb(103,231,195)"

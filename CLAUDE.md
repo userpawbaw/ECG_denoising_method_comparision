@@ -52,4 +52,4 @@ ECG 잡음 제거 기법 비교(졸업과제). 규약 원문은 `docs/`, **이 �
 | 발견 · 결정 · 사고 기록 | `docs/20_findings.md` · `21_decisions.md` · `22_incidents.md` |
 | 실험 절차서 / 설계 근거 | `docs/02_procedure.md` · `01_design.md` |
 | **실행 옵션 전부** (자동 생성) | `docs/24_cli_reference.md` |
-| 현재 상태 · 인수인계 | `docs/99_status.md` |
+| 현재 상태 · 인수인계 | `docs/99_status.md` · 실시간 시연은 `docs/98_realtime_handoff.md` |

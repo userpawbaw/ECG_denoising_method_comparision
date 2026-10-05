@@ -24,7 +24,7 @@
 | | `11_loss_by_noise`\* · `12_causal_fe`\* · `13_lookahead_fe`\* · `14_median_vs_zerophase`\* · `15_reference_and_training` · `16_fe_metric_audit` | EXP-G, 실시간 front-end 후보 네 판, 참조 정의 검토, 채점 기준 감사 |
 | **산출물·운영** | `90_results_d0`\* · `90_results_d1`\* · `92_axis_gap`\* | **모든 방법 × 모든 지표**의 자동 생성 결과표 (본문은 여기서 골라 싣는다) |
 | | `30_realtime_demo` · `31_demo_design_review` · `32_metric_cards`\* · `33_card_design_samples` · `93_slides`\* · `34_visual_plan` | 시연 화면 · 지표 카드 · 발표 그림 — 8 장에 정리 |
-| | `08_acquisition` · `09_data_upload` · `35_external_compute` · `99_status` | 실측 수집 절차 · PhysioNet 데이터 공유 · **외부 GPU 에서 산포를 재는 판의 실행 안내**(F-40 · 5.10.7) · **현재 상태와 인수인계** |
+| | `08_acquisition` · `09_data_upload` · `35_external_compute` · `99_status` · `98_realtime_handoff` | 실측 수집 절차 · PhysioNet 데이터 공유 · **외부 GPU 에서 산포를 재는 판의 실행 안내**(F-40 · 5.10.7) · **현재 상태와 인수인계** · **실시간 시연(모드 A) 실보드 투입 이후의 인수인계**(F-55~57 · D-38~41 · O-37~38) |
 
 **모르는 용어를 만나면 `docs/18_glossary.md`** 를 먼저 본다 — 지표 정의, 약어,
 그리고 「이 프로젝트에서만 다르게 쓰는 말」이 한곳에 있다.

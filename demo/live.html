@@ -1,6 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>ECG denoising — 실측 (모드 A)</title>
+<link rel="icon" href="data:,">
 <!--
   모드 A(실측) 화면. 30_realtime_demo.md 6.3.
 
@@ -13,59 +14,91 @@
   **file:// 로는 안 열린다** — 브리지가 이 디렉터리를 함께 서빙한다.
 -->
 <style>
-  :root{ --bg:#fff; --fg:#1b1b1b; --muted:#6b6b6b; --line:#e2e2e2;
-         --accent:#184f95; --warn:#9a3412; --bad:#d03b3b; --raw:#8a8a8a; }
+  /* **ECG Signal Studio v2.2.1 의 표시 규약** (D-41). 값의 출처는
+   * userpawbaw/ecg-gui-design-review `prototype/v2/src/style.css` · `Plot.tsx`. */
+  :root{ --bg:#f4f5f4; --fg:#172c37; --muted:#61766d; --line:#d9e2df;
+         --primary:#067d72; --panel:#112b39; --panel-2:#0d2532; --panel-line:#304955;
+         --ink:#c6d9df; --ink-muted:#acc2cd; --warn:#8f693a; --bad:#d65b4a; }
   *{box-sizing:border-box}
-  body{margin:0;font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",
-       "Noto Sans KR",sans-serif;color:var(--fg);background:var(--bg)}
-  header{padding:18px 22px 12px;border-bottom:1px solid var(--line)}
-  h1{margin:0 0 4px;font-size:17px;letter-spacing:-.01em}
-  .sub{color:var(--muted);font-size:12.5px}
-  .note{margin:12px 22px 0;padding:10px 13px;border-left:3px solid var(--warn);
-        background:#fdf6f2;font-size:12.5px}
-  .note b{font-weight:600}
-  .bar{display:flex;flex-wrap:wrap;gap:22px;padding:13px 22px;
-       border-bottom:1px solid var(--line);align-items:center;
-       font-variant-numeric:tabular-nums;font-size:12.5px}
-  .bar .k{color:var(--muted);font-size:11px;letter-spacing:.04em;display:block}
+  body{margin:0;font:14px/1.55 'Malgun Gothic','Noto Sans KR',system-ui,sans-serif;
+       color:var(--fg);background:var(--bg);font-synthesis:none}
+  header{display:flex;align-items:center;gap:18px;padding:16px 28px;background:#fff;
+         border-bottom:1px solid var(--line)}
+  .brand{font-weight:750;font-size:22px;color:#174235;line-height:1.1}
+  .brand span{font-weight:350}
+  .brand small{display:block;font-size:9px;letter-spacing:2px;color:#698077;font-weight:600}
+  header h1{margin:0;font-size:15px;font-weight:650}
+  .sub{color:var(--muted);font-size:12px}
+  .badge{margin-left:auto;color:#6c5b29;background:#f4ead2;border-radius:6px;padding:6px 9px;
+         font-size:10px;letter-spacing:1px}
+  .wrap{max-width:1780px;margin:auto;padding:18px 28px 36px}
+  .note{margin:0 0 14px;padding:11px 14px;border:1px solid #e3d3b8;border-radius:10px;
+        background:#fff8ec;font-size:12.5px;color:#54421e}
+  .note b{font-weight:650}
+  .note a{color:var(--primary)}
+  .bar{display:flex;flex-wrap:wrap;gap:0;padding:14px 4px;background:#fff;border:1px solid var(--line);
+       border-radius:12px;font-variant-numeric:tabular-nums;font-size:13px;margin-bottom:14px}
+  .bar>div{padding:0 16px;border-left:1px solid #dde6e0}
+  .bar>div:first-child{border-left:0}
+  .bar .k{color:var(--muted);font-size:11px;display:block}
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;
        background:var(--bad);margin-right:6px;vertical-align:1px}
-  .dot.on{background:#2e7d32}
-  .ctl{padding-top:10px;padding-bottom:10px}
+  .dot.on{background:#15927f}
+  .signal-panel{background:var(--panel);color:var(--ink);border-radius:14px;overflow:hidden}
+  .ctl{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:12px 16px;
+       background:var(--panel-2);border-bottom:1px solid var(--panel-line)}
   .ctl>div{display:flex;align-items:center;gap:8px}
-  button.seg{font:inherit;font-size:12.5px;padding:5px 12px;border:1px solid var(--line);
-    background:#fff;color:var(--muted);cursor:pointer}
-  button.seg:first-of-type{border-radius:4px 0 0 4px}
-  button.seg+button.seg{border-radius:0 4px 4px 0;border-left:0}
-  button.seg[aria-pressed=true]{background:var(--accent);border-color:var(--accent);
-    color:#fff;font-weight:700}
-  .warn{color:var(--warn);font-size:11.5px;max-width:38ch}
-  .lg{display:flex;flex-wrap:wrap;gap:8px;padding:0 22px 6px}
-  .lg button{font:inherit;font-size:12px;padding:4px 10px;border-radius:999px;
-    border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--muted)}
-  .lg button[aria-pressed=true]{color:var(--fg);font-weight:600}
+  .ctl .k{color:var(--ink-muted);font-size:11px}
+  button.seg{font:inherit;font-size:12.5px;min-height:36px;padding:6px 13px;
+    border:1px solid #426271;background:#1b3d4c;color:#e4f0ef;cursor:pointer}
+  button.seg:hover{background:#2b5262}
+  button.seg:first-of-type{border-radius:8px 0 0 8px}
+  button.seg+button.seg{border-radius:0 8px 8px 0;border-left:0}
+  #feseg button.seg{border-radius:0;border-left:0}
+  #feseg button.seg:first-child{border-radius:8px 0 0 8px;border-left:1px solid #426271}
+  #feseg button.seg:last-child{border-radius:0 8px 8px 0}
+  button.seg[aria-pressed=true]{background:#187b6b;border-color:#2aa08d;color:#fff;font-weight:650}
+  button:focus-visible,summary:focus-visible,input:focus-visible{outline:3px solid #ce873a;outline-offset:2px}
+  .warn{color:#f6d18d;font-size:11.5px;max-width:42ch}
+  details.adv{padding:0 16px 10px;background:var(--panel-2);border-bottom:1px solid var(--panel-line);font-size:12px}
+  details.adv summary{cursor:pointer;padding:8px 0;color:var(--ink-muted)}
+  .adv-grid{display:flex;flex-wrap:wrap;gap:10px}
+  .switch-control{position:relative;display:flex;align-items:center;gap:10px;min-height:50px;
+    padding:7px 10px;border:1px solid #365564;border-radius:9px;background:#122f3d;cursor:pointer}
+  .switch-control input{position:absolute;opacity:0;width:40px;height:22px;margin:0;cursor:pointer}
+  .switch-track{position:relative;flex:0 0 40px;height:22px;border-radius:999px;background:#56707a;transition:background .14s}
+  .switch-track span{position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;
+    background:#fff;transition:transform .14s}
+  .switch-control input:checked+.switch-track{background:#15927f}
+  .switch-control input:checked+.switch-track span{transform:translateX(18px)}
+  .switch-control input:focus-visible+.switch-track{outline:3px solid #ce873a;outline-offset:2px}
+  .switch-copy strong{display:block;font-size:12px;color:#e5f0f2}
+  .switch-copy small{font-size:10px;color:#9fb8c1}
+  @media (prefers-reduced-motion: reduce){ .switch-track,.switch-track span{transition:none} }
+  .lg{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px 14px}
+  .lg button{font:inherit;font-size:12px;padding:5px 11px;border-radius:999px;min-height:32px;
+    border:1px solid #365564;background:#122f3d;cursor:pointer}
+  .lg button[aria-pressed=false]{opacity:.45}
   .lg i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;
     vertical-align:3px;font-style:normal;background:currentColor}
-  .lg button[aria-pressed=false] i{opacity:.25}
-  #overlay{height:360px}
-  main{padding:14px 22px 40px}
-  .row{margin:0 0 10px}
-  .lab{display:flex;justify-content:space-between;align-items:baseline;
-       font-size:12px;margin:0 0 3px}
-  .lab b{font-weight:600;font-size:12.5px}
-  .lab span{color:var(--muted)}
-  canvas{width:100%;height:96px;display:block;border:1px solid var(--line);
-    background-image:linear-gradient(#f2e6e6 1px,transparent 1px),
-                     linear-gradient(90deg,#f2e6e6 1px,transparent 1px);
-    background-size:20px 20px}
-  footer{padding:0 22px 30px;color:var(--muted);font-size:11.5px}
-  a{color:var(--accent)}
+  #overlay{height:400px}
+  #panels{padding:10px 0 4px}
+  .row{margin:0 0 6px}
+  .lab{display:flex;justify-content:space-between;align-items:baseline;padding:0 16px 0 66px;margin:0 0 2px}
+  .lab b{font-weight:600;font-size:14px}
+  .lab span{color:var(--ink-muted);font-size:11px}
+  canvas{width:100%;height:150px;display:block}
+  footer{padding:14px 2px 0;color:var(--muted);font-size:11.5px}
+  a{color:var(--primary)}
 </style>
 
 <header>
-  <h1>모드 A — 실측 (AD8232 + Uno)</h1>
-  <div class="sub">전극에서 들어오는 신호를 <b>지금</b> 처리한다. 녹음본이 아니다.</div>
+  <div class="brand">⌁ signal<span>studio</span><small>ECG LIVE / MODE A</small></div>
+  <div><h1>모드 A — 실측 (AD8232 + Uno)</h1>
+  <div class="sub">전극에서 들어오는 신호를 <b>지금</b> 처리한다. 녹음본이 아니다.</div></div>
+  <span class="badge">LIVE · 연구용 신호처리</span>
 </header>
+<div class="wrap">
 
 <div class="note">
   <b>이 화면에는 성능 수치가 없다.</b> 실측 신호에는 참값(clean)이 없으므로
@@ -88,7 +121,8 @@
   <div title="최근 2 초 동안 선에서 바이트가 안 온 가장 긴 간격. 화면은 끊기는데 손실이 0 이면 여기를 본다 (F-55)"><span class="k">도착 간격 (최대)</span><span id="gap">—</span></div>
 </div>
 
-<div class="bar ctl">
+<section class="signal-panel">
+<div class="ctl">
   <div><span class="k">표시</span>
     <button class="seg" id="m-split" aria-pressed="true">분리</button><button
             class="seg" id="m-over">겹치기</button></div>
@@ -99,9 +133,18 @@
   <div id="fenote" class="warn" hidden></div>
   <div id="ovnote" class="warn" hidden></div>
 </div>
+<details class="adv"><summary>추가 표시 설정</summary><div class="adv-grid">
+  <label class="switch-control"><input id="sw-soft" role="switch" type="checkbox" checked
+      aria-label="경계 부드럽게"><span class="switch-track" aria-hidden="true"><span></span></span>
+    <span class="switch-copy"><strong>경계 부드럽게</strong><small>스윕에서 지워지는 끝을 자연스럽게</small></span></label>
+  <label class="switch-control"><input id="sw-glow" role="switch" type="checkbox" checked
+      aria-label="선단 밝기"><span class="switch-track" aria-hidden="true"><span></span></span>
+    <span class="switch-copy"><strong>선단 밝기</strong><small>스윕에서 새로 그려진 끝을 잠깐 밝게</small></span></label>
+</div></details>
 
 <main id="panels"></main>
 <div id="legend" class="lg" hidden></div>
+</section>
 
 <footer>
   회색 구간은 <b>측정값이 아니다</b> — 전극이 떨어졌거나(lead-off) 선에서
@@ -114,6 +157,7 @@
   RR 간격보다 느려 기저선이 다음 박동까지 못 돌아온다. 녹음본(모드 B)은
   영위상으로 걸어 이 처짐이 상쇄된다 — 경위와 수치는 <b>F-27</b>.
 </footer>
+</div>
 
 <script src="live_axis.js"></script>
 <script>
@@ -132,6 +176,11 @@ let head = -1;                     // 지금까지 받은 **절대** 샘플 인�
  * 그래서 **시작한 절대 인덱스**를 들고, 자리마다 절대 인덱스로 판정한다. */
 let first = 0;                     // 이 화면이 시작한 절대 인덱스
 let mode = "split";                // split | overlay
+/* 스윕 표현 스위치 (D-41). 선단 밝기는 «장식» 이라 reduced-motion 이면 끈 채로 시작한다 —
+ * 파형 재생과 지우기 경계는 그대로 둔다 (그 저장소 03_MOTION_AND_POLISH §6). */
+let softEdge = true;
+let glowOn = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+let lastData = -1e9;               // 마지막 파형 도착 시각 — 멈추면 선단 밝기를 정리한다
 let play = "scroll";               // scroll | sweep
 const bufs = new Map();            // name -> Float32Array(cap)
 let okBuf = null;
@@ -161,7 +210,7 @@ function clearScreen(){
 
 function panel(name, label){
   const d = document.createElement('div'); d.className = 'row';
-  d.innerHTML = `<div class="lab"><b>${label}</b><span>${name}</span></div>`;
+  d.innerHTML = `<div class="lab"><b style="color:${seriesColor(name)}">${label}</b><span>${name}</span></div>`;
   const c = document.createElement('canvas');
   d.appendChild(c); document.getElementById('panels').appendChild(d);
   return c;
@@ -180,7 +229,11 @@ const LABEL = {
 /* 겹치기용 색. dataviz 팔레트 순서 그대로이고 **넷까지만** `--pairs all` 을
  * 통과한다(다섯째를 넣으면 초록↔주황이 protan ΔE 3.2 로 무너진다). 그래서
  * 겹치기는 네 개까지만 색으로 가르고, 나머지는 끄게 한다. */
-const SLOTS = ["#2a78d6", "#eb6834", "#1baf7a", "#4a3aa7"];
+/* 어두운 판 위의 색 — v2.2.1 의 출력 · 고정 비교 · 미리보기 색에 넷째(보라)를 더했다 (D-41).
+ * 입력은 v2.2.1 처럼 주황(RAW_COLOR)이다. */
+const SLOTS = ["#67e7c3", "#97c2ff", "#f6d18d", "#d7a6ff"];
+const RAW_COLOR = "#ffbc79";
+function seriesColor(n){ return n === 'raw' ? RAW_COLOR : (colorOf.get(n) || SLOTS[0]); }
 const OVER_MAX = SLOTS.length;
 const colorOf = new Map();         // name -> hex (등장 순서로 고정한다)
 
@@ -190,8 +243,44 @@ function fitc(c){
   const w = c.clientWidth, h = c.clientHeight;
   if (c.width !== w*dpr || c.height !== h*dpr){ c.width = w*dpr; c.height = h*dpr; }
   const g = c.getContext('2d');
-  g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+  g.setTransform(dpr,0,0,dpr,0,0);
+  g.fillStyle = '#112b39'; g.fillRect(0,0,w,h);          // v2.2.1 판 색
   return {g, w, h};
+}
+
+/** 그림 영역 — 왼쪽은 mV 눈금, 아래는 시간 눈금 자리다 (v2.2.1 Plot.tsx 배치). */
+function plotRect(w, h){
+  const l = 58, r = w - 14, t = 6, b = h - 20;
+  return {l, r, t, b, pw: r - l, ph: b - t};
+}
+
+/** 격자 · mV 눈금 · 시간 눈금. 축 `ax` 가 없으면 격자만. */
+function drawFrame(g, P, ax){
+  g.strokeStyle = '#304955'; g.lineWidth = .6;
+  for (let k = 0; k <= 10; k++){ const x = P.l + k*P.pw/10;
+    g.beginPath(); g.moveTo(x, P.t); g.lineTo(x, P.b); g.stroke(); }
+  for (let k = 0; k <= 4; k++){ const y = P.t + k*P.ph/4;
+    g.beginPath(); g.moveTo(P.l, y); g.lineTo(P.r, y); g.stroke(); }
+  g.font = '11px system-ui'; g.fillStyle = '#acc2cd';
+  if (ax){
+    g.textAlign = 'right'; g.textBaseline = 'middle';
+    // 눈금은 **실제 mV** 다 — 이득 하나(D-36)와 그 계열의 중심으로 환산한다.
+    for (let k = 0; k <= 4; k++){
+      const v = ax.m + (1 - k/2) * ax.s * (P.ph/2 - 6) / (P.ph/2);
+      const txt = v.toFixed(Math.abs(ax.s) < 0.5 ? 2 : 1);
+      g.fillText(/^-0\.0+$/.test(txt) ? txt.slice(1) : txt, P.l - 8, P.t + k*P.ph/4);  // «-0.0» 대신 0.0
+    }
+    // 단위는 왼쪽 아래 — 맨 위 눈금 옆에 두면 «[mV]3.7» 로 붙어 읽혔다
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillText('[mV]', 6, P.b + 15);
+  }
+  g.textBaseline = 'alphabetic';
+  for (let k = 0; k <= 4; k++){
+    const sec = k * WIN_S / 4;
+    const lab = play === 'sweep' ? sec.toFixed(1) + 's 위치' : (sec - WIN_S).toFixed(1) + 's';
+    g.textAlign = k === 0 ? 'left' : k === 4 ? 'right' : 'center';
+    g.fillText(lab, P.l + k*P.pw/4, P.b + 15);
+  }
+  g.textAlign = 'left';
 }
 
 /** 보이는 구간에서 그 계열의 중심과 로버스트 피크. 아직 아무것도 없으면 null. */
@@ -231,79 +320,113 @@ function axesFor(names){
   return out;
 }
 
-function strokeBuf(g, a, w, h, ax, color, lw, alpha){
-  const x = i => i / (cap - 1) * w;
-  const y = v => h/2 - (v - ax.m)/ax.s * (h/2 - 6);
-  const gapN = play === "sweep" ? Math.round(0.35 * fs) : 0;   // 커서 앞 빈 자리
-  g.save(); g.globalAlpha = alpha == null ? 1 : alpha;
-  g.strokeStyle = color; g.lineWidth = lw; g.lineJoin = "round";
-  g.beginPath();
-  let pen = false;
+/** 한 계열을 그린다.
+ *
+ *  스윕이면 v2.2.1 규약 둘이 걸린다 (D-41).
+ *   - **지우기 경계** — 커서 앞 0.12 s 는 비우고, 그 앞 0.08 s 는 옛 주기가 투명도 0 -> 1.
+ *   - **선단 밝기** — 가장 새 표본 몇 개를 원색에 흰색을 섞어 다시 긋는다. 나이로 정하므로
+ *     wrap 때 옛 주기가 빛나지 않는다. 선 굵기는 그대로이고 halo 는 없다.
+ *  스크롤에는 둘 다 안 건다. */
+function strokeBuf(g, a, P, ax, color, lw, alpha){
+  const base = alpha == null ? 1 : alpha;
+  const sweep = play === 'sweep';
+  const x = i => P.l + i / (cap - 1) * P.pw;
+  const y = v => P.t + P.ph/2 - (v - ax.m)/ax.s * (P.ph/2 - 6);
+  g.save(); g.beginPath(); g.rect(P.l, P.t, P.pw, P.ph); g.clip();
+  g.strokeStyle = color; g.lineWidth = lw; g.lineJoin = 'round';
+  let pen = false, cur = -1;
   for (let i = 0; i < cap; i++){
     const t = AX.absAt(i, head, cap, play);
-    // 스윕: 커서 바로 앞 구간은 **지운다** — 다음 바퀴가 들어올 자리다.
-    if (!AX.have(t, first, head, cap) || (gapN && head - t > cap - gapN)){
-      pen = false; continue;
-    }
+    const al = !AX.have(t, first, head, cap) ? 0
+             : sweep ? AX.sweepAlpha(head - t, cap, fs, softEdge) : 1;
     const px = x(i), py = y(a[t % cap]);
-    if (!pen){ g.moveTo(px, py); pen = true; } else g.lineTo(px, py);
+    if (al <= 0){ if (pen){ g.stroke(); pen = false; } continue; }
+    // 투명도가 바뀌는 자리에서만 획을 끊는다 — 대부분은 1 이라 한 획이다
+    if (!pen){
+      g.beginPath(); g.globalAlpha = base * al; cur = al; g.moveTo(px, py); pen = true;
+    } else if (Math.abs(al - cur) > 1e-6){
+      g.lineTo(px, py); g.stroke();
+      g.beginPath(); g.globalAlpha = base * al; cur = al; g.moveTo(px, py);
+    } else g.lineTo(px, py);
   }
-  g.stroke(); g.restore();
+  if (pen) g.stroke();
+  // ---- 선단 밝기
+  if (sweep && glowOn && head >= 0){
+    const live = AX.glowLive(performance.now() - lastData);
+    const W = AX.glowWidth(P.pw, cap), pos = head % cap;
+    if (live > 0 && W > 0){
+      g.globalAlpha = base;
+      for (let age = Math.min(W, pos); age >= 1; age--){
+        const t1 = head - age + 1, t0 = t1 - 1;
+        if (!AX.have(t0, first, head, cap)) continue;
+        const f = AX.glowMix(age - 1, W, pos) * live;
+        if (f <= 0) continue;
+        g.strokeStyle = AX.mixWhite(color, f);
+        g.beginPath();
+        g.moveTo(x(t0 % cap), y(a[t0 % cap])); g.lineTo(x(t1 % cap), y(a[t1 % cap]));
+        g.stroke();
+      }
+    }
+  }
+  g.restore();
 }
 
-/** 채운 구간(측정값 아님)을 회색으로. 어느 모드든 **모든 칸에** 깐다. */
-function shadeBad(g, w, h){
+/** 채운 구간(측정값 아님)을 음영으로. 어느 모드든 **모든 칸에** 깐다. */
+function shadeBad(g, P){
   if (!okBuf || head < 0) return;
   const bad = i => { const t = AX.absAt(i, head, cap, play);
                      return AX.have(t, first, head, cap) && okBuf[t % cap] < 0.5; };
-  g.fillStyle = '#eeeeee';
-  const x = i => i / (cap - 1) * w;
+  g.fillStyle = '#2b4350';
+  const x = i => P.l + i / (cap - 1) * P.pw;
   let i = 0;
   while (i < cap){
     if (bad(i)){ let j = i; while (j < cap && bad(j)) j++;
-      g.fillRect(x(i), 0, Math.max(1, x(j) - x(i)), h); i = j; }
+      g.fillRect(x(i), P.t, Math.max(1, x(j) - x(i)), P.ph); i = j; }
     else i++;
   }
 }
 
-function cursorLine(g, w, h){
+function cursorLine(g, P){
   if (play !== "sweep" || head < 0) return;
   const i = (head + 1) % cap;
-  const px = i / (cap - 1) * w;
-  // 캔버스는 CSS 변수를 모른다 — 색을 그대로 적는다(--accent 와 같은 값).
-  g.save(); g.strokeStyle = '#184f95'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(px, 0); g.lineTo(px, h); g.stroke();
-  g.restore();
+  const px = P.l + i / (cap - 1) * P.pw;
+  g.save(); g.strokeStyle = '#bfd8e0'; g.lineWidth = 1;        // v2.2.1 커서
+  g.beginPath(); g.moveTo(px, P.t); g.lineTo(px, P.b); g.stroke(); g.restore();
 }
 
 function drawSplit(){
   const ax = axesFor([...panels.keys()]);
   for (const [name, c] of panels){
     const {g, w, h} = fitc(c);
+    const P = plotRect(w, h);
     const a = bufs.get(name), q = ax.get(name);
+    drawFrame(g, P, q);
     if (!a || !q) continue;                    // 아직 받은 것이 없다 — 빈 칸으로 둔다
-    shadeBad(g, w, h);
-    strokeBuf(g, a, w, h, q, name === 'raw' ? '#8a8a8a' : '#184f95', 1.1);
-    cursorLine(g, w, h);
+    shadeBad(g, P);
+    strokeBuf(g, a, P, q, seriesColor(name), 1.6);
+    cursorLine(g, P);
   }
 }
 
 function drawOverlay(){
   if (!overlayCv) return;
   const {g, w, h} = fitc(overlayCv);
+  const P = plotRect(w, h);
   const on = [...bufs.keys()].filter(n => n !== 'raw' && !hidden.has(n));
   const raw = (!hidden.has('raw') && bufs.has('raw')) ? 'raw' : null;
   const ax = axesFor(raw ? [raw, ...on] : on);
-  shadeBad(g, w, h);
+  drawFrame(g, P, on.length ? ax.get(on[0]) : (raw ? ax.get(raw) : null));
+  shadeBad(g, P);
   // 입력을 **같은 이득**으로, 자기 중심만 빼고 옅게 뒤에 깐다.
-  if (raw && ax.has(raw)) strokeBuf(g, bufs.get(raw), w, h, ax.get(raw), '#b4b4b4', 1.0, 0.7);
+  if (raw && ax.has(raw)) strokeBuf(g, bufs.get(raw), P, ax.get(raw), '#8fa3ad', 1.2, 0.55);
   on.forEach(n => { const q = ax.get(n); if (q)
-    strokeBuf(g, bufs.get(n), w, h, q, colorOf.get(n), 1.1, 0.7); });
+    strokeBuf(g, bufs.get(n), P, q, colorOf.get(n), 1.6, 0.85); });
   // 직접 라벨 — 겹치면 색이 섞여 보이므로 이름을 붙여야 한다
   g.font = '700 11px ui-monospace,monospace'; g.textAlign = 'right';
   on.forEach((n, k) => { g.fillStyle = colorOf.get(n);
-    g.globalAlpha = 1; g.fillText(n, w - 6, 14 + k * 14); });
+    g.globalAlpha = 1; g.fillText(n, P.r - 6, P.t + 14 + k * 14); });
   g.textAlign = 'left';
-  cursorLine(g, w, h);
+  cursorLine(g, P);
 }
 
 let dirty = false;
@@ -322,14 +445,14 @@ function relayout(){
   const lg = document.getElementById('legend');
   if (mode === 'overlay'){
     const d = document.createElement('div'); d.className = 'row';
-    d.innerHTML = '<div class="lab"><b>겹쳐 보기 — 모든 방법이 같은 축·같은 이득, 투명도 70 %</b>' +
+    d.innerHTML = '<div class="lab"><b>겹쳐 보기 — 모든 방법이 같은 축·같은 이득, 불투명도 85 %</b>' +
                   '<span>입력은 옅은 회색 — 전극 DC 만 뺐고 이득은 같다</span></div>';
     overlayCv = document.createElement('canvas'); overlayCv.id = 'overlay';
     d.appendChild(overlayCv); host.appendChild(d);
     lg.hidden = false; lg.innerHTML = '';
     for (const n of bufs.keys()){
       const b = document.createElement('button');
-      b.style.color = n === 'raw' ? '#8a8a8a' : colorOf.get(n);
+      b.style.color = n === 'raw' ? '#8fa3ad' : colorOf.get(n);
       b.innerHTML = `<i></i>${n === 'raw' ? '입력 (잡음)' : n} · ${LABEL[n] || ''}`;
       b.setAttribute('aria-pressed', String(!hidden.has(n)));
       b.onclick = () => { hidden.has(n) ? hidden.delete(n) : hidden.add(n);
@@ -353,6 +476,10 @@ function seg(a, b, set){
 seg('m-split','m-over', el => { mode = el.id === 'm-over' ? 'overlay' : 'split'; relayout(); });
 seg('p-scroll','p-sweep', el => { play = el.id === 'p-sweep' ? 'sweep' : 'scroll'; dirty = true; });
 addEventListener('resize', () => { dirty = true; });
+{ const sw = document.getElementById('sw-soft'), gl = document.getElementById('sw-glow');
+  sw.checked = softEdge; gl.checked = glowOn;
+  sw.onchange = () => { softEdge = sw.checked; dirty = true; };
+  gl.onchange = () => { glowOn = gl.checked; dirty = true; }; }
 
 // ---------------------------------------------------------------- 수신
 const el = id => document.getElementById(id);
@@ -447,6 +574,7 @@ es.onmessage = ev => {
     writeAt(bufs.get(name), m.i, m.out[name]);
   }
   head = m.i + m.n - 1;
+  lastData = performance.now();
   if (fresh) relayout();
   const nOver = [...bufs.keys()].length - 1;
   const nt = el('ovnote');

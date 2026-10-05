@@ -101,3 +101,6 @@ results/**/_partial/
 # 업로드한 것을 커밋하지 않도록 여기서도 막는다. 수치는 summary.json/sweep.csv 에 있다.
 results/ext/**/best.pt
 results/ext/**/last.pt
+
+# 화면 확인 스크린샷 (scripts/screenshot_live.py) — 눈으로 보는 용도, 산출물이 아니다
+results/screens/

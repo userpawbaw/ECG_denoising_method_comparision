@@ -19,8 +19,8 @@
 
 | | |
 |---|---|
-| 스크립트 | **34 개** |
-| 옵션 | **186 개** |
+| 스크립트 | **35 개** |
+| 옵션 | **190 개** |
 | 설명이 빈 옵션 | **0 개** (`(설명 없음)` 으로 표시된다) |
 
 ---
@@ -445,6 +445,17 @@ STEP 07: metric noise floor 측정 (docs/00_review.md A-8).
 | `--seconds` | 실수 | `20.0` | 재는 구간의 길이 [s] |
 | `--seeds` | 정수 | `3` | seed 를 몇 개 쓸 것인가 |
 | `--out` | 문자열 | `results/stream_seam.json` | 산출물을 둘 곳 |
+
+### `scripts/screenshot_live.py`
+
+실시간 화면(모드 A)을 **하드웨어 없이 띄워 찍는다** — 체크리스트 §8 의 「띄워 봤나」 를 한 번에.
+
+| 옵션 | 값 | 기본 | 설명 |
+|---|---|---|---|
+| `--methods` | 문자열 | `M_FE,M01,M04` | 브리지에 줄 방법 목록. 고를 수 있는 것은 docs/30_realtime_demo.md 의 --methods 절 (예: M_FE,M04,M05S) |
+| `--out` | 문자열 | `results/screens` | PNG 를 둘 폴더. 없으면 만든다 (git 에는 안 들어간다 — .gitignore) |
+| `--http-port` | 정수 | `8899` | 브리지 SSE 서버 포트. 다른 브리지가 쓰고 있으면 바꾼다 |
+| `--warm` | 실수 | `9.0` | 첫 장을 찍기 전 기다리는 시간 [s]. warm-up(4.1 s) + 정렬 여유 |
 
 ### `scripts/verify_stream_processor.py`
 
