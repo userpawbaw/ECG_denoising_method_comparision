@@ -166,9 +166,12 @@
     return 1;
   }
 
-  /* **선단 밝기 (잔광)** — 그 저장소 docs/22 UI-02 의 시작값: 폭은 그림 너비의 2~3 %
-   * (24~48 px), 선단에서 원색에 흰색 25~40 %. 넓은 흰 띠 · halo 없이 가는 선 그대로. */
-  var GLOW_FRAC = 0.025, GLOW_MIN_PX = 24, GLOW_MAX_PX = 48, GLOW_MAX = 0.35;
+  /* **선단 밝기 (잔광)** — 처음에는 그 저장소 docs/22 UI-02 의 시작값(폭 2~3 % · 24~48 px,
+   * 흰색 25~40 %)으로 넣었다. 사용자가 «선 바로 왼쪽과 먼 쪽에 차이가 없다» 고 했고, 재 보니
+   * 파형 최대 밝기 차이가 **201 -> 219, 약 9 %** 였다 `[측정]` — 출력 색(#67e7c3)이 이미 밝아
+   * 흰색을 섞어도 오를 여지가 없었다. 그래서 폭을 6 %(48~120 px), 흰색을 60 % 로 올리고,
+   * 선단 쪽 선 굵기 · 같은 색의 짧은 빛 번짐 · 빛점은 화면(`live.html`)이 `glowLevel` 로 건다 (D-41 개정). */
+  var GLOW_FRAC = 0.06, GLOW_MIN_PX = 48, GLOW_MAX_PX = 120, GLOW_MAX = 0.6;
 
   /** 선단 밝기가 걸리는 폭 [샘플]. 그림 너비 `pw`[px] 에 `cap` 샘플이 펼쳐져 있다. */
   function glowWidth(pw, cap) {
@@ -183,10 +186,21 @@
    *  새 표본처럼 빛난다. 그리고 **현재 주기 안만** 빛난다 — `pos`(커서가 이번 주기에서
    *  간 칸 수)보다 오래된 것은 오른쪽 끝으로 넘어간 꼬리라, 그것까지 빛나면 화면
    *  양 끝에 빛이 갈라져 보인다. */
-  function glowMix(age, width, pos) {
+  function glowLevel(age, width, pos) {
     if (!(width > 0) || age < 0 || age >= width || age > pos) return 0;
-    var u = 1 - age / width;
-    return GLOW_MAX * u * u;
+    return 1 - age / width;                  // 선단 1 -> 폭 끝 0
+  }
+
+  function glowMix(age, width, pos) {
+    var u = glowLevel(age, width, pos);
+    return GLOW_MAX * Math.pow(u, 1.5);
+  }
+
+  /** `#rrggbb` 를 투명도 `a` 의 `rgba(...)` 로 (빛 번짐 색). */
+  function rgba(hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + ","
+      + Math.max(0, Math.min(1, a)) + ")";
   }
 
   /** 스트림이 멈추면 장식을 정리한다 — 0.3 s 까지 그대로, 그 뒤 0.3 s 동안 0 으로. */
@@ -208,8 +222,8 @@
     ladder: ladder, makeGain: makeGain, makeCenter: makeCenter,
     windowStart: windowStart, absAt: absAt, have: have, scan: scan, SPIKE: SPIKE,
     SWEEP_GAP_S: SWEEP_GAP_S, SWEEP_FADE_S: SWEEP_FADE_S, sweepAlpha: sweepAlpha,
-    GLOW_MAX: GLOW_MAX, glowWidth: glowWidth, glowMix: glowMix, glowLive: glowLive,
-    mixWhite: mixWhite,
+    GLOW_MAX: GLOW_MAX, glowWidth: glowWidth, glowLevel: glowLevel, glowMix: glowMix,
+    glowLive: glowLive, mixWhite: mixWhite, rgba: rgba,
   };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.LiveAxis = api;

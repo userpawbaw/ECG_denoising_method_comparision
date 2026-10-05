@@ -350,22 +350,42 @@ function strokeBuf(g, a, P, ax, color, lw, alpha){
     } else g.lineTo(px, py);
   }
   if (pen) g.stroke();
-  // ---- 선단 밝기
+  // ---- 선단 밝기 (잔광) — 흰빛 혼합 + 선단 쪽 굵기 + 같은 색의 짧은 빛 번짐 + 빛점 (D-41 개정)
   if (sweep && glowOn && head >= 0){
     const live = AX.glowLive(performance.now() - lastData);
     const W = AX.glowWidth(P.pw, cap), pos = head % cap;
     if (live > 0 && W > 0){
       g.globalAlpha = base;
+      g.lineCap = 'round';
+      // 밝기를 8 단계로 묶어 **같은 단계는 한 획**으로 — 선분마다 빛 번짐을 그리면 프레임이 15 % 떨어졌다
+      const LV = 8;
+      let lvl = -1, open = false;
+      const flush = () => { if (open){ g.stroke(); open = false; } };
       for (let age = Math.min(W, pos); age >= 1; age--){
         const t1 = head - age + 1, t0 = t1 - 1;
-        if (!AX.have(t0, first, head, cap)) continue;
-        const f = AX.glowMix(age - 1, W, pos) * live;
-        if (f <= 0) continue;
-        g.strokeStyle = AX.mixWhite(color, f);
-        g.beginPath();
-        g.moveTo(x(t0 % cap), y(a[t0 % cap])); g.lineTo(x(t1 % cap), y(a[t1 % cap]));
-        g.stroke();
+        if (!AX.have(t0, first, head, cap)){ flush(); lvl = -1; continue; }
+        const u = AX.glowLevel(age - 1, W, pos) * live;
+        if (u <= 0){ flush(); lvl = -1; continue; }
+        const q = Math.ceil(u * LV) / LV;
+        if (q !== lvl){
+          flush(); lvl = q;
+          g.strokeStyle = AX.mixWhite(color, AX.GLOW_MAX * Math.pow(q, 1.5));
+          g.lineWidth = lw + 1.4 * q;
+          g.shadowColor = AX.rgba(color, 0.85 * q);
+          g.shadowBlur = 9 * q;
+          g.beginPath(); g.moveTo(x(t0 % cap), y(a[t0 % cap])); open = true;
+        }
+        g.lineTo(x(t1 % cap), y(a[t1 % cap]));
       }
+      flush();
+      // 빛점 — 가장 새 표본. 오실로스코프 빔처럼 선단을 짚는다
+      if (AX.have(head, first, head, cap)){
+        const hx = x(head % cap), hy = y(a[head % cap]);
+        g.shadowColor = AX.rgba(color, 0.9 * live); g.shadowBlur = 12 * live;
+        g.fillStyle = AX.mixWhite(color, 0.75 * live);
+        g.beginPath(); g.arc(hx, hy, (lw + 1.6) * (0.6 + 0.4 * live), 0, 2 * Math.PI); g.fill();
+      }
+      g.shadowBlur = 0;
     }
   }
   g.restore();

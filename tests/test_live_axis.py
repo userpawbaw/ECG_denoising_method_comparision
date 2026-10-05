@@ -296,10 +296,11 @@ def test_leading_glow_follows_age_and_never_lights_the_old_cycle():
         edge: AX.glowMix(w, w, 500), old: AX.glowMix(cap - 5, w, 500),
         wrapped: AX.glowMix(10, w, 3), max: AX.GLOW_MAX}));""")
     js_round = lambda v: int(v + 0.5)                           # JS Math.round (파이썬 round 는 짝수로)
-    assert r["w"] == js_round(32.5 / 1300 * 2500)               # 2.5 % × 1300 px = 32.5 px
-    assert r["wSmall"] == js_round(24 / 400 * 2500)             # 24 px 하한
-    assert r["wBig"] == js_round(48 / 4000 * 2500)              # 48 px 상한
-    assert r["head"] == r["max"] and 0.25 <= r["max"] <= 0.40   # docs/22: 흰색 25~40 %
+    assert r["w"] == js_round(78 / 1300 * 2500)                 # 6 % × 1300 px = 78 px
+    assert r["wSmall"] == js_round(48 / 400 * 2500)             # 48 px 하한
+    assert r["wBig"] == js_round(120 / 4000 * 2500)             # 120 px 상한
+    # 처음엔 docs/22 의 25~40 % 였으나 실측 밝기 차이가 9 % 라 «안 보인다» 는 피드백 -> 60 % (D-41 개정)
+    assert r["head"] == r["max"] and 0.5 <= r["max"] <= 0.7
     assert 0 < r["mid"] < r["head"]
     assert r["edge"] == 0 and r["old"] == 0
     assert r["wrapped"] == 0, "wrap 직후 오른쪽 끝으로 넘어간 꼬리는 빛나지 않는다"
