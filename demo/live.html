@@ -90,7 +90,14 @@
   canvas{width:100%;height:150px;display:block}
   footer{padding:14px 2px 0;color:var(--muted);font-size:11.5px}
   a{color:var(--primary)}
+  /* ECG Signal Studio v2.2.1 의 «실시간 측정» 탭 안(iframe)에서는 그 앱의 머리글이 있으므로
+   * 자기 머리글을 숨긴다. 성능 수치가 없다는 안내(.note)는 남긴다 (그 저장소 D-016). */
+  html.embed header{display:none}
+  html.embed .wrap{padding-top:0}
 </style>
+<script>
+  if (new URLSearchParams(location.search).has('embed')) document.documentElement.classList.add('embed');
+</script>
 
 <header>
   <div class="brand">⌁ signal<span>studio</span><small>ECG LIVE / MODE A</small></div>

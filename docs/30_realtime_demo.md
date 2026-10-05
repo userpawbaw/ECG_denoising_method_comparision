@@ -1107,6 +1107,8 @@ python3 scripts/fake_arduino.py --list
 나타나며(「경계 부드럽게」), **새로 그려진 끝**은 흰빛을 조금 섞어 밝게 그린다(「선단 밝기」, 나이로 정하므로
 옛 주기는 안 빛난다). 둘 다 「추가 표시 설정」 에서 끈다. reduced-motion 이면 선단 밝기는 꺼진 채 시작한다.
 화면을 고친 뒤에는 `python3 scripts/screenshot_live.py` 로 띄워 찍고 PNG 를 본다(§8).
+`live.html?embed=1` 은 머리글을 숨긴다 — ECG Signal Studio v2.2.1 의 «실시간 측정» 탭이 iframe 으로 이 화면을 띄운다
+(그 저장소 D-016 · `98_realtime_handoff.md` 6 절).
 
 **`M05S` — 스트리밍 칼만** (D-40). 상태를 이어 가는 EKF 라 hop 12 로 돈다. 지연 240 ms(미래 144 ms +
 hop + 평활 48 ms), RTF 약 0.02. 오프라인 대조에서 M05 보다 평균 2.4 dB 낮다 — 실시간 칼만의 대가다. 기본 hop 으로 넣으면
