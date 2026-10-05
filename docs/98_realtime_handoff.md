@@ -81,19 +81,23 @@ python scripts\probe_serial.py --port COM13 --read-timing
 
 ---
 
-## 5. 합칠 때 부딪히는 것 — `demo/live.html` 을 건드리는 다른 브랜치
+## 5. 합칠 때 부딪히는 것 — 다른 브랜치의 `demo/live.html` (2026-10-05 분석)
 
-| 원격 브랜치 | 이 작업 브랜치에 없는 커밋 | `live.html` | 합칠 때 |
+| 원격 브랜치 | 이 작업 브랜치에 없는 커밋 | `live.html` 에서 바꾼 것 | 처리 |
 |---|---|---|---|
-| `claude/wonderful-gates-0enr3f` | 74 | `frame()` 에 `prefers-reduced-motion` **6 줄** | D-41 도 reduced-motion 을 다룬다(선단 밝기 초기값). 두 처리가 **같은 일을 두 번** 하지 않게 하나로 합친다 |
-| `claude/demo_UIUX_refactoring` | 22 | 같은 6 줄 | 위와 같다 |
-| `waveform-generate-only` | 60 | **610 줄을 새로 가진다** | 이력이 다른 판일 수 있다 — 합치기 전에 그 파일을 먼저 읽는다 |
+| `claude/wonderful-gates-0enr3f` | 74 (전체 177 파일) | `frame()` 의 **6 줄** — reduced-motion 이면 스윕을 매 프레임 다시 그리지 않고 데이터가 올 때만 그린다(커서가 쉬지 않고 도는 것을 멈춘다). 커밋 `69311e8` | **가져왔다** — D-41 의 선단 밝기 초기값과 같은 `REDUCED` 상수 하나로 묶었다 |
+| `claude/demo_UIUX_refactoring` | 22 | 위와 **같은 6 줄** | `wonderful-gates` 의 부분집합이다(고유 커밋 0) — 따로 볼 것이 없다 |
+| `waveform-generate-only` | — | **`live.html` 이 없다** | 이 저장소와 **공통 조상이 없는** 8 월의 옛 이력이다. ~~«610 줄을 새로 가진다»~~ 는 공통 조상을 못 찾아 빈 값으로 비교한 **잘못된 측정**이었다 (지우지 않고 남긴다, D-29) |
 
-`99_status.md` §7.7 이 앞 둘을 이미 적어 두었다. 그때의 판단(«`frame()` 을 안 건드렸으니 그대로 들어간다»)은
-**D-41 뒤로 더는 맞지 않는다** — D-41 은 `frame()` 이 아니라 스위치 초기값에서 reduced-motion 을 읽지만,
-그리기 함수(`strokeBuf` · `drawSplit` · `drawOverlay`)를 크게 바꿨다.
+**`wonderful-gates` 를 통째로 합치면 안 되는 이유** — 별도 작업 트리에서 시험 병합해 봤다 `[측정]`:
 
----
+- 충돌은 넷뿐이다(`.gitignore` · `CLAUDE.md` · `24_cli_reference.md` · `91_report.md`). 그런데
+- **학습 결과를 덮는다** — `results/d0/m06_l1/best.pt` 등 기존 체크포인트가 그 브랜치의 재학습판으로 바뀐다(수정 ·
+  추가 89 개). 보고서 수치의 근거가 바뀌므로 CLAUDE.md 「산출물 지우기」 와 §5 를 거쳐야 한다.
+- **기록 번호가 겹친다** — 합치면 `F-47` 이 둘이 된다. 그 브랜치는 기록 규약 D 번호도 옮겨 적었다(`D-29` → `D-32`).
+- 그 브랜치에는 «UI/UX 와 연구는 세션을 나눠 쓴다» 는 자체 규칙이 있다.
+
+그래서 통합은 **사용자 결정 + 전용 세션**의 일이다. 할 때는 체크포인트를 어느 쪽으로 둘지부터 정한다.
 
 ## 6. 외부 참조 — `userpawbaw/ecg-gui-design-review` (전시용 GUI, 별도 저장소)
 
@@ -106,13 +110,33 @@ python scripts\probe_serial.py --port COM13 --read-timing
 | 선단 밝기 피드백 | 그 저장소 `docs/22` «UI 마감·사용성 개선 논의» §4 (UI-02) · `docs/uiux_system/03_MOTION_AND_POLISH.md` §2 |
 | fade 계약 | 그 저장소 `docs/21` «UI 수정 워크플로우(최종)» 9 번 — «Sweep 페이드는 지우기 경계에만» (선단 밝기는 fade 가 아니라 밝기다) |
 
-**v2.2.1 앱 자체에 이 실시간 화면을 합치는 것은 하지 않았다.** 그 저장소의 release ZIP 은 대용량 자료(98 조건 × 600 s)
-와 함께 묶이고 Git 에 없다. 그 통합을 하려면:
+### v2.2.1 에 실시간 화면을 합치려면 — 무엇이 필요한가
 
-- 그 ZIP 과 Node 24 가 있는 **사용자 PC 의 로컬 세션**이 유리하다(원격에는 자료가 없다).
-- 이 저장소의 SSE 형식(`/stream` 의 `{"i","n","fs","raw","ok","out","stat"}` — F-52)을 그 앱의 `Transport` 에 물리는
-  어댑터가 필요하다. 그 앱은 저장 출력 재생기라 «도착한 만큼 진행» 하는 시간축(6.2 (1))이 없다.
-- 그 저장소의 규약(`AGENTS.md` · `WORK_RESUME_POLICY.md` · `docs/uiux_system`)을 먼저 따른다.
+v2.2.1 에는 **실시간 데이터를 받는 탭이 없다.** 실험실 화면은 저장된 배열을 `Transport`(벽시계로 시간이 가고 끝이
+있는 재생기)로 도는 구조이고(`data.ts` 의 `Loaded` 는 길이 `n` 이 정해진 배열과 Reference `clean` 을 요구한다),
+「계측」 은 옛 화면을 iframe 으로 띄운 **「실제 장치 미연결 · UI 상태 미리보기」** 다. 길은 둘이다.
+
+| | A. 탭 하나 + iframe (빠른 길) | B. React 로 직접 (제대로 된 길) |
+|---|---|---|
+| 하는 일 | `main.tsx` 의 경로에 `live` 탭을 더하고 `http://127.0.0.1:8765/live.html` 을 iframe 으로 띄운다 — 「상세 분석·계측」 이 이미 쓰는 방식 | SSE `/stream` 을 받는 `LiveSource` 와 링버퍼, 그 위에서 그리는 `Plot` 변형을 만든다 |
+| 필요한 것 | 브리지를 따로 띄워 둔다 · 화면 모양은 D-41 로 이미 맞췄다 · 출처 표시를 «실측 · 장치 연결됨» 으로 바꾼다 | 아래 표 전부 |
+| 품 | 작다 | 크다 |
+
+B 에 필요한 것:
+
+| 무엇 | 왜 |
+|---|---|
+| **시간축** — `time = head / fs` 인 실시간 전송기 | `Transport.tick` 은 벽시계로 간다. 실시간은 «도착한 만큼» 간다 (30 문서 6.2 (1)). 끝(duration)도 seek 도 없다 |
+| **Reference · 차이 · 지표를 끈다** | 실측에는 참값이 없다 — SNR 을 띄우면 지어낸 숫자다 (30 문서 난관 6). v2.2.1 의 `metric` · 차이 보기 · Reference 겹침은 모두 `clean` 에 기댄다 |
+| **방법 목록이 고정이다** | 실시간 출력은 브리지를 띄울 때 `--methods` 로 정해진다. 실험실의 hover 미리보기 · Pin 처럼 아무 방법이나 고를 수 없다 |
+| **전환 · 끊김 메시지** | front-end 전환(`POST /fe` · `{"reset":true}`), 선 끊김(`link_lost`), 상태(손실 · lead-off · 처리 밀림 · RTF · 도착 간격) |
+| **같은 출처(origin)** | 브리지가 8765 에서 `/stream` 을 낸다. Vite 개발 서버의 proxy 로 묶거나, 브리지가 v2 빌드(`dist`)를 서빙하거나, 브리지에 CORS 헤더를 단다 |
+| **그리기** | `visiblePoints` 는 저장 배열의 시각 → 칸 매핑이다. 실시간은 절대 인덱스의 나머지로 쓰는 링버퍼다(F-52) — `live_axis.js` 의 `absAt` · `have` · 이득 규칙(D-36)을 옮긴다 |
+| **그 저장소의 규약** | `AGENTS.md` · `WORK_RESUME_POLICY.md` · `docs/uiux_system`(CASE 연결 · 기록 무결성 CI). «장치 미연결 · deviceSession null» 이 그 앱의 표시 계약이라 그것을 바꾸는 결정 기록이 먼저다 |
+| **쓰기 권한** | 이 세션에서는 그 저장소가 읽기만 된다 — push 권한으로 다시 붙여야 한다 |
+| **릴리스** | release ZIP 은 98 조건 × 600 s 자료와 함께 묶이고 Git 에 없다. 그 자료와 Node 24 · 브라우저 검수 환경이 있는 **사용자 PC 의 로컬 세션**이 유리하다 |
+
+**권하는 순서** — A 로 먼저 한 앱 안에서 보이게 하고, 전시 동선이 정해진 뒤 B 로 옮긴다.
 
 ---
 
