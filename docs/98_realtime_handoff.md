@@ -40,6 +40,7 @@ python3 scripts/screenshot_live.py --methods M_FE,M04,M05S   # 화면을 띄워 
 | **D-40** | **M05S** — 스트리밍 Sameni EKF. 미래 문맥 L 36 · RTS d 12 · hop 12(지연 240 ms). 오프라인 14.46 dB 대 M05 16.84 dB. M05 · M05f 는 브리지가 **자동으로 hop 128** | 유효 |
 | **O-38** | M05S 적합(wfdb import · XQRS · least_squares)이 본체 스레드를 막아 시작 직후 멎었다 — 작업 스레드로 | 해결 · **실보드 재확인 대기** |
 | **D-41** | 모드 A 화면을 ECG Signal Studio **v2.2.1** 표시 규약으로 — 어두운 판 · 방법별 색 · 지우기 경계 fade · **선단 밝기(잔광)** · reduced-motion | 유효 · **실보드 확인 대기** |
+| **D-42** | 표시 길이(2.5/5/10 s) · 표시 범위 ±mV(0 = 자동) · **표시 보간 두 배**(블록을 반씩 두 번) · 지우기 영역 화면의 10 %(디버그 5~20 %) · 스크롤 양 끝 경계 | 유효 · **실보드 확인 대기** |
 
 같이 생긴 도구: `scripts/probe_serial.py --read-timing` (F-55) · `scripts/serial_bridge.py --trace-io FILE` (D-38) ·
 `--hop-for M=N` (D-39) · `scripts/screenshot_live.py` (D-41, 화면 확인 자동화). 옵션 전부는 `24_cli_reference.md`.

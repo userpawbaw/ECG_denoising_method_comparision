@@ -152,18 +152,63 @@
   }
 
   // ------------------------------------------------- 스윕 표현 (D-41, v2.2.1 규약)
-  /* **지우기 경계** — ECG Signal Studio v2.2.1 `engine.ts visiblePoints` 의 값 그대로.
-   * 커서 앞 GAP_S 는 비우고, 그 앞 FADE_S 동안 옛 주기가 투명도 0 -> 1 로 돌아온다.
-   * 사용자가 이미 만족한 표현이다 (그 저장소 docs/22 §1). */
-  var SWEEP_GAP_S = 0.12, SWEEP_FADE_S = 0.08;
+  /* **지우기 경계** — 처음에는 ECG Signal Studio v2.2.1 `engine.ts visiblePoints` 의 값
+   * 그대로(커서 앞 0.12 s 비움 + 0.08 s 페이드 = 0.20 s)였다. 초로 두면 표시 길이가 바뀔 때
+   * 화면에서 지워지는 비율이 달라진다 — 10 s 화면에서는 2 % 라 거의 안 보였다. 사용자가
+   * **화면 폭의 고정 비율, 기본 10 %** 로 정했다 (D-42). 나누는 비는 v2.2.1 의 것(비움 3 :
+   * 페이드 2)을 그대로 둔다. 5·10·15·20 % 는 화면의 디버그 버튼으로 고른다. */
+  var ERASE_FRAC = 0.10, ERASE_CHOICES = [0.05, 0.10, 0.15, 0.20];
+  var ERASE_GAP_PART = 0.6;
+
+  /** 지우기 영역 [샘플] — 비움 `gap` 과 그 앞 페이드 `fade`. */
+  function eraseSpans(cap, frac) {
+    var f = frac == null ? ERASE_FRAC : frac, tot = Math.max(0, f) * cap;
+    return { gap: tot * ERASE_GAP_PART, fade: tot * (1 - ERASE_GAP_PART) };
+  }
 
   /** 나이 `age`(= head - 절대 인덱스, 0 이 가장 새 것)인 샘플의 투명도. 스윕 전용. */
-  function sweepAlpha(age, cap, fs, soft) {
+  function sweepAlpha(age, cap, frac, soft) {
     var d = cap - age;                       // 커서 앞으로 몇 칸 떨어졌나 (1..cap)
-    var gap = SWEEP_GAP_S * fs, fade = SWEEP_FADE_S * fs;
+    var e = eraseSpans(cap, frac), gap = e.gap, fade = e.fade;
     if (d > 0 && d < gap) return 0;
     if (d >= gap && d < gap + fade) return soft ? (d - gap) / fade : 0;
     return 1;
+  }
+
+  /** 스크롤의 **왼쪽 끝**(사라지는 쪽) 투명도. 칸 `i` 는 0 이 가장 왼쪽이다.
+   *  스크롤에는 지울 자리가 따로 없으므로 비움 없이 **페이드만** 건다 — 폭은 스윕의
+   *  지우기 영역 전체(같은 비율)라, 비율 버튼 하나로 두 방식이 같이 움직인다 (D-42). */
+  function scrollAlpha(i, cap, frac, soft) {
+    if (!soft) return 1;
+    var w = eraseSpans(cap, frac);
+    var n = w.gap + w.fade;
+    return n > 0 ? Math.max(0, Math.min(1, i / n)) : 1;
+  }
+
+  /* **표시 보간 — 받은 블록을 두 번에 나눠 보인다** (D-42).
+   * 브리지는 처리기가 hop 을 낼 때마다 보낸다 — 초당 약 20 번이라 스크롤이 계단으로 걷는다.
+   * 처리량을 늘리면 RTF 가 무너지므로 **화면 쪽에서** 블록 하나를 반씩 두 번 보인다:
+   * 도착하면 앞 절반까지, 도착 간격의 절반이 지나면 끝까지. 파형을 만들어 내는 것이 아니라
+   * **이미 받은 표본을 드러내는 시점만** 나눈다. 대가는 지연 = 도착 간격의 절반(약 25 ms).
+   * 사용자 요구가 «딱 두 배» 라 단계는 둘로 고정한다. */
+  function makeReveal() {
+    var mid = -1, target = -1, tArr = 0, dt = 50;
+    return {
+      push: function (h, now) {
+        if (target >= 0 && h > target && h - target < 4096) {
+          var gapMs = now - tArr;
+          if (gapMs > 0 && gapMs < 500) dt = 0.8 * dt + 0.2 * gapMs;
+          mid = target + Math.floor((h - target) / 2);
+        } else mid = h;       // 첫 블록 · 시간축이 끊긴 자리는 그대로
+        target = h; tArr = now;
+      },
+      at: function (now) {
+        if (target < 0) return -1;
+        return now - tArr < dt / 2 ? mid : target;
+      },
+      interval: function () { return dt; },
+      reset: function () { mid = target = -1; tArr = 0; },
+    };
   }
 
   /* **선단 밝기 (잔광)** — 처음에는 그 저장소 docs/22 UI-02 의 시작값(폭 2~3 % · 24~48 px,
@@ -187,6 +232,7 @@
    *  간 칸 수)보다 오래된 것은 오른쪽 끝으로 넘어간 꼬리라, 그것까지 빛나면 화면
    *  양 끝에 빛이 갈라져 보인다. */
   function glowLevel(age, width, pos) {
+    if (pos == null) pos = Infinity;         // 스크롤에는 주기가 없다
     if (!(width > 0) || age < 0 || age >= width || age > pos) return 0;
     return 1 - age / width;                  // 선단 1 -> 폭 끝 0
   }
@@ -221,7 +267,8 @@
     STEPS: STEPS, STEP_MAX: STEP_MAX, LO: LO, HI: HI, AIM: AIM, HOLD_MS: HOLD_MS,
     ladder: ladder, makeGain: makeGain, makeCenter: makeCenter,
     windowStart: windowStart, absAt: absAt, have: have, scan: scan, SPIKE: SPIKE,
-    SWEEP_GAP_S: SWEEP_GAP_S, SWEEP_FADE_S: SWEEP_FADE_S, sweepAlpha: sweepAlpha,
+    ERASE_FRAC: ERASE_FRAC, ERASE_CHOICES: ERASE_CHOICES, eraseSpans: eraseSpans,
+    sweepAlpha: sweepAlpha, scrollAlpha: scrollAlpha, makeReveal: makeReveal,
     GLOW_MAX: GLOW_MAX, glowWidth: glowWidth, glowLevel: glowLevel, glowMix: glowMix,
     glowLive: glowLive, mixWhite: mixWhite, rgba: rgba,
   };

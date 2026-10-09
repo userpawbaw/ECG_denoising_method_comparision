@@ -57,6 +57,13 @@
   #feseg button.seg{border-radius:0;border-left:0}
   #feseg button.seg:first-child{border-radius:8px 0 0 8px;border-left:1px solid #426271}
   #feseg button.seg:last-child{border-radius:0 8px 8px 0}
+  #eraseg button.seg{border-radius:0;border-left:0}
+  #eraseg button.seg:first-child{border-radius:8px 0 0 8px;border-left:1px solid #426271}
+  #eraseg button.seg:last-child{border-radius:0 8px 8px 0}
+  .erase{display:flex;align-items:center;gap:8px}
+  .num{font:inherit;font-size:12.5px;min-height:36px;padding:4px 8px;border-radius:8px;
+       border:1px solid #426271;background:#163545;color:inherit;width:auto}
+  input.num{width:72px}
   button.seg[aria-pressed=true]{background:#187b6b;border-color:#2aa08d;color:#fff;font-weight:650}
   button:focus-visible,summary:focus-visible,input:focus-visible{outline:3px solid #ce873a;outline-offset:2px}
   .warn{color:#f6d18d;font-size:11.5px;max-width:42ch}
@@ -137,16 +144,23 @@
     <button class="seg" id="p-scroll" aria-pressed="true">스크롤</button><button
             class="seg" id="p-sweep">스윕</button></div>
   <div><span class="k">front-end</span><span id="feseg"></span></div>
+  <div><label class="k" for="win">표시 길이</label>
+    <select id="win" class="num">
+      <option value="2.5">2.5초</option><option value="5" selected>5초</option><option value="10">10초</option></select></div>
+  <div><label class="k" for="amp">표시 범위</label>
+    <input id="amp" class="num" type="number" min="0" step="0.1" value="0"
+           title="0 이면 자동 — 켜 놓은 계열이 다 들어가게 맞춘다"><span class="k">±mV · 0 = 자동</span></div>
   <div id="fenote" class="warn" hidden></div>
   <div id="ovnote" class="warn" hidden></div>
 </div>
 <details class="adv"><summary>추가 표시 설정</summary><div class="adv-grid">
   <label class="switch-control"><input id="sw-soft" role="switch" type="checkbox" checked
       aria-label="경계 부드럽게"><span class="switch-track" aria-hidden="true"><span></span></span>
-    <span class="switch-copy"><strong>경계 부드럽게</strong><small>스윕에서 지워지는 끝을 자연스럽게</small></span></label>
+    <span class="switch-copy"><strong>경계 부드럽게</strong><small>지워지는 끝(스윕 커서 앞 · 스크롤 왼쪽)을 자연스럽게</small></span></label>
   <label class="switch-control"><input id="sw-glow" role="switch" type="checkbox" checked
       aria-label="선단 밝기"><span class="switch-track" aria-hidden="true"><span></span></span>
-    <span class="switch-copy"><strong>선단 밝기</strong><small>스윕에서 새로 그려진 끝을 잠깐 밝게</small></span></label>
+    <span class="switch-copy"><strong>선단 밝기</strong><small>새로 그려진 끝(스윕 커서 · 스크롤 오른쪽)을 잠깐 밝게</small></span></label>
+  <div class="erase"><span class="k">지우기 비율 (디버그)</span><span id="eraseg"></span></div>
 </div></details>
 
 <main id="panels"></main>
@@ -169,8 +183,12 @@
 <script src="live_axis.js"></script>
 <script>
 // ---------------------------------------------------------------- 상태
-const WIN_S = 10;                  // 화면에 보이는 길이
+/* 표시 길이 · 표시 범위는 v2.2.1 과 같은 자리 · 같은 값 (D-42). 범위 0 은 «자동» — 지금까지의 자동 이득. */
+let WIN_S = 5;                     // 화면에 보이는 길이 [s] — v2.2.1 기본값
+let AMP = 0;                       // 표시 범위 ±mV. 0 이면 자동
+let eraseFrac = LiveAxis.ERASE_FRAC;   // 지우기 영역 = 화면 폭의 비율 (기본 10 %)
 let fs = 250, cap = WIN_S * fs;
+let vh = -1;                       // **보이는** 끝 — head 를 두 번에 나눠 따라간다 (표시 보간)
 let head = -1;                     // 지금까지 받은 **절대** 샘플 인덱스의 끝
 /* **아직 안 쓴 자리를 그리면 안 된다.** Float32Array 는 0 으로 시작하니 그대로
  * 그리면 평평한 0 선이 나오고, ok 도 0 이라 그 구간이 통째로 회색(=측정값
@@ -198,6 +216,7 @@ const hidden = new Set();          // 겹치기에서 끈 방법
 
 const AX = LiveAxis;               // 축 계산은 live_axis.js 에 있다 (테스트가 붙어 있다)
 const gain = AX.makeGain();        // **이득은 화면에 하나뿐이다**
+const reveal = AX.makeReveal();    // 받은 블록을 반씩 두 번 보인다 (D-42)
 const ctr  = AX.makeCenter();      // 중심만 계열별
 
 /* **버퍼를 절대 인덱스의 나머지로 쓴다.**
@@ -212,8 +231,8 @@ function writeAt(a, abs0, arr){
 /** 화면을 비운다. **색과 켜고 끈 상태는 남긴다** — front-end 를 바꿨다고
  *  방법이 달라지는 것이 아니라, 그것까지 지우면 시연 중에 손이 두 번 간다. */
 function clearScreen(){
-  bufs.clear(); okBuf = null; head = -1; first = 0;
-  gain.reset(); ctr.clear();
+  bufs.clear(); okBuf = null; head = -1; first = 0; vh = -1;
+  gain.reset(); ctr.clear(); reveal.reset();
 }
 
 function panel(name, label){
@@ -284,7 +303,8 @@ function drawFrame(g, P, ax){
   g.textBaseline = 'alphabetic';
   for (let k = 0; k <= 4; k++){
     const sec = k * WIN_S / 4;
-    const lab = play === 'sweep' ? sec.toFixed(1) + 's 위치' : (sec - WIN_S).toFixed(1) + 's';
+    const f = v => (Math.round(v * 100) / 100).toFixed(Number.isInteger(v * 2) ? 1 : 2);  // 2.5 s 화면은 0.625 s 눈금
+    const lab = play === 'sweep' ? f(sec) + 's 위치' : f(sec - WIN_S) + 's';
     g.textAlign = k === 0 ? 'left' : k === 4 ? 'right' : 'center';
     g.fillText(lab, P.l + k*P.pw/4, P.b + 15);
   }
@@ -320,7 +340,7 @@ function axesFor(names){
     need = Math.max(need, r.peak);
     if (n !== 'raw'){ om += r.m; oc++; }
   }
-  const s = gain.fit(need, now);
+  const s = AMP > 0 ? AMP : gain.fit(need, now);     // 수동이면 그 값 그대로 (반높이 = ±AMP)
   const mo = ctr.at('out', oc ? om / oc : 0, s, now);
   const out = new Map();
   for (const [n, r] of seen)
@@ -338,15 +358,17 @@ function axesFor(names){
 function strokeBuf(g, a, P, ax, color, lw, alpha){
   const base = alpha == null ? 1 : alpha;
   const sweep = play === 'sweep';
+  const H = vh;                              // 보이는 끝 — head 보다 반 블록 늦을 수 있다
   const x = i => P.l + i / (cap - 1) * P.pw;
   const y = v => P.t + P.ph/2 - (v - ax.m)/ax.s * (P.ph/2 - 6);
   g.save(); g.beginPath(); g.rect(P.l, P.t, P.pw, P.ph); g.clip();
   g.strokeStyle = color; g.lineWidth = lw; g.lineJoin = 'round';
   let pen = false, cur = -1;
   for (let i = 0; i < cap; i++){
-    const t = AX.absAt(i, head, cap, play);
-    const al = !AX.have(t, first, head, cap) ? 0
-             : sweep ? AX.sweepAlpha(head - t, cap, fs, softEdge) : 1;
+    const t = AX.absAt(i, H, cap, play);
+    const al = !seen(t) ? 0
+             : sweep ? AX.sweepAlpha(H - t, cap, eraseFrac, softEdge)
+             : AX.scrollAlpha(i, cap, eraseFrac, softEdge);
     const px = x(i), py = y(a[t % cap]);
     if (al <= 0){ if (pen){ g.stroke(); pen = false; } continue; }
     // 투명도가 바뀌는 자리에서만 획을 끊는다 — 대부분은 1 이라 한 획이다
@@ -359,9 +381,11 @@ function strokeBuf(g, a, P, ax, color, lw, alpha){
   }
   if (pen) g.stroke();
   // ---- 선단 밝기 (잔광) — 흰빛 혼합 + 선단 쪽 굵기 + 같은 색의 짧은 빛 번짐 + 빛점 (D-41 개정)
-  if (sweep && glowOn && head >= 0){
+  // 스크롤에도 건다 — 선단이 늘 오른쪽 끝이다 (D-42). 스크롤에는 주기가 없으니 pos 로 자르지 않는다.
+  if (glowOn && H >= 0){
     const live = AX.glowLive(performance.now() - lastData);
-    const W = AX.glowWidth(P.pw, cap), pos = head % cap;
+    const W = AX.glowWidth(P.pw, cap), pos = sweep ? H % cap : Infinity;
+    const col = sweep ? (k => k % cap) : (k => cap - 1 - (H - k));   // 절대 인덱스 -> 화면 칸
     if (live > 0 && W > 0){
       g.globalAlpha = base;
       g.lineCap = 'round';
@@ -370,8 +394,8 @@ function strokeBuf(g, a, P, ax, color, lw, alpha){
       let lvl = -1, open = false;
       const flush = () => { if (open){ g.stroke(); open = false; } };
       for (let age = Math.min(W, pos); age >= 1; age--){
-        const t1 = head - age + 1, t0 = t1 - 1;
-        if (!AX.have(t0, first, head, cap)){ flush(); lvl = -1; continue; }
+        const t1 = H - age + 1, t0 = t1 - 1;
+        if (!seen(t0)){ flush(); lvl = -1; continue; }
         const u = AX.glowLevel(age - 1, W, pos) * live;
         if (u <= 0){ flush(); lvl = -1; continue; }
         const q = Math.ceil(u * LV) / LV;
@@ -381,14 +405,14 @@ function strokeBuf(g, a, P, ax, color, lw, alpha){
           g.lineWidth = lw + 1.4 * q;
           g.shadowColor = AX.rgba(color, 0.85 * q);
           g.shadowBlur = 9 * q;
-          g.beginPath(); g.moveTo(x(t0 % cap), y(a[t0 % cap])); open = true;
+          g.beginPath(); g.moveTo(x(col(t0)), y(a[t0 % cap])); open = true;
         }
-        g.lineTo(x(t1 % cap), y(a[t1 % cap]));
+        g.lineTo(x(col(t1)), y(a[t1 % cap]));
       }
       flush();
       // 빛점 — 가장 새 표본. 오실로스코프 빔처럼 선단을 짚는다
-      if (AX.have(head, first, head, cap)){
-        const hx = x(head % cap), hy = y(a[head % cap]);
+      if (seen(H)){
+        const hx = x(col(H)), hy = y(a[H % cap]);
         g.shadowColor = AX.rgba(color, 0.9 * live); g.shadowBlur = 12 * live;
         g.fillStyle = AX.mixWhite(color, 0.75 * live);
         g.beginPath(); g.arc(hx, hy, (lw + 1.6) * (0.6 + 0.4 * live), 0, 2 * Math.PI); g.fill();
@@ -402,8 +426,8 @@ function strokeBuf(g, a, P, ax, color, lw, alpha){
 /** 채운 구간(측정값 아님)을 음영으로. 어느 모드든 **모든 칸에** 깐다. */
 function shadeBad(g, P){
   if (!okBuf || head < 0) return;
-  const bad = i => { const t = AX.absAt(i, head, cap, play);
-                     return AX.have(t, first, head, cap) && okBuf[t % cap] < 0.5; };
+  const bad = i => { const t = AX.absAt(i, vh, cap, play);
+                     return seen(t) && okBuf[t % cap] < 0.5; };
   g.fillStyle = '#2b4350';
   const x = i => P.l + i / (cap - 1) * P.pw;
   let i = 0;
@@ -415,12 +439,16 @@ function shadeBad(g, P){
 }
 
 function cursorLine(g, P){
-  if (play !== "sweep" || head < 0) return;
-  const i = (head + 1) % cap;
+  if (play !== "sweep" || vh < 0) return;
+  const i = (vh + 1) % cap;
   const px = P.l + i / (cap - 1) * P.pw;
   g.save(); g.strokeStyle = '#bfd8e0'; g.lineWidth = 1;        // v2.2.1 커서
   g.beginPath(); g.moveTo(px, P.t); g.lineTo(px, P.b); g.stroke(); g.restore();
 }
+
+/** 절대 자리 `t` 를 **지금 그려도 되나** — 받았고(head 기준 버퍼 안), 이미 드러났다(vh 이하).
+ *  보이는 끝이 head 보다 늦으므로 버퍼 맨 앞 몇 칸은 새 표본에 덮였다 — 그 자리는 안 그린다. */
+function seen(t){ return AX.have(t, first, head, cap) && t <= vh; }
 
 function drawSplit(){
   const ax = axesFor([...panels.keys()]);
@@ -464,6 +492,8 @@ let dirty = false;
    재도색만 뺀 것이다. — `claude/wonderful-gates-0enr3f`(69311e8) · `demo_UIUX_refactoring` 의
    같은 6 줄을 가져왔다. 선단 밝기의 초기값(D-41)과 **같은 `REDUCED` 하나**를 쓴다. */
 function frame(){
+  const v = reveal.at(performance.now());
+  if (v !== vh){ vh = v; dirty = true; }     // 보간의 둘째 단계도 한 장으로 친다
   // 스윕은 커서가 계속 도는 것이 보여야 하므로 **매 프레임** 다시 그린다.
   if (dirty || (play === 'sweep' && !REDUCED)){ dirty = false;
     mode === 'overlay' ? drawOverlay() : drawSplit(); }
@@ -508,6 +538,39 @@ function seg(a, b, set){
 }
 seg('m-split','m-over', el => { mode = el.id === 'm-over' ? 'overlay' : 'split'; relayout(); });
 seg('p-scroll','p-sweep', el => { play = el.id === 'p-sweep' ? 'sweep' : 'scroll'; dirty = true; });
+
+/* 표시 길이를 바꾸면 버퍼 크기(cap)가 바뀐다. **받은 것을 버리지 않고** 새 크기로 옮긴다 —
+ * 줄일 때는 최근 것만, 늘릴 때는 가진 만큼만 (앞쪽은 빈 칸). */
+document.getElementById('win').onchange = e => {
+  const nc = Math.round(+e.target.value * fs);
+  if (!(nc > 0) || nc === cap) return;
+  const lo = head < 0 ? 0 : Math.max(first, head - Math.min(cap, nc) + 1);
+  const move = a => { const b = alloc(nc);
+    for (let t = lo; t <= head; t++) b[t % nc] = a[t % cap]; return b; };
+  for (const [k, a] of bufs) bufs.set(k, move(a));
+  if (okBuf) okBuf = move(okBuf);
+  if (head >= 0) first = lo;
+  WIN_S = +e.target.value; cap = nc; dirty = true;
+};
+/* 표시 범위 ±mV. 0(또는 빈 칸)이면 자동 이득으로 돌아간다. 자동으로 돌아갈 때 이득을 새로 잡게 한다. */
+document.getElementById('amp').oninput = e => {
+  const v = +e.target.value;
+  const next = Number.isFinite(v) && v > 0 ? v : 0;
+  if (next === 0 && AMP > 0) gain.reset();
+  AMP = next; dirty = true;
+};
+/* 지우기 비율 — 디버그용. 시연 기본은 10 % (D-42). */
+(() => {
+  const box = document.getElementById('eraseg');
+  for (const f of AX.ERASE_CHOICES){
+    const b = document.createElement('button');
+    b.className = 'seg'; b.textContent = Math.round(f * 100) + '%';
+    b.setAttribute('aria-pressed', String(f === eraseFrac));
+    b.onclick = () => { eraseFrac = f; dirty = true;
+      for (const o of box.children) o.setAttribute('aria-pressed', String(o === b)); };
+    box.appendChild(b);
+  }
+})();
 addEventListener('resize', () => { dirty = true; });
 { const sw = document.getElementById('sw-soft'), gl = document.getElementById('sw-glow');
   sw.checked = softEdge; gl.checked = glowOn;
@@ -581,7 +644,7 @@ es.onmessage = ev => {
     return;
   }
   // **fs 가 없는 프레임으로 cap 을 NaN 으로 만들지 않는다.**
-  if (m.fs && m.fs !== fs){ fs = m.fs; cap = WIN_S * fs; clearScreen(); }
+  if (m.fs && m.fs !== fs){ fs = m.fs; cap = Math.round(WIN_S * fs); clearScreen(); }
   if (!Number.isFinite(m.i) || !Array.isArray(m.raw)) return;
 
   let fresh = false;
@@ -608,6 +671,7 @@ es.onmessage = ev => {
   }
   head = m.i + m.n - 1;
   lastData = performance.now();
+  reveal.push(head, lastData);
   if (fresh) relayout();
   const nOver = [...bufs.keys()].length - 1;
   const nt = el('ovnote');

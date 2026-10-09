@@ -272,18 +272,60 @@ def test_gain_waits_for_something_to_measure():
 
 
 # ------------------------------------------------- 스윕 표현 (D-41, v2.2.1 규약)
-def test_sweep_erase_boundary_matches_signal_studio_v221():
-    """v2.2.1 `engine.ts`: d(커서 앞 칸) 가 gap(0.12 s) 안이면 0, 다음 fade(0.08 s) 동안 0 -> 1."""
+def test_sweep_erase_is_a_fixed_fraction_of_the_screen():
+    """지우기 영역은 **화면 폭의 고정 비율**(기본 10 %, 비움 3 : 페이드 2) — 표시 길이가 바뀌어도 같다 (D-42).
+    v2.2.1 의 초 단위(0.12 + 0.08 s)는 10 s 화면에서 2 % 라 거의 안 보였다."""
     r = run_js("""
-      const fs = 250, cap = 2500, gap = 0.12 * fs, fade = 0.08 * fs;
-      const at = d => AX.sweepAlpha(cap - d, cap, fs, true);
-      console.log(JSON.stringify({
-        newest: AX.sweepAlpha(0, cap, fs, true),
-        inGap: at(gap - 1), fadeMid: at(gap + fade / 2), after: at(gap + fade + 1),
-        hard: AX.sweepAlpha(cap - (gap + fade / 2), cap, fs, false)}));""")
-    assert r["newest"] == 1 and r["inGap"] == 0 and r["after"] == 1
-    assert abs(r["fadeMid"] - 0.5) < 1e-9
-    assert r["hard"] == 0, "«경계 부드럽게» 를 끄면 fade 구간도 비어야 한다"
+      const out = {};
+      for (const cap of [625, 1250, 2500]) {
+        const e = AX.eraseSpans(cap, 0.10), at = d => AX.sweepAlpha(cap - d, cap, 0.10, true);
+        out[cap] = {tot: (e.gap + e.fade) / cap, newest: AX.sweepAlpha(0, cap, 0.10, true),
+          inGap: at(e.gap - 1), fadeMid: at(e.gap + e.fade / 2), after: at(e.gap + e.fade + 1),
+          hard: AX.sweepAlpha(cap - (e.gap + e.fade / 2), cap, 0.10, false)};
+      }
+      out.def = AX.ERASE_FRAC; out.choices = AX.ERASE_CHOICES;
+      out.f20 = AX.eraseSpans(2500, 0.20);
+      console.log(JSON.stringify(out));""")
+    assert r["def"] == 0.10 and r["choices"] == [0.05, 0.10, 0.15, 0.20]
+    for cap in ("625", "1250", "2500"):
+        q = r[cap]
+        assert abs(q["tot"] - 0.10) < 1e-9, "표시 길이와 무관하게 10 %"
+        assert q["newest"] == 1 and q["inGap"] == 0 and q["after"] == 1
+        assert abs(q["fadeMid"] - 0.5) < 1e-9
+        assert q["hard"] == 0, "«경계 부드럽게» 를 끄면 fade 구간도 비어야 한다"
+    assert abs(r["f20"]["gap"] - 300) < 1e-9 and abs(r["f20"]["fade"] - 200) < 1e-9
+
+
+def test_scroll_fades_the_left_edge_over_the_same_fraction():
+    r = run_js("""
+      const cap = 2500, n = 0.10 * cap;
+      console.log(JSON.stringify({left: AX.scrollAlpha(0, cap, 0.10, true),
+        mid: AX.scrollAlpha(n / 2, cap, 0.10, true), inside: AX.scrollAlpha(n + 1, cap, 0.10, true),
+        off: AX.scrollAlpha(0, cap, 0.10, false),
+        glowScroll: AX.glowLevel(3, 50), glowOld: AX.glowLevel(60, 50)}));""")
+    assert r["left"] == 0 and abs(r["mid"] - 0.5) < 1e-9 and r["inside"] == 1 and r["off"] == 1
+    assert r["glowScroll"] > 0, "스크롤에는 주기가 없으니 pos 없이도 선단이 빛난다"
+    assert r["glowOld"] == 0
+
+
+def test_reveal_shows_each_block_in_exactly_two_steps():
+    """표시 보간 (D-42): 블록이 오면 **절반까지**, 도착 간격의 절반이 지나면 **끝까지**. 그 사이 값은 없다."""
+    r = run_js("""
+      const R = AX.makeReveal(), seen = [];
+      R.push(99, 0);                                  // 첫 블록은 바로 다 보인다
+      seen.push(R.at(1));
+      for (let k = 1; k <= 10; k++) R.push(99 + 12 * k, 48 * k);
+      const t = 480, last = 99 + 120;
+      seen.push(R.at(t), R.at(t + 10), R.at(t + 30), R.at(t + 47));
+      R.push(5, 600);                                 // 시간축이 끊겼다 (front-end 전환 · 재동기)
+      seen.push(R.at(601));
+      console.log(JSON.stringify({seen, last, dt: R.interval()}));""")
+    s, last = r["seen"], r["last"]
+    assert s[0] == 99
+    assert abs(r["dt"] - 48) < 2, "도착 간격을 따라간다"
+    assert s[1] == last - 6 and s[2] == last - 6, "앞 절반만"
+    assert s[3] == last and s[4] == last, "간격 절반 뒤 끝까지"
+    assert s[5] == 5, "끊긴 시간축은 나눠 보이지 않는다"
 
 
 def test_leading_glow_follows_age_and_never_lights_the_old_cycle():
