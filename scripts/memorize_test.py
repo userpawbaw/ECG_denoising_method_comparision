@@ -84,6 +84,8 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0,
                     help="창 고르기·배치 순서·초기화의 seed")
     ap.add_argument("--threads", type=int, default=4, help="torch CPU 스레드 수")
+    ap.add_argument("--stop-after", type=int, default=None, metavar="N",
+                    help="검사용: N step 의 재개점만 남기고 멈춘다 (재개가 같은 결과를 내는지 본다)")
     args = ap.parse_args()
 
     torch.set_num_threads(args.threads)
@@ -121,15 +123,39 @@ def main() -> int:
     print(f"[{arm}] params={n_params:,} n={len(idx)} steps={args.steps} "
           f"source={args.source}")
 
-    rows, t0 = [], time.time()
+    # 재개 — 판 하나(nb4 ≈ 29 분)가 하네스의 백그라운드 한도(≈ 30 분)와 맞먹는다.
+    # **재개는 가장 긴 단일 실행보다 촘촘해야 한다** (O-19). 평가 때마다 저장한다.
+    # 이름을 `last.pt` 로 두는 것은 `.gitignore` 가 이미 그 이름을 막기 때문이다.
+    COLS = ["step", "lr", "train_loss", "fixed_mse", "fresh_mse", "val_mse",
+            "fixed_snr_imp", "fresh_snr_imp", "val_snr_imp", "wall_s"]
+    ck_path = out / "last.pt"
+    rows, start, elapsed0 = [], 1, 0.0
+    if ck_path.exists():
+        ck = torch.load(ck_path, map_location="cpu", weights_only=False)
+        model.load_state_dict(ck["model"])
+        opt.load_state_dict(ck["opt"])
+        g.set_state(ck["gen"])
+        rows, start, elapsed0 = ck["rows"], ck["step"] + 1, ck["wall_s"]
+        print(f"[{arm}] 재개 — step {ck['step']} 부터 ({elapsed0:.0f}s 경과)")
+    t0 = time.time() - elapsed0
+
+    def save_ck(step: int) -> None:
+        tmp = ck_path.with_suffix(".tmp")
+        torch.save(dict(model=model.state_dict(), opt=opt.state_dict(),
+                        gen=g.get_state(), step=step, rows=rows,
+                        wall_s=time.time() - t0), tmp)
+        tmp.replace(ck_path)                    # 쓰다 죽어도 이전 것이 남는다
+
     log_path = out / "log.csv"
     with log_path.open("w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["step", "lr", "train_loss", "fixed_mse", "fresh_mse", "val_mse",
-                    "fixed_snr_imp", "fresh_snr_imp", "val_snr_imp", "wall_s"])
+        w.writerow(COLS)
+        for r in rows:                          # 재개면 지난 줄을 그대로 다시 쓴다
+            w.writerow([r[k] for k in COLS])
+        f.flush()
         model.train()
         run = 0.0
-        for step in range(1, args.steps + 1):
+        for step in range(start, args.steps + 1):
             lr = args.lr * min(1.0, step / max(args.warmup, 1))
             for pg in opt.param_groups:
                 pg["lr"] = lr
@@ -151,11 +177,13 @@ def main() -> int:
                          fixed_snr_imp=ef["snr_imp"], fresh_snr_imp=en["snr_imp"],
                          val_snr_imp=ev["snr_imp"], wall_s=time.time() - t0)
                 rows.append(r)
-                w.writerow([r[k] for k in ["step", "lr", "train_loss", "fixed_mse",
-                                           "fresh_mse", "val_mse", "fixed_snr_imp",
-                                           "fresh_snr_imp", "val_snr_imp", "wall_s"]])
+                w.writerow([r[k] for k in COLS])
                 f.flush()
                 run = 0.0
+                save_ck(step)
+                if args.stop_after is not None and step >= args.stop_after:
+                    print(f"[{arm}] --stop-after {args.stop_after}: 재개점만 남기고 멈춘다")
+                    return 0
                 print(f"  step {step:5d}  fixed {ef['mse']:.5f}  fresh {en['mse']:.5f}  "
                       f"val {ev['mse']:.5f}  | imp {ef['snr_imp']:+.2f} / "
                       f"{en['snr_imp']:+.2f} / {ev['snr_imp']:+.2f} dB  "
@@ -168,6 +196,7 @@ def main() -> int:
                    final=last, min_fixed_mse=min(r["fixed_mse"] for r in rows),
                    wall_s=time.time() - t0)
     (out / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False))
+    ck_path.unlink(missing_ok=True)             # 끝났으면 재개점은 필요 없다
     print(f"[{arm}] 끝 — fixed {last['fixed_mse']:.5f} · fresh {last['fresh_mse']:.5f} · "
           f"val {last['val_mse']:.5f}")
     return 0

@@ -63,3 +63,30 @@ def test_run_writes_the_columns_the_verdict_needs(tmp_path):
         assert k in s["final"]
     head = (tmp_path / "m06_l1_quarter" / "log.csv").read_text().splitlines()[0]
     assert "fresh_mse" in head and "val_mse" in head
+
+
+def _run(out, *extra):
+    r = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "memorize_test.py"), "-c", str(CFG),
+         "--out", str(out), "--source", "synthetic", "--n", "16", "--steps", "6",
+         "--every", "2", "--batch", "8", "--threads", "1", *extra],
+        cwd=ROOT, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stdout + r.stderr
+    return r.stdout
+
+
+def test_resume_gives_the_same_run_as_no_interruption(tmp_path):
+    """하네스가 백그라운드를 약 30 분에 끊는다 — 끊겼다 이어도 **같은 판**이어야 한다 (O-19)."""
+    _run(tmp_path / "a")
+    out = _run(tmp_path / "b", "--stop-after", "2")
+    assert "재개점만" in out
+    assert (tmp_path / "b" / "m06_l1_quarter" / "last.pt").exists()
+    assert not (tmp_path / "b" / "m06_l1_quarter" / "summary.json").exists()
+    assert "재개" in _run(tmp_path / "b")
+    sa = json.loads((tmp_path / "a" / "m06_l1_quarter" / "summary.json").read_text())
+    sb = json.loads((tmp_path / "b" / "m06_l1_quarter" / "summary.json").read_text())
+    for k in ("fixed_mse", "fresh_mse", "val_mse"):
+        assert abs(sa["final"][k] - sb["final"][k]) < 1e-7, (k, sa["final"][k], sb["final"][k])
+    assert not (tmp_path / "b" / "m06_l1_quarter" / "last.pt").exists(), "끝났는데 재개점이 남았다"
+    rows = (tmp_path / "b" / "m06_l1_quarter" / "log.csv").read_text().splitlines()
+    assert len(rows) == 1 + 3, "재개 뒤 log.csv 가 지난 줄을 잃었거나 겹쳤다"
