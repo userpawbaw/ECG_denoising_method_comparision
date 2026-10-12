@@ -19,8 +19,8 @@
 
 | | |
 |---|---|
-| 스크립트 | **34 개** |
-| 옵션 | **183 개** |
+| 스크립트 | **35 개** |
+| 옵션 | **194 개** |
 | 설명이 빈 옵션 | **0 개** (`(설명 없음)` 으로 표시된다) |
 
 ---
@@ -442,6 +442,24 @@ STEP 07: metric noise floor 측정 (docs/00_review.md A-8).
 | `--seconds` | 실수 | `20.0` | 재는 구간의 길이 [s] |
 | `--seeds` | 정수 | `3` | seed 를 몇 개 쓸 것인가 |
 | `--out` | 문자열 | `results/stream_seam.json` | 산출물을 둘 곳 |
+
+### `scripts/memorize_test.py`
+
+D-38 E1: 암기 시험 — 용량을 **쓸 수 있는가**를 잰다.
+
+| 옵션 | 값 | 기본 | 설명 |
+|---|---|---|---|
+| `-c` · `--config` | 문자열 | **필수** | arm 의 yaml |
+| `--out` | 문자열 | `results/ext/d38_e1` | 결과 폴더 |
+| `--source` | `mitdb` · `synthetic` | `mitdb` | 데이터축. D-38 E1 은 D1(mitdb) 에서 잰다 |
+| `--n` | 정수 | `256` | 외울 창 수 |
+| `--steps` | 정수 | `2000` | 학습 step 수. early stop 은 없다 — 외울 때까지 돈다 |
+| `--batch` | 정수 | `64` | 배치 크기 (정상 학습과 같다) |
+| `--lr` | 실수 | `0.001` | warmup 뒤 고정 학습률 (정상 학습의 최고값과 같다) |
+| `--warmup` | 정수 | `100` | 선형 warmup step 수 |
+| `--every` | 정수 | `100` | 평가 간격 (step) |
+| `--seed` | 정수 | `0` | 창 고르기·배치 순서·초기화의 seed |
+| `--threads` | 정수 | `4` | torch CPU 스레드 수 |
 
 ### `scripts/verify_stream_processor.py`
 

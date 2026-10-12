@@ -76,12 +76,12 @@ MAX_RESTARTS = 3
 # 재시작된다. **락을 잡는 스크립트를 새로 만들 때마다 이 줄에 추가한다.**
 # `tests/test_watchdog_sees_every_runner.py` 가 빠뜨림을 잡는다.
 RUNNER_NAMES = ("run_all_training.sh", "run_one_training.sh",
-                "run_d23_queue.sh", "run_sweep_locked.sh")
+                "run_d23_queue.sh", "run_sweep_locked.sh", "run_d38_queue.sh")
 
 # 학습 프로세스로 셀 것. `train.py` 만 보면 sweep 러너가 학습 중인데도
 # «학습 프로세스 없음» 이 되어, 러너가 죽었을 때 `orphan_trainer` 대신
 # `stalled` 로 판정된다 (O-24 와 같은 종류의 빠뜨림).
-TRAINER_NAMES = ("train.py", "run_seed_sweep.py")
+TRAINER_NAMES = ("train.py", "run_seed_sweep.py", "memorize_test.py")
 
 
 def _argv(pid: int) -> list[str]:
