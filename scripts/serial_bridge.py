@@ -479,6 +479,12 @@ def make_server(hub: Hub, port: int, switch: "FeSwitch | None" = None):
         def log_message(self, *a):            # 콘솔을 조용하게
             pass
 
+        def end_headers(self):
+            # **화면 파일을 캐시하지 않는다** (D-44). 브라우저가 옛 live.html · live_axis.js 를 들고 있으면
+            # 코드를 받아도 화면은 그대로다 — 표시 범위가 0.01 로 바뀐 판을 받고도 0.1 단위로 움직였다.
+            self.send_header("Cache-Control", "no-store")
+            super().end_headers()
+
         def _json(self, code: int, obj) -> None:
             body = json.dumps(obj, ensure_ascii=False).encode()
             self.send_response(code)
@@ -498,7 +504,6 @@ def make_server(hub: Hub, port: int, switch: "FeSwitch | None" = None):
                 return super().do_GET()
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
             self.send_header("Connection", "keep-alive")
             self.end_headers()
             q = hub.register()

@@ -361,10 +361,19 @@ function strokeBuf(g, a, P, ax, color, lw, alpha){
   const sweep = play === 'sweep';
   const H = vh;                              // 보이는 끝 — head 보다 반 블록 늦을 수 있다
   const x = i => P.l + i / (cap - 1) * P.pw;
-  const y = v => P.t + P.ph/2 - (v - ax.m)/ax.s * (P.ph/2 - 6);
+  /* **y 를 그림 상자 바로 밖까지로 묶는다** (D-44). 범위를 작게(±0.1 mV) 잡으면 선이 상자 위아래로
+   * 수천 px 씩 뻗는다 — clip 이 보이는 것은 잘라도 래스터 비용은 그대로라 겹치기가 16 fps 로 떨어졌다
+   * `[측정]`. 상자 밖은 어차피 안 보이므로 모양은 같다. */
+  const yLo = P.t - 4, yHi = P.b + 4;
+  const y = v => Math.min(yHi, Math.max(yLo, P.t + P.ph/2 - (v - ax.m)/ax.s * (P.ph/2 - 6)));
   g.save(); g.beginPath(); g.rect(P.l, P.t, P.pw, P.ph); g.clip();
   g.strokeStyle = color; g.lineWidth = lw; g.lineJoin = 'round';
-  let pen = false, cur = -1;
+  /* **한 획을 CHUNK 선분으로 끊는다** (D-44). 한 path 를 stroke 하면 브라우저는 겹친 자리가 두 번
+   * 칠해지지 않게 **획 전체의 합집합**을 구한다. 범위를 작게 잡아 선이 위아래로 촘촘히 오가면 자기 교차가
+   * 수천 개가 되고 그 계산이 프레임을 먹었다 — 겹치기 ±0.1 mV 에서 16 fps, 24 선분씩 끊으니 58 fps `[측정]`. 짧게 끊으면 합집합이
+   * 조각 안에서만 계산된다. 이음매에서 한 점이 두 번 칠해지는 것은 눈에 안 띈다. */
+  const CHUNK = 24;
+  let pen = false, cur = -1, nseg = 0;
   for (let i = 0; i < cap; i++){
     const t = AX.absAt(i, H, cap, play);
     const al = !seen(t) ? 0
@@ -378,7 +387,10 @@ function strokeBuf(g, a, P, ax, color, lw, alpha){
     } else if (Math.abs(al - cur) > 1e-6){
       g.lineTo(px, py); g.stroke();
       g.beginPath(); g.globalAlpha = base * al; cur = al; g.moveTo(px, py);
-    } else g.lineTo(px, py);
+    } else {
+      g.lineTo(px, py);
+      if (++nseg >= CHUNK){ g.stroke(); g.beginPath(); g.moveTo(px, py); nseg = 0; }
+    }
   }
   if (pen) g.stroke();
   // ---- 선단 밝기 (잔광) — 흰빛 혼합 + 선단 쪽 굵기 + 같은 색의 짧은 빛 번짐 + 빛점 (D-41 개정)
