@@ -133,6 +133,7 @@
   <div><span class="k">처리 밀림</span><span id="qdrop">0</span></div>
   <div><span class="k">처리 여유 (RTF)</span><span id="rtf">—</span></div>
   <div title="최근 2 초 동안 선에서 바이트가 안 온 가장 긴 간격. 화면은 끊기는데 손실이 0 이면 여기를 본다 (F-55)"><span class="k">도착 간격 (최대)</span><span id="gap">—</span></div>
+  <div title="최근 2 초 동안 한 장을 그리는 데 걸린 가장 긴 시간과 초당 장 수. 화면이 끊기는데 도착 간격이 정상이면 여기를 본다 (D-43)"><span class="k">그리기 (최대 · 초당)</span><span id="draw">—</span></div>
 </div>
 
 <section class="signal-panel">
@@ -148,7 +149,7 @@
     <select id="win" class="num">
       <option value="2.5">2.5초</option><option value="5" selected>5초</option><option value="10">10초</option></select></div>
   <div><label class="k" for="amp">표시 범위</label>
-    <input id="amp" class="num" type="number" min="0" step="0.1" value="0"
+    <input id="amp" class="num" type="number" min="0" step="0.01" value="0"
            title="0 이면 자동 — 켜 놓은 계열이 다 들어가게 맞춘다"><span class="k">±mV · 0 = 자동</span></div>
   <div id="fenote" class="warn" hidden></div>
   <div id="ovnote" class="warn" hidden></div>
@@ -163,8 +164,8 @@
   <div class="erase"><span class="k">지우기 비율 (디버그)</span><span id="eraseg"></span></div>
 </div></details>
 
+<div id="legend" class="lg" aria-label="표시할 방법"></div>
 <main id="panels"></main>
-<div id="legend" class="lg" hidden></div>
 </section>
 
 <footer>
@@ -486,6 +487,17 @@ function drawOverlay(){
 }
 
 let dirty = false;
+/* 그리기 시간 — 브라우저마다 캔버스 가속이 달라 우리 측정(헤드리스)과 전시 PC 가 다를 수 있다.
+ * 화면 위에 띄워 두면 «선이 늦나, 그리기가 늦나» 를 현장에서 가른다 (D-43). */
+let drawWin = {t: 0, n: 0, max: 0};
+function drawStat(ms, now){
+  drawWin.n++; drawWin.max = Math.max(drawWin.max, ms);
+  if (now - drawWin.t < 2000) return;
+  const fps = drawWin.n / ((now - drawWin.t) / 1000), e = document.getElementById('draw');
+  if (drawWin.t) { e.textContent = `${drawWin.max.toFixed(1)} ms · ${fps.toFixed(0)} 장`;
+    e.style.color = drawWin.max > 25 ? 'var(--bad)' : ''; }
+  drawWin = {t: now, n: 0, max: 0};
+}
 /* 움직임을 줄이겠다고 한 사용자에게는 **커서를 매 프레임 돌리지 않는다.**
    데이터가 올 때(`dirty`)만 그리므로 파형은 계속 갱신되지만 커서가 쉬지 않고
    도는 일은 없어진다. 실시간 감시장치의 본질(흐르는 것)은 남기고 불필요한
@@ -496,7 +508,9 @@ function frame(){
   if (v !== vh){ vh = v; dirty = true; }     // 보간의 둘째 단계도 한 장으로 친다
   // 스윕은 커서가 계속 도는 것이 보여야 하므로 **매 프레임** 다시 그린다.
   if (dirty || (play === 'sweep' && !REDUCED)){ dirty = false;
-    mode === 'overlay' ? drawOverlay() : drawSplit(); }
+    const t0 = performance.now();
+    mode === 'overlay' ? drawOverlay() : drawSplit();
+    drawStat(performance.now() - t0, t0); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -505,29 +519,34 @@ requestAnimationFrame(frame);
 function relayout(){
   const host = document.getElementById('panels');
   host.innerHTML = ''; panels.clear(); overlayCv = null;
-  const lg = document.getElementById('legend');
   if (mode === 'overlay'){
     const d = document.createElement('div'); d.className = 'row';
     d.innerHTML = '<div class="lab"><b>겹쳐 보기 — 모든 방법이 같은 축·같은 이득, 불투명도 85 %</b>' +
                   '<span>입력은 옅은 회색 — 전극 DC 만 뺐고 이득은 같다</span></div>';
     overlayCv = document.createElement('canvas'); overlayCv.id = 'overlay';
     d.appendChild(overlayCv); host.appendChild(d);
-    lg.hidden = false; lg.innerHTML = '';
-    for (const n of bufs.keys()){
-      const b = document.createElement('button');
-      b.style.color = n === 'raw' ? '#8fa3ad' : colorOf.get(n);
-      b.innerHTML = `<i></i>${n === 'raw' ? '입력 (잡음)' : n} · ${LABEL[n] || ''}`;
-      b.setAttribute('aria-pressed', String(!hidden.has(n)));
-      b.onclick = () => { hidden.has(n) ? hidden.delete(n) : hidden.add(n);
-        b.setAttribute('aria-pressed', String(!hidden.has(n))); dirty = true; };
-      lg.appendChild(b);
-    }
   } else {
-    lg.hidden = true;
+    // 분리도 **같은 칩**을 따른다 — 켠 방법만 칸을 만든다 (D-43)
     for (const n of bufs.keys())
-      panels.set(n, panel(n, LABEL[n] || n));
+      if (!hidden.has(n)) panels.set(n, panel(n, LABEL[n] || n));
   }
+  paintLegend();
   dirty = true;
+}
+/** 방법 칩 — 그림 **위에** 두고 두 모드가 같이 쓴다. 분리에서는 끄면 칸이 빠진다. */
+function paintLegend(){
+  const lg = document.getElementById('legend');
+  lg.innerHTML = '';
+  for (const n of bufs.keys()){
+    const b = document.createElement('button');
+    b.style.color = n === 'raw' ? (mode === 'overlay' ? '#8fa3ad' : RAW_COLOR) : colorOf.get(n);
+    b.innerHTML = `<i></i>${n === 'raw' ? '입력 (잡음)' : n} · ${LABEL[n] || ''}`;
+    b.setAttribute('aria-pressed', String(!hidden.has(n)));
+    b.onclick = () => { hidden.has(n) ? hidden.delete(n) : hidden.add(n);
+      b.setAttribute('aria-pressed', String(!hidden.has(n)));
+      if (mode === 'split') relayout(); else dirty = true; };
+    lg.appendChild(b);
+  }
 }
 function seg(a, b, set){
   const A = document.getElementById(a), Bt = document.getElementById(b);
@@ -554,8 +573,15 @@ document.getElementById('win').onchange = e => {
 };
 /* 표시 범위 ±mV. 0(또는 빈 칸)이면 자동 이득으로 돌아간다. 자동으로 돌아갈 때 이득을 새로 잡게 한다. */
 document.getElementById('amp').oninput = e => {
-  const v = +e.target.value;
-  const next = Number.isFinite(v) && v > 0 ? v : 0;
+  let v = +e.target.value;
+  /* **자동(0)에서 처음 올리면 지금 자동이 잡은 범위로 간다** — 0.01 부터 올라가면 수십 번을
+   * 눌러야 쓸 만한 값에 닿는다. 화살표 · 휠은 inputType 이 없고, 직접 친 값은 그대로 둔다. */
+  if (AMP === 0 && v > 0 && !e.inputType){
+    const s0 = gain.value();
+    v = s0 > 0 ? Math.max(0.01, Math.ceil(s0 * 100 - 1e-9) / 100) : 0.03;
+    e.target.value = v.toFixed(2);
+  }
+  const next = Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : 0;
   if (next === 0 && AMP > 0) gain.reset();
   AMP = next; dirty = true;
 };
@@ -677,7 +703,7 @@ es.onmessage = ev => {
   const nt = el('ovnote');
   nt.hidden = nOver <= OVER_MAX;
   nt.textContent = nOver > OVER_MAX
-    ? `겹치기는 색으로 ${OVER_MAX} 개까지만 가른다 — 나머지는 아래에서 켜고 끈다`
+    ? `겹치기는 색으로 ${OVER_MAX} 개까지만 가른다 — 나머지는 위의 칩으로 켜고 끈다`
     : '';
   const s = m.stat;
   // 다른 창에서 바꿨을 수도 있다 — 브리지가 말하는 것을 따른다.
