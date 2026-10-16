@@ -571,6 +571,10 @@ def main() -> int:
                     help="front-end 모드. 화면에서 실행 중에도 바꿀 수 있다")
     ap.add_argument("--d", type=int, default=12, help="미래 문맥 [샘플]")
     ap.add_argument("--hop", type=int, default=12, help="추론 간격 [샘플]")
+    ap.add_argument("--torch-threads", type=int, default=2, metavar="N",
+                    help="딥러닝 방법(M06 등)이 쓸 CPU 스레드 수. 기본 2 (replay 측정에서 가장 빨랐다). 0 이면 torch 기본값(코어 전부). "
+                         "torch 가 추론마다 코어를 다 잡으면 같은 PC 의 브라우저가 밀려 화면이 끊길 수 "
+                         "있다 — 줄여서 코어를 남긴다 (D-47)")
     ap.add_argument("--hop-for", metavar="M=N[,M=N]",
         help="방법별 추론 간격 [샘플]을 덮어쓴다. 예: M05=96. 안 주면 미리 정한 값을 쓴다 "
              "(M05 · M05f = 128 — 창 하나가 0.2~0.3 s 라 12 로는 못 따라간다, F-57). "
@@ -619,6 +623,10 @@ def main() -> int:
     # ---- front-end 는 여기서 **한 번만**. 방법은 한 번 만들어 재사용한다
     # (모델 적재가 비싸다) — 전환 때는 `reset()` 만 부른다.
     hop_for = parse_hop_for(args.hop_for, names)
+    if args.torch_threads > 0 and any(n in DL_TAGS for n in names):
+        import torch
+        torch.set_num_threads(args.torch_threads)
+        print(f"torch 스레드 {torch.get_num_threads()} 개로 제한 (--torch-threads)")
     fe_hop_s = max(1, args.fe_hop) / FS
     fe = build_fe(args.fe, FS, hop_s=fe_hop_s)
     procs = {}
