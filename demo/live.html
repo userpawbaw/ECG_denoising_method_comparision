@@ -518,8 +518,12 @@ function drawStat(ms, now){
 function frame(){
   const v = reveal.at(performance.now());
   if (v !== vh){ vh = v; dirty = true; }     // 보간의 둘째 단계도 한 장으로 친다
-  // 스윕은 커서가 계속 도는 것이 보여야 하므로 **매 프레임** 다시 그린다.
-  if (dirty || (play === 'sweep' && !REDUCED)){ dirty = false;
+  /* 전에는 스윕을 **매 프레임**(60 장/s) 다시 그렸다. 그런데 커서는 보이는 끝(vh)에 붙어 있어 vh 가
+   * 바뀔 때만 움직인다 — 나머지 장은 똑같은 그림이었다. 이제는 vh 가 바뀔 때(위의 dirty)와 스트림이 멈춰
+   * 선단 밝기가 사그라드는 0.3~0.7 s 동안만 그린다 (D-45). */
+  const since = performance.now() - lastData;
+  const fading = play === 'sweep' && glowOn && since > 300 && since < 700;
+  if (dirty || fading){ dirty = false;
     const t0 = performance.now();
     mode === 'overlay' ? drawOverlay() : drawSplit();
     drawStat(performance.now() - t0, t0); }
