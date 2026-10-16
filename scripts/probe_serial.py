@@ -178,7 +178,71 @@ def read_timing(serial, port: str, baud: int, seconds: float) -> tuple[list, lis
     return out[0], out[1]
 
 
+def adc_summary(vals: list[int], vref: float = 5.0, bits: int = 10) -> dict:
+    """ADC 카운트들이 **범위(0..2^bits-1)를 얼마나 쓰는가** (D-48).
+
+    핀 전압으로도 같이 준다 — 화면은 이득으로 나눈 «전극 mV» 라 핀에서 실제로 몇 V
+    흔들리는지가 안 보인다. 꼬리 0.5 % 씩은 튀는 값이라 범위에서 뺀다."""
+    full = 2 ** bits - 1
+    v = sorted(int(x) for x in vals)
+    n = len(v)
+    if not n:
+        return {"n": 0}
+    q = lambda f: v[min(n - 1, max(0, int(round(f * (n - 1)))))]
+    lo, hi, med = q(0.005), q(0.995), q(0.5)
+    volt = lambda c: c / full * vref
+    return {"n": n, "min": v[0], "max": v[-1], "lo": lo, "hi": hi, "med": med,
+            "unique": len(set(v)), "used": (hi - lo) / full,
+            "rail_lo": sum(1 for x in v if x <= 0) / n, "rail_hi": sum(1 for x in v if x >= full) / n,
+            "v_lo": volt(lo), "v_hi": volt(hi), "v_med": volt(med), "full": full}
+
+
+def adc_verdict(a: dict) -> list[str]:
+    """요약을 말로. 기준: 정상 ECG 는 AD8232 계열(이득 ~1100)에서 R 피크가 핀 기준 0.5~2 V."""
+    if not a.get("n"):
+        return ["샘플을 하나도 못 받았다 — 먼저 --read-timing 없이 돌려 형식을 볼 것."]
+    out = []
+    if a["rail_lo"] > 0.001 or a["rail_hi"] > 0.001:
+        out.append(f"레일에 붙은 샘플이 있다 (0: {100*a['rail_lo']:.1f} %, {a['full']}: "
+                   f"{100*a['rail_hi']:.1f} %) — 입력이 범위를 넘는다(포화). 전극 · lead-off 확인.")
+    used = a["used"]
+    if used < 0.05:
+        out.append(f"범위의 {100*used:.1f} % 만 쓴다 (핀 {a['v_lo']:.3f}~{a['v_hi']:.3f} V). "
+                   "정상 ECG 라면 수십 % 를 쓴다 — 신호가 아주 작게 들어온다(전극 접촉 · 위치 · "
+                   "보드 이득 확인).")
+    elif used < 0.2:
+        out.append(f"범위의 {100*used:.1f} % 를 쓴다 — 작은 편이지만 ECG 로 가능한 크기다.")
+    else:
+        out.append(f"범위의 {100*used:.1f} % 를 쓴다 — 충분하다.")
+    if abs(a["v_med"] - 2.5) > 0.4:
+        out.append(f"중앙값이 핀 {a['v_med']:.2f} V 다 — 기준점(약 2.5 V)에서 벗어났다. 전극 DC 가 크거나 "
+                   "기준 전극이 안 붙었을 수 있다.")
+    return out
+
+
 # ------------------------------------------------------------------ 입출력
+def read_adc(serial, port: str, baud: int, seconds: float) -> list[int]:
+    """브리지처럼 열어 250 Hz ASCII 로 두고 `t_ms,adc` 의 adc 만 모은다."""
+    s = serial.Serial(port, baud, timeout=0.05)
+    buf = bytearray()
+    try:
+        time.sleep(2.0)
+        s.reset_input_buffer()
+        s.write(b"2"); s.write(b"a")
+        time.sleep(0.2)
+        s.reset_input_buffer()
+        t_end = time.perf_counter() + seconds
+        while time.perf_counter() < t_end:
+            buf += s.read(s.in_waiting or 1)
+    finally:
+        s.close()
+    vals = []
+    for ln in bytes(buf).split(b"\n"):
+        if bridge_accepts(ln):
+            vals.append(int(ln.strip().split(b",")[1]))
+    return vals
+
+
 def listen(serial, port: str, baud: int, seconds: float) -> bytes:
     """포트를 열어 `seconds` 동안 받은 바이트를 돌려준다."""
     s = serial.Serial(port, baud, timeout=0.2)        # 여는 순간 DTR 로 보드가 리셋된다
@@ -264,6 +328,11 @@ def main() -> int:
                     help="형식 점검 대신 read() 한 번이 몇 ms · 몇 B 인지 잰다. 브리지와 같이 열고 "
                          "250 Hz ASCII 로 바꾼 뒤 read(4096) 와 read(in_waiting) 를 --seconds 씩. "
                          "화면이 1~2 초마다만 바뀔 때 쓴다 (F-55). baud 는 --baud 의 첫 값")
+    ap.add_argument("--adc-stats", action="store_true",
+                    help="형식 점검 대신 ADC 카운트가 0..1023 범위를 얼마나 쓰는지 본다 (D-48). "
+                         "--seconds 동안(최소 10 s) 250 Hz ASCII 로 받아 최소 · 최대 · 중앙값 · "
+                         "사용 비율 · 레일 포화 · 핀 전압을 낸다. 전극을 붙이고 가만히 있을 때 돌린다")
+    ap.add_argument("--vref", type=float, default=5.0, help="--adc-stats 의 ADC 기준 전압 [V]")
     args = ap.parse_args()
 
     try:
@@ -279,6 +348,24 @@ def main() -> int:
             return 0
         print("\n--port 가 필요하다. 예:  python scripts/probe_serial.py --port <위의 이름>")
         return 2
+    if args.adc_stats:
+        baud = args.baud[0] if args.baud != COMMON_BAUDS else 115200
+        secs = max(args.seconds, 10.0)
+        print(f"포트 {args.port} · baud {baud} - 250 Hz ASCII 로 {secs:g} 초 받는다")
+        try:
+            vals = read_adc(serial, args.port, baud, secs)
+        except serial.SerialException as e:
+            print(f"포트를 못 연다: {e}\n  -> 브리지 · IDE 시리얼 모니터를 닫을 것")
+            return 1
+        a = adc_summary(vals, vref=args.vref)
+        if a["n"]:
+            print(f"  샘플 {a['n']} 개 · 최소 {a['min']} · 최대 {a['max']} · 중앙 {a['med']} "
+                  f"· 서로 다른 값 {a['unique']} 개")
+            print(f"  0.5~99.5 % 구간: {a['lo']}~{a['hi']} 카운트 = 핀 {a['v_lo']:.3f}~{a['v_hi']:.3f} V "
+                  f"(범위의 {100*a['used']:.1f} %)")
+        for ln in adc_verdict(a):
+            print("결론:", ln)
+        return 0
     if args.read_timing:
         baud = args.baud[0] if args.baud != COMMON_BAUDS else 115200
         secs = max(args.seconds, 5.0)

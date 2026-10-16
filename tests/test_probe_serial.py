@@ -306,3 +306,17 @@ def test_read_timing_says_ok_when_reads_return_on_the_timeout():
 def test_read_timing_ignores_empty_reads_and_reports_none_without_bytes():
     p = _load()
     assert p.timing_verdict(p.timing_summary([(0.05, 0)] * 10)) == "none"
+
+
+def test_adc_summary_reports_range_use_and_rails():
+    """D-48: ADC 범위 사용 비율 · 레일 포화 · 핀 전압."""
+    ps = _load()
+    small = [512 + (k % 15) - 7 for k in range(2000)]          # ±7 카운트 — 실측에서 본 크기
+    a = ps.adc_summary(small)
+    assert a["lo"] == 505 and a["hi"] == 519 and abs(a["used"] - 14 / 1023) < 1e-9
+    assert abs(a["v_med"] - 512 / 1023 * 5) < 1e-9
+    assert any("만 쓴다" in s for s in ps.adc_verdict(a))
+    big = [0] * 10 + [300 + (k % 400) for k in range(1990)]
+    b = ps.adc_summary(big)
+    assert b["rail_lo"] > 0.001 and any("포화" in s for s in ps.adc_verdict(b))
+    assert ps.adc_verdict({"n": 0})
