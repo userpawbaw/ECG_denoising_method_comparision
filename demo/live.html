@@ -272,8 +272,71 @@ function fitc(c){
   if (c.width !== w*dpr || c.height !== h*dpr){ c.width = w*dpr; c.height = h*dpr; }
   const g = c.getContext('2d');
   g.setTransform(dpr,0,0,dpr,0,0);
-  g.fillStyle = '#112b39'; g.fillRect(0,0,w,h);          // v2.2.1 판 색
-  return {g, w, h};
+  return {g, w, h, dpr};
+}
+
+/* **격자 · 눈금은 한 번만 그려 두고 다시 쓴다** (D-46). 판 색 · 격자 · mV/시간 눈금은 축(이득 · 중심)과
+ * 표시 길이 · 재생 방식이 바뀔 때만 달라진다 — 매 장 수십 개의 선과 글자를 다시 그릴 이유가 없다. */
+function paintStatic(c, g, w, h, dpr, P, ax){
+  const key = [w, h, dpr, play, WIN_S, ax ? ax.m + ',' + ax.s : '-'].join('|');
+  if (!c._st || c._st.key !== key){
+    const o = c._st ? c._st.cv : document.createElement('canvas');
+    o.width = w * dpr; o.height = h * dpr;
+    const og = o.getContext('2d');
+    og.setTransform(dpr, 0, 0, dpr, 0, 0);
+    og.fillStyle = '#112b39'; og.fillRect(0, 0, w, h);    // v2.2.1 판 색
+    drawFrame(og, P, ax);
+    c._st = {key, cv: o};
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(c._st.cv, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+/* **파형은 따로 한 장(층)에 그리고, 지우는 경계는 그 층을 그라데이션으로 깎는다** (D-46).
+ * 전에는 표본마다 투명도를 달리해 따로 그었다 — 이음매마다 둥근 끝이 겹쳐 구슬처럼 끊겨 보였고,
+ * 단계가 표본 폭(수 px)이라 «잘린 느낌» 이 났다. 층 하나에 선을 다 그은 뒤 destination-out
+ * 그라데이션으로 깎으면 경계가 px 단위로 연속이다. 격자는 층 밖이라 같이 깎이지 않는다. */
+const LAYER = document.createElement('canvas');
+function layerBegin(w, h, dpr){
+  if (LAYER.width !== w * dpr || LAYER.height !== h * dpr){ LAYER.width = w * dpr; LAYER.height = h * dpr; }
+  const lg = LAYER.getContext('2d');
+  lg.setTransform(1, 0, 0, 1, 0, 0); lg.clearRect(0, 0, LAYER.width, LAYER.height);
+  lg.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return lg;
+}
+function layerEnd(g, lg, P, dpr){
+  eraseEdges(lg, P);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(LAYER, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+/** 0 -> 1 을 부드럽게(smoothstep) — 선형 끝에서 꺾이는 자리가 «잘린 경계» 로 보인다. */
+function eraseRamp(gr, from, to){
+  for (let k = 0; k <= 8; k++){ const u = k / 8, e = u * u * (3 - 2 * u);
+    gr.addColorStop(u, `rgba(0,0,0,${(from + (to - from) * e).toFixed(4)})`); }
+}
+function eraseEdges(lg, P){
+  if (vh < 0) return;
+  const sweep = play === 'sweep';
+  if (!sweep && !softEdge) return;
+  const e = AX.eraseSpans(cap, eraseFrac), pxN = n => n / (cap - 1) * P.pw;
+  lg.save(); lg.beginPath(); lg.rect(P.l, P.t, P.pw, P.ph); lg.clip();
+  lg.globalCompositeOperation = 'destination-out';
+  if (sweep){
+    const x0 = P.l + ((vh + 1) % cap) / (cap - 1) * P.pw, gw = pxN(e.gap), fw = pxN(e.fade);
+    for (const off of [0, -P.pw]){          // 화면 오른쪽 끝을 넘으면 왼쪽에서 이어진다
+      const a = x0 + off;
+      lg.fillStyle = '#000';
+      if (!softEdge){ lg.fillRect(a, P.t, gw + fw, P.ph); continue; }
+      lg.fillRect(a, P.t, gw, P.ph);
+      const gr = lg.createLinearGradient(a + gw, 0, a + gw + fw, 0);
+      eraseRamp(gr, 1, 0);
+      lg.fillStyle = gr; lg.fillRect(a + gw, P.t, fw, P.ph);
+    }
+  } else {
+    const n = pxN(e.gap + e.fade);           // 스크롤: 사라지는 왼쪽 끝
+    const gr = lg.createLinearGradient(P.l, 0, P.l + n, 0);
+    eraseRamp(gr, 1, 0);
+    lg.fillStyle = gr; lg.fillRect(P.l, P.t, n, P.ph);
+  }
+  lg.restore();
 }
 
 /** 그림 영역 — 왼쪽은 mV 눈금, 아래는 시간 눈금 자리다 (v2.2.1 Plot.tsx 배치). */
@@ -362,75 +425,58 @@ function strokeBuf(g, a, P, ax, color, lw, alpha){
   const H = vh;                              // 보이는 끝 — head 보다 반 블록 늦을 수 있다
   const x = i => P.l + i / (cap - 1) * P.pw;
   /* **y 를 그림 상자 바로 밖까지로 묶는다** (D-44). 범위를 작게(±0.1 mV) 잡으면 선이 상자 위아래로
-   * 수천 px 씩 뻗는다 — clip 이 보이는 것은 잘라도 래스터 비용은 그대로라 겹치기가 16 fps 로 떨어졌다
-   * `[측정]`. 상자 밖은 어차피 안 보이므로 모양은 같다. */
+   * 수천 px 씩 뻗는다. 상자 밖은 어차피 안 보이므로 모양은 같다. */
   const yLo = P.t - 4, yHi = P.b + 4;
   const y = v => Math.min(yHi, Math.max(yLo, P.t + P.ph/2 - (v - ax.m)/ax.s * (P.ph/2 - 6)));
   g.save(); g.beginPath(); g.rect(P.l, P.t, P.pw, P.ph); g.clip();
-  g.strokeStyle = color; g.lineWidth = lw; g.lineJoin = 'round';
+  g.strokeStyle = color; g.lineWidth = lw; g.lineJoin = 'round'; g.globalAlpha = base;
   /* **한 획을 CHUNK 선분으로 끊는다** (D-44). 한 path 를 stroke 하면 브라우저는 겹친 자리가 두 번
-   * 칠해지지 않게 **획 전체의 합집합**을 구한다. 범위를 작게 잡아 선이 위아래로 촘촘히 오가면 자기 교차가
-   * 수천 개가 되고 그 계산이 프레임을 먹었다 — 겹치기 ±0.1 mV 에서 16 fps, 24 선분씩 끊으니 58 fps `[측정]`. 짧게 끊으면 합집합이
-   * 조각 안에서만 계산된다. 이음매에서 한 점이 두 번 칠해지는 것은 눈에 안 띈다. */
+   * 칠해지지 않게 획 전체의 합집합을 구한다 — 범위를 작게 잡아 선이 촘촘히 오가면 그 계산이 프레임을
+   * 먹었다(겹치기 ±0.1 mV 16 fps -> 24 선분씩 끊어 58 fps `[측정]`).
+   * 경계의 투명도는 여기서 다루지 않는다 — 층을 통째로 깎는다(`eraseEdges`, D-46). */
   const CHUNK = 24;
-  let pen = false, cur = -1, nseg = 0;
+  let pen = false, nseg = 0, prev = -2;
   for (let i = 0; i < cap; i++){
     const t = AX.absAt(i, H, cap, play);
-    const al = !seen(t) ? 0
-             : sweep ? AX.sweepAlpha(H - t, cap, eraseFrac, softEdge)
-             : AX.scrollAlpha(i, cap, eraseFrac, softEdge);
+    if (!seen(t)){ if (pen){ g.stroke(); pen = false; } continue; }
     const px = x(i), py = y(a[t % cap]);
-    if (al <= 0){ if (pen){ g.stroke(); pen = false; } continue; }
-    // 투명도가 바뀌는 자리에서만 획을 끊는다 — 대부분은 1 이라 한 획이다
-    if (!pen){
-      g.beginPath(); g.globalAlpha = base * al; cur = al; g.moveTo(px, py); pen = true;
-    } else if (Math.abs(al - cur) > 1e-6){
-      g.lineTo(px, py); g.stroke();
-      g.beginPath(); g.globalAlpha = base * al; cur = al; g.moveTo(px, py);
+    if (!pen || t !== prev + 1){             // 스윕의 커서 자리: 새 주기와 옛 주기를 잇지 않는다
+      if (pen) g.stroke();
+      g.beginPath(); g.moveTo(px, py); pen = true; nseg = 0;
     } else {
       g.lineTo(px, py);
       if (++nseg >= CHUNK){ g.stroke(); g.beginPath(); g.moveTo(px, py); nseg = 0; }
     }
+    prev = t;
   }
   if (pen) g.stroke();
-  // ---- 선단 밝기 (잔광) — 흰빛 혼합 + 선단 쪽 굵기 + 같은 색의 짧은 빛 번짐 + 빛점 (D-41 개정)
-  // 스크롤에도 건다 — 선단이 늘 오른쪽 끝이다 (D-42). 스크롤에는 주기가 없으니 pos 로 자르지 않는다.
+  /* ---- 선단 밝기 (잔광) — 흰빛 혼합 + 선단 쪽 굵기 + 빛점 (D-41 · D-46)
+   * D-46: 밝기를 8 단계로 묶던 것을 **선분마다 연속**으로 바꿨다(계단이 보였다). 빛 번짐(shadowBlur)은
+   * 뺐다 — 연산이 가장 큰 장식이었다. 스윕에서 커서가 오른쪽 끝을 넘어도 **넘어간 꼬리가 계속 빛난다**
+   * (전에는 현재 주기 안만 빛나 wrap 순간 잔광이 뚝 끊겼다). 화면 칸이 거꾸로 뛰는 선분 하나만 건너뛴다. */
   if (glowOn && H >= 0){
     const live = AX.glowLive(performance.now() - lastData);
-    const W = AX.glowWidth(P.pw, cap), pos = sweep ? H % cap : Infinity;
+    const W = AX.glowWidth(P.pw, cap);
     const col = sweep ? (k => k % cap) : (k => cap - 1 - (H - k));   // 절대 인덱스 -> 화면 칸
     if (live > 0 && W > 0){
-      g.globalAlpha = base;
       g.lineCap = 'round';
-      // 밝기를 8 단계로 묶어 **같은 단계는 한 획**으로 — 선분마다 빛 번짐을 그리면 프레임이 15 % 떨어졌다
-      const LV = 8;
-      let lvl = -1, open = false;
-      const flush = () => { if (open){ g.stroke(); open = false; } };
-      for (let age = Math.min(W, pos); age >= 1; age--){
+      for (let age = W; age >= 1; age--){
         const t1 = H - age + 1, t0 = t1 - 1;
-        if (!seen(t0)){ flush(); lvl = -1; continue; }
-        const u = AX.glowLevel(age - 1, W, pos) * live;
-        if (u <= 0){ flush(); lvl = -1; continue; }
-        const q = Math.ceil(u * LV) / LV;
-        if (q !== lvl){
-          flush(); lvl = q;
-          g.strokeStyle = AX.mixWhite(color, AX.GLOW_MAX * Math.pow(q, 1.5));
-          g.lineWidth = lw + 1.4 * q;
-          g.shadowColor = AX.rgba(color, 0.85 * q);
-          g.shadowBlur = 9 * q;
-          g.beginPath(); g.moveTo(x(col(t0)), y(a[t0 % cap])); open = true;
-        }
-        g.lineTo(x(col(t1)), y(a[t1 % cap]));
+        if (!seen(t0)) continue;
+        const c0 = col(t0), c1 = col(t1);
+        if (c1 < c0) continue;                 // wrap 자리 — 오른쪽 끝과 왼쪽 끝을 잇지 않는다
+        const u = AX.glowLevel(age - 1, W) * live;
+        if (u <= 0) continue;
+        const e = u * u * (3 - 2 * u);         // 폭 끝에서 0 으로 부드럽게 닿는다
+        g.strokeStyle = AX.mixWhite(color, AX.GLOW_MAX * e);
+        g.lineWidth = lw + 1.4 * e;
+        g.beginPath(); g.moveTo(x(c0), y(a[t0 % cap])); g.lineTo(x(c1), y(a[t1 % cap])); g.stroke();
       }
-      flush();
       // 빛점 — 가장 새 표본. 오실로스코프 빔처럼 선단을 짚는다
       if (seen(H)){
-        const hx = x(col(H)), hy = y(a[H % cap]);
-        g.shadowColor = AX.rgba(color, 0.9 * live); g.shadowBlur = 12 * live;
         g.fillStyle = AX.mixWhite(color, 0.75 * live);
-        g.beginPath(); g.arc(hx, hy, (lw + 1.6) * (0.6 + 0.4 * live), 0, 2 * Math.PI); g.fill();
+        g.beginPath(); g.arc(x(col(H)), y(a[H % cap]), (lw + 1.6) * (0.6 + 0.4 * live), 0, 2 * Math.PI); g.fill();
       }
-      g.shadowBlur = 0;
     }
   }
   g.restore();
@@ -466,30 +512,34 @@ function seen(t){ return AX.have(t, first, head, cap) && t <= vh; }
 function drawSplit(){
   const ax = axesFor([...panels.keys()]);
   for (const [name, c] of panels){
-    const {g, w, h} = fitc(c);
+    const {g, w, h, dpr} = fitc(c);
     const P = plotRect(w, h);
     const a = bufs.get(name), q = ax.get(name);
-    drawFrame(g, P, q);
+    paintStatic(c, g, w, h, dpr, P, q);
     if (!a || !q) continue;                    // 아직 받은 것이 없다 — 빈 칸으로 둔다
     shadeBad(g, P);
-    strokeBuf(g, a, P, q, seriesColor(name), 1.6);
+    const lg = layerBegin(w, h, dpr);
+    strokeBuf(lg, a, P, q, seriesColor(name), 1.6);
+    layerEnd(g, lg, P, dpr);
     cursorLine(g, P);
   }
 }
 
 function drawOverlay(){
   if (!overlayCv) return;
-  const {g, w, h} = fitc(overlayCv);
+  const {g, w, h, dpr} = fitc(overlayCv);
   const P = plotRect(w, h);
   const on = [...bufs.keys()].filter(n => n !== 'raw' && !hidden.has(n));
   const raw = (!hidden.has('raw') && bufs.has('raw')) ? 'raw' : null;
   const ax = axesFor(raw ? [raw, ...on] : on);
-  drawFrame(g, P, on.length ? ax.get(on[0]) : (raw ? ax.get(raw) : null));
+  paintStatic(overlayCv, g, w, h, dpr, P, on.length ? ax.get(on[0]) : (raw ? ax.get(raw) : null));
   shadeBad(g, P);
+  const lg = layerBegin(w, h, dpr);
   // 입력을 **같은 이득**으로, 자기 중심만 빼고 옅게 뒤에 깐다.
-  if (raw && ax.has(raw)) strokeBuf(g, bufs.get(raw), P, ax.get(raw), '#8fa3ad', 1.2, 0.55);
+  if (raw && ax.has(raw)) strokeBuf(lg, bufs.get(raw), P, ax.get(raw), '#8fa3ad', 1.2, 0.55);
   on.forEach(n => { const q = ax.get(n); if (q)
-    strokeBuf(g, bufs.get(n), P, q, colorOf.get(n), 1.6, 0.85); });
+    strokeBuf(lg, bufs.get(n), P, q, colorOf.get(n), 1.6, 0.85); });
+  layerEnd(g, lg, P, dpr);
   // 직접 라벨 — 겹치면 색이 섞여 보이므로 이름을 붙여야 한다
   g.font = '700 11px ui-monospace,monospace'; g.textAlign = 'right';
   on.forEach((n, k) => { g.fillStyle = colorOf.get(n);
