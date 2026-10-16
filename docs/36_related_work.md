@@ -77,3 +77,27 @@ trade-off 를 고안했다」가 아니라 **「image restoration 에서 보고�
 - NAFNet 의 블록 수 sweep 수치와 포화 지점
 - Restormer 의 deep-narrow vs wide-shallow 비교 조건(파라미터·FLOPs 정합 방식)
 - ECG denoising 에서 downstream(QRS 검출·부정맥 분류)을 지표로 쓴 사례
+
+## 6. 학습 방식 · 세부 설정 — 선행과 우리를 한 줄씩 대조 (2026-10-16)
+
+> 이번에는 외부 망이 열려 **일부를 원문·코드로 확인했다.** 확인한 것은 `[문헌·확인]`,
+> 검색 요약으로만 본 것은 `[문헌·요약]` 으로 표시한다. 보고서에는 앞쪽만 인용한다.
+
+| 항목 | 선행 | 우리 (`M06`) | 근거 등급 |
+|---|---|---|---|
+| ECG 모델 크기 | DRNN 0.03 M · FCN-DAE 0.08 M · DeepFilter 0.17 M · DeScoD-ECG 1.22 M · CGAN 4.89 M (최대 모델이 최고가 아님) | 0.98 M | `[문헌·확인]` DeScoD-ECG 표 |
+| ECG 벤치마크 | QT DB + NSTDB, 잡음 진폭 0.2~2.0 배, SSD · MAD · PRD · CosSim | MIT-BIH + NSTDB, −5~20 dB, SNR 개선량 | `[문헌·확인]` |
+| DeepFilter 손실 | **`50 · max_t (e²) + Σ_t e²`** — 창별 제곱합 + **최악 샘플** 항 | `L6` (MSE + MAE + 차분 + clean 통과) | `[문헌·확인]` 저자 코드 `dl_pipeline.py` |
+| DeepFilter 학습 | Adam 1e-3, `ReduceLROnPlateau`(×0.5, patience 2), early stop patience 10, batch 128 | AdamW 1e-3 · wd 1e-4, warmup + cosine, patience 12, batch 64 | `[문헌·확인]` 같은 파일 |
+| DeScoD-ECG | 조건부 diffusion, **10 번 뽑아 평균**(1-shot → 10-shot 에서 SSD 4.91 → 3.77) | 결정적 출력 1 개 | `[문헌·확인]` |
+| NAFNet 학습 | Adam β2 = 0.9, **wd 0**, cosine 1e-3 → 1e-6, **200 K iter**, grad clip, **PSNR 손실** | 판당 **약 1,350~2,700 step** (에폭당 2,880 창 ÷ 64 = 45 step × 30~60 에폭) | `[문헌·요약]` |
+| NAFNet 정규화 | LayerNorm 이 학습을 안정시켜 LR 을 1e-4 → 1e-3 로 올리게 했다 | GroupNorm | `[문헌·요약]` |
+| EDSR | 잔차 블록에서 **BatchNorm 을 빼니 성능이 크게 올랐다** — 정규화가 특징의 «범위 유연성»을 없앤다 | GroupNorm | `[문헌·요약]` |
+| CycleGAN | ResNet 생성기 + **identity loss**(목표 도메인 입력은 건드리지 않게) | 출력단 잔차 + `L6` | `[문헌·요약]` |
+
+**우리 결과와 맞춰 본 판단** — 「크게 해서 이긴다」는 선행에도 없다. 진전은 **목표**
+(diffusion · 손실 형태)와 **정규화 · 학습 세부**에서 왔다. F-55 와 같은 방향이다.
+
+**학습 길이에 대한 단서** — 판당 step 수는 NAFNet 의 1/100 수준이지만, D-23 C 에서
+창을 4 배로 늘려 epoch 당 step 이 4 배가 됐을 때 **+0.141 dB** 였다. 「오래 돌리면
+오른다」를 우리 데이터는 이미 약하게 반박하고 있다.

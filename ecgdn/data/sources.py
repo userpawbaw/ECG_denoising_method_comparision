@@ -97,7 +97,10 @@ class SyntheticSource:
         if self.ref_noise_snr is not None:
             from .mixer import mix_at_snr
             from .noise import SYNTH_KINDS, mixed_noise
-            # 합성 종류만 — NSTDB(bw/ma/em)는 「더하는 잡음」 쪽이라 섞으면 둘이 안 갈린다
+            # 합성 종류만. **「더하는 잡음」과 종류가 갈리지는 않는다** — 학습의 더하는
+            # 잡음 풀이 SYNTH_KINDS + NSTDB 다(dataset.noise_kinds). NSTDB 기록을
+            # 빼는 것은 그 30 분짜리 파형 구간이 참조에 새어 들지 않게 하는 것뿐이다.
+            # MIT-BIH 도 고유 잡음(근전도 등)과 NSTDB ma 가 같은 성질이다 (D-39 정정).
             nz, _ = mixed_noise(x.size, s.fs, make_rng("refnoise", sid), kinds=SYNTH_KINDS)
             x, _, _ = mix_at_snr(x, nz, self.ref_noise_snr)
         rec = CleanRecord(name=name, x=x, fs=s.fs, r_peaks=s.r_peaks, symbols=sym)
