@@ -17,14 +17,27 @@ from .film import CondEmbed, ResStack
 __all__ = ["ResUNet1D"]
 
 
+def _strip_groupnorm(m: nn.Module) -> None:
+    """모든 GroupNorm 을 Identity 로 바꾼다 (재귀)."""
+    for name, ch in m.named_children():
+        if isinstance(ch, nn.GroupNorm):
+            setattr(m, name, nn.Identity())
+        else:
+            _strip_groupnorm(ch)
+
+
 class ResUNet1D(nn.Module):
     def __init__(self, in_ch: int = 1, out_ch: int = 1,
                  chs: tuple[int, ...] = (24, 32, 48, 64, 96),
                  k_stem: int = 15, k: int = 9, n_bottleneck: int = 2,
                  n_blocks: int = 1, residual: bool = True,
                  cond: bool = False, cond_dim: int = 32,
-                 cond_lo: float = -5.0, cond_hi: float = 20.0):
+                 cond_lo: float = -5.0, cond_hi: float = 20.0,
+                 norm: str = "group"):
         super().__init__()
+        if norm not in ("group", "none"):
+            raise ValueError(f"norm 은 'group' 또는 'none' — {norm!r}")
+        self.norm = norm
         self.residual = bool(residual)
         # 조건화(D-28 2 번). **끄면 종래와 state_dict 키까지 같다** — 켤 때만
         # `ResStack` 으로 갈아끼운다 (`ecgdn/models/film.py` 머리말).
@@ -58,6 +71,10 @@ class ResUNet1D(nn.Module):
             self.dec.append(self._stack(chs[i - 1], k, n_blocks, cond_dim,
                                         cin=2 * chs[i - 1]))
         self.head = nn.Conv1d(chs[0], out_ch, 1)
+        # D-41 E8: 정규화를 뺀다 (EDSR). 블록마다 인자를 꿰지 않고 **만든 뒤에** 바꾼다
+        # — 기본값이면 이 줄을 안 타므로 state_dict 키와 출력이 예전과 비트 단위로 같다.
+        if norm == "none":
+            _strip_groupnorm(self)
         nn.init.zeros_(self.head.weight)
         nn.init.zeros_(self.head.bias)      # 초기 출력 = 0 -> 초기 x̂ = y (identity 근방에서 시작)
 

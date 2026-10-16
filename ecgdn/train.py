@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import time
@@ -92,6 +93,9 @@ class Trainer:
 
         self.opt = torch.optim.AdamW(self.model.parameters(), lr=cfg.lr,
                                      weight_decay=cfg.weight_decay)
+        # D-41 E9 — 꺼져 있으면 None 이고 아래 경로를 하나도 안 탄다.
+        self.ema = ({k: v.detach().clone() for k, v in self.model.state_dict().items()}
+                    if float(getattr(cfg, "ema_decay", 0.0)) > 0 else None)
         self.scaler = torch.amp.GradScaler(self.device.type, enabled=self.amp)
         save_manifest(self.out, cfg=asdict(cfg),
                       extra={"model": model_name,
@@ -106,6 +110,29 @@ class Trainer:
                                "ecgdn/models/losses.py"])
 
     # ---------------- 내부
+    @torch.no_grad()
+    def _ema_update(self) -> None:
+        d = float(self.cfg.ema_decay)
+        for k, v in self.model.state_dict().items():
+            e = self.ema[k]
+            if v.dtype.is_floating_point:
+                e.mul_(d).add_(v.detach(), alpha=1.0 - d)
+            else:                                   # 정수 버퍼는 그대로 따라간다
+                e.copy_(v)
+
+    @contextlib.contextmanager
+    def _ema_weights(self):
+        """EMA 가 켜져 있으면 그 가중치로 잠시 바꾼다. 꺼져 있으면 아무것도 안 한다."""
+        if self.ema is None:
+            yield
+            return
+        raw = {k: v.detach().clone() for k, v in self.model.state_dict().items()}
+        self.model.load_state_dict(self.ema)
+        try:
+            yield
+        finally:
+            self.model.load_state_dict(raw)
+
     def _loader(self, ds, shuffle: bool):
         return DataLoader(ds, batch_size=self.cfg.batch_size, shuffle=shuffle,
                           num_workers=self.num_workers, drop_last=shuffle,
@@ -228,9 +255,12 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.grad_clip)
                 self.scaler.step(self.opt)
                 self.scaler.update()
+                if self.ema is not None:
+                    self._ema_update()
                 tl += float(loss.detach()); nb += 1; step += 1
 
-            vm = self.evaluate(self.val_ds)
+            with self._ema_weights():
+                vm = self.evaluate(self.val_ds)
             secs = time.perf_counter() - t0
             row = dict(epoch=ep, lr=lr, train_loss=tl / max(nb, 1),
                        val_loss=vm["loss"], val_snr_imp_scaled=vm["snr_imp_scaled"],
@@ -255,7 +285,8 @@ class Trainer:
             if vm["snr_imp_scaled"] > self.state.best_metric:
                 self.state.best_metric = vm["snr_imp_scaled"]
                 self.state.best_epoch = ep
-                self.save("best.pt")
+                with self._ema_weights():          # best.pt 는 평가한 그 가중치
+                    self.save("best.pt")
             self.save("last.pt")
             if self.on_epoch_end is not None:
                 try:
@@ -290,6 +321,8 @@ class Trainer:
             if v is not None:
                 ck[key] = int(v)
         if name == "last.pt":
+            if self.ema is not None:
+                ck["ema"] = self.ema
             ck["opt"] = self.opt.state_dict()
             ck["scaler"] = self.scaler.state_dict()
             ck["state"] = {"best_epoch": self.state.best_epoch,
@@ -338,6 +371,12 @@ class Trainer:
             return False
         ck = torch.load(p, map_location=self.device, weights_only=False)
         self.model.load_state_dict(ck["model"])
+        if self.ema is not None:
+            if "ema" in ck:
+                self.ema = {k: v.to(self.device) for k, v in ck["ema"].items()}
+            else:   # EMA 없이 저장된 판을 EMA 로 잇는 것은 다른 학습이다 — 알린다
+                print("[resume] last.pt 에 EMA 상태가 없다 — 현재 가중치에서 EMA 를 새로 시작한다")
+                self.ema = {k: v.detach().clone() for k, v in self.model.state_dict().items()}
         if "opt" in ck:
             self.opt.load_state_dict(ck["opt"])
         if "scaler" in ck:

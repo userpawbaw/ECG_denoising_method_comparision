@@ -77,7 +77,8 @@ MAX_RESTARTS = 3
 # `tests/test_watchdog_sees_every_runner.py` 가 빠뜨림을 잡는다.
 RUNNER_NAMES = ("run_all_training.sh", "run_one_training.sh",
                 "run_d23_queue.sh", "run_sweep_locked.sh", "run_d38_queue.sh",
-                "run_d39_queue.sh", "run_d40_queue.sh")
+                "run_d39_queue.sh", "run_d40_queue.sh",
+                "run_d41_queue.sh")
 
 # 학습 프로세스로 셀 것. `train.py` 만 보면 sweep 러너가 학습 중인데도
 # «학습 프로세스 없음» 이 되어, 러너가 죽었을 때 `orphan_trainer` 대신

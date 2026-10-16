@@ -90,6 +90,9 @@ class TrainCfg:
     patience: int = 15
     grad_clip: float = 1.0
     seeds: tuple[int, ...] = (0, 1, 2)
+    # D-41 E9: 가중치 이동 평균. 0 이면 꺼짐 — 학습 경로가 예전과 같다.
+    # 켜면 val 평가 · best 선택 · best.pt 가 EMA 가중치로 간다.
+    ema_decay: float = 0.0
 
 
 # ---------------------------------------------------------------- 합성 ECG 기본 파라미터
