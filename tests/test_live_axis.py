@@ -308,24 +308,28 @@ def test_scroll_fades_the_left_edge_over_the_same_fraction():
     assert r["glowOld"] == 0
 
 
-def test_reveal_shows_each_block_in_exactly_two_steps():
-    """표시 보간 (D-42): 블록이 오면 **절반까지**, 도착 간격의 절반이 지나면 **끝까지**. 그 사이 값은 없다."""
+def test_reveal_splits_a_block_into_fixed_size_steps():
+    """표시 보간 (D-42 · D-49): 블록 n 표본을 ceil(n/6) 단계(최소 2)로 도착 간격 동안 고르게 드러낸다."""
     r = run_js("""
-      const R = AX.makeReveal(), seen = [];
-      R.push(99, 0);                                  // 첫 블록은 바로 다 보인다
-      seen.push(R.at(1));
-      for (let k = 1; k <= 10; k++) R.push(99 + 12 * k, 48 * k);
-      const t = 480, last = 99 + 120;
-      seen.push(R.at(t), R.at(t + 10), R.at(t + 30), R.at(t + 47));
-      R.push(5, 600);                                 // 시간축이 끊겼다 (front-end 전환 · 재동기)
-      seen.push(R.at(601));
-      console.log(JSON.stringify({seen, last, dt: R.interval()}));""")
-    s, last = r["seen"], r["last"]
-    assert s[0] == 99
-    assert abs(r["dt"] - 48) < 2, "도착 간격을 따라간다"
-    assert s[1] == last - 6 and s[2] == last - 6, "앞 절반만"
-    assert s[3] == last and s[4] == last, "간격 절반 뒤 끝까지"
-    assert s[5] == 5, "끊긴 시간축은 나눠 보이지 않는다"
+      const out = {};
+      for (const hop of [12, 16, 32]) {
+        const R = AX.makeReveal(), dt = hop / 250 * 1000;
+        R.push(99, 0);
+        for (let k = 1; k <= 10; k++) R.push(99 + hop * k, dt * k);
+        const t = dt * 10, last = 99 + hop * 10, seen = [];
+        for (let f = 0; f < dt; f += dt / 64) seen.push(R.at(t + f));
+        out[hop] = {seen: [...new Set(seen)], last, first: R.at(t)};
+      }
+      const R = AX.makeReveal(); R.push(99, 0); const r0 = R.at(1); R.push(130, 48); R.push(5, 96);
+      out.first = r0; out.cut = R.at(97);
+      console.log(JSON.stringify(out));""")
+    assert r["first"] == 99, "첫 블록은 바로 다 보인다"
+    assert r["cut"] == 5, "끊긴 시간축은 나눠 보이지 않는다"
+    for hop, steps in (("12", 2), ("16", 3), ("32", 6)):
+        q = r[hop]
+        assert len(q["seen"]) == steps, (hop, q["seen"])
+        assert q["seen"][-1] == q["last"] and q["first"] > q["last"] - int(hop), "도착 즉시 첫 단계"
+        assert all(b > a for a, b in zip(q["seen"], q["seen"][1:]))
 
 
 def test_leading_glow_follows_age_and_never_lights_the_old_cycle():

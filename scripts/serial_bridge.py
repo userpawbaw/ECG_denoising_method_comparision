@@ -570,7 +570,8 @@ def main() -> int:
     ap.add_argument("--fe", default="zerophase", choices=sorted(FE_MODES),
                     help="front-end 모드. 화면에서 실행 중에도 바꿀 수 있다")
     ap.add_argument("--d", type=int, default=12, help="미래 문맥 [샘플]")
-    ap.add_argument("--hop", type=int, default=12, help="추론 간격 [샘플]")
+    ap.add_argument("--hop", type=int, default=16,
+                    help="추론 간격 [샘플]. 기본 16 = 초당 15.6 회 (D-49 — 12 에서 CPU 약 30 %% 절감, 품질 차이 없음 `[측정]`)")
     ap.add_argument("--torch-threads", type=int, default=2, metavar="N",
                     help="딥러닝 방법(M06 등)이 쓸 CPU 스레드 수. 기본 2 (replay 측정에서 가장 빨랐다). 0 이면 torch 기본값(코어 전부). "
                          "torch 가 추론마다 코어를 다 잡으면 같은 PC 의 브라우저가 밀려 화면이 끊길 수 "

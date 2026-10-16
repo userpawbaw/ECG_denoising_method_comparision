@@ -189,29 +189,35 @@
     return n > 0 ? Math.max(0, Math.min(1, i / n)) : 1;
   }
 
-  /* **표시 보간 — 받은 블록을 두 번에 나눠 보인다** (D-42).
-   * 브리지는 처리기가 hop 을 낼 때마다 보낸다 — 초당 약 20 번이라 스크롤이 계단으로 걷는다.
-   * 처리량을 늘리면 RTF 가 무너지므로 **화면 쪽에서** 블록 하나를 반씩 두 번 보인다:
-   * 도착하면 앞 절반까지, 도착 간격의 절반이 지나면 끝까지. 파형을 만들어 내는 것이 아니라
-   * **이미 받은 표본을 드러내는 시점만** 나눈다. 대가는 지연 = 도착 간격의 절반(약 25 ms).
-   * 사용자 요구가 «딱 두 배» 라 단계는 둘로 고정한다. */
-  function makeReveal() {
-    var mid = -1, target = -1, tArr = 0, dt = 50;
+  /* **표시 보간 — 받은 블록을 나눠 드러낸다** (D-42 · D-49).
+   * 브리지는 처리기가 hop 을 낼 때마다 보낸다. 처리량을 늘리면 RTF 가 무너지므로 **화면 쪽에서**
+   * 이미 받은 표본을 드러내는 시점만 나눈다 — 값을 지어내지 않는다.
+   * D-42 는 «블록당 두 단계» 였다(hop 12 -> 초당 약 42 장). D-49 에서 추론을 초당 15 회(hop 16)로
+   * 줄이면서 **단계 크기를 표본 수로 고정**했다: 블록 n 표본을 ceil(n / STEP) 단계(최소 2)로 나눠,
+   * 도착 간격 동안 고르게 드러낸다. 그러면 화면 갱신이 추론 횟수와 무관하게 초당 약 fs/STEP 장이다.
+   * 대가는 지연 = 도착 간격 × (단계-1)/단계. */
+  var REVEAL_STEP = 6;
+  function makeReveal(step) {
+    var st = step || REVEAL_STEP;
+    var base = -1, target = -1, k = 1, tArr = 0, dt = 50;
     return {
       push: function (h, now) {
         if (target >= 0 && h > target && h - target < 4096) {
           var gapMs = now - tArr;
           if (gapMs > 0 && gapMs < 500) dt = 0.8 * dt + 0.2 * gapMs;
-          mid = target + Math.floor((h - target) / 2);
-        } else mid = h;       // 첫 블록 · 시간축이 끊긴 자리는 그대로
+          base = target;                     // 앞 블록은 다 보였다고 친다
+          k = Math.max(2, Math.ceil((h - base) / st));
+        } else { base = h; k = 1; }          // 첫 블록 · 시간축이 끊긴 자리는 그대로
         target = h; tArr = now;
       },
       at: function (now) {
         if (target < 0) return -1;
-        return now - tArr < dt / 2 ? mid : target;
+        if (k <= 1) return target;
+        var j = Math.min(k, 1 + Math.floor((now - tArr) / (dt / k)));   // 도착 즉시 1 단계
+        return base + Math.floor((target - base) * j / k);
       },
       interval: function () { return dt; },
-      reset: function () { mid = target = -1; tArr = 0; },
+      reset: function () { base = target = -1; k = 1; tArr = 0; },
     };
   }
 
@@ -272,7 +278,7 @@
     ladder: ladder, makeGain: makeGain, makeCenter: makeCenter,
     windowStart: windowStart, absAt: absAt, have: have, scan: scan, SPIKE: SPIKE,
     ERASE_FRAC: ERASE_FRAC, ERASE_CHOICES: ERASE_CHOICES, eraseSpans: eraseSpans,
-    sweepAlpha: sweepAlpha, scrollAlpha: scrollAlpha, makeReveal: makeReveal,
+    sweepAlpha: sweepAlpha, scrollAlpha: scrollAlpha, makeReveal: makeReveal, REVEAL_STEP: REVEAL_STEP,
     GLOW_MAX: GLOW_MAX, glowWidth: glowWidth, glowLevel: glowLevel, glowMix: glowMix,
     glowLive: glowLive, mixWhite: mixWhite, rgba: rgba,
   };
