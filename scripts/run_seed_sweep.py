@@ -48,6 +48,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import yaml
 
@@ -180,6 +181,30 @@ def build_datasets(cfg: dict, source: str):
     return src, tr, va, fx, bands
 
 
+@torch.no_grad()
+def clean_pass_snr(model, ds, device, bs: int = 64) -> float:
+    """참조(잡음 없는 창)를 **입력으로** 넣었을 때의 출력 SNR [dB], 창 평균.
+
+    `10·log10(P(x) / P(x̂ − x))`, 평균 제거 파워. 항등이면 ∞ 에 가깝고, 0 을 내면
+    0 dB 다. EXP-C 와 같은 질문이지만 TEST 가 아니라 고정 평가 val 창이다 (D-40).
+    """
+    was = model.training
+    model.eval()
+    vals = []
+    xs = [ds[i][1] for i in range(len(ds))]
+    for s in range(0, len(xs), bs):
+        x = torch.from_numpy(np.stack(xs[s:s + bs])).to(device)
+        xh = model(x)
+        xc = x - x.mean(dim=-1, keepdim=True)
+        e = xh - x
+        e = e - e.mean(dim=-1, keepdim=True)
+        px = (xc ** 2).mean(dim=(1, 2))
+        pe = (e ** 2).mean(dim=(1, 2)).clamp_min(1e-20)
+        vals.append(10 * torch.log10(px / pe))
+    model.train(was)
+    return float(torch.cat(vals).mean())
+
+
 def partial_epoch(out: Path) -> int | None:
     """이 판이 **몇 epoch 까지 갔다가 끊겼나**. 안 끊겼으면 None.
 
@@ -198,7 +223,7 @@ def partial_epoch(out: Path) -> int | None:
 def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None,
             amp: bool | None, epochs: int | None, keep_ckpt: bool,
             workers: int, resume: bool = True, hf=None,
-            cond_perturb: bool = False) -> dict:
+            cond_perturb: bool = False, clean_pass: bool = False) -> dict:
     run_id = f"{arm}__s{seed}"
     out = ensure_dir(out_root / run_id)
     summary_p = out / "summary.json"
@@ -269,6 +294,10 @@ def run_one(arm: str, seed: int, out_root: Path, source: str, device: str | None
                     fixed[f"{tag}_band_{name}"] = float(
                         trainer.evaluate(bds)["snr_imp_scaled"])
             trainer.cond_offset = 0.0          # 반드시 되돌린다
+        # **clean 통과** (D-40). 요청했을 때만 — 안 주면 열 구성이 예전과 같다.
+        # 조건화 모델은 「참 SNR = ∞」를 줄 길이 없어 건너뛴다.
+        if clean_pass and not getattr(trainer.model, "needs_cond", False):
+            fixed["clean_pass_snr"] = clean_pass_snr(trainer.model, fx, trainer.device)
 
     rec = {
         "run_id": run_id, "arm": arm, "seed": seed,
@@ -360,6 +389,9 @@ def main() -> int:
                     help=f"교란 격자를 직접 준다 [dB] (기본 {COND_OFFSETS}). "
                          "F-13 의 추정기 편향(+7.6)처럼 기본 격자 밖을 재야 "
                          "할 때 쓴다")
+    ap.add_argument("--clean-pass", action="store_true",
+                    help="고정 평가 창의 **참조를 입력으로** 넣어 출력 SNR 을 잰다 "
+                         "(`clean_pass_snr`) — 깨끗한 입력을 얼마나 망가뜨리나 (D-40)")
     ap.add_argument("--cond-perturb", action="store_true",
                     help="조건화 모델을 **틀린 조건값**으로도 평가한다 "
                          f"(참값 {COND_OFFSETS} dB). 학습은 다시 안 한다 — "
@@ -451,7 +483,7 @@ def main() -> int:
             run_one(arm, seed, out_root, args.source, args.device, amp,
                     args.epochs, args.keep_ckpt, args.workers,
                     resume=not args.no_resume, hf=hf if hf.enabled else None,
-                    cond_perturb=args.cond_perturb)
+                    cond_perturb=args.cond_perturb, clean_pass=args.clean_pass)
         except Exception as e:                      # 한 판이 죽어도 큐는 계속
             print(f"  [실패] {arm} seed={seed}: {type(e).__name__}: {e}",
                   file=sys.stderr, flush=True)

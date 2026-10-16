@@ -9,6 +9,7 @@
     L4 = L3 + λw * L_band          # subband 도메인 (M08 전용), QRS 대역 가중
     L5 = L3, 단 window 별 잡음 전력으로 정규화   # 모든 SNR 을 같은 무게로
     L6 = L3 + λc * ‖model(clean) − clean‖²      # 깨끗한 입력을 건드리지 않게
+    L1C = L1 + λc * ‖model(clean) − clean‖²     # D-40 E6: L6 에서 L3 항만 뺀 것
 
 **L5 · L6 이 겨냥하는 것** (91_report.md 5.8.2 · 5.3):
 
@@ -222,6 +223,10 @@ _PRESETS = {
     # 하지 않은 것은 L4 가 M08 전용(subband)이라 M06 에 적용할 수 없어서다.
     "L5": dict(w_mse=1.0, w_mae=0.5, w_diff=0.3, snr_balance=True),
     "L6": dict(w_mse=1.0, w_mae=0.5, w_diff=0.3, w_clean=0.5, clean_frac=0.25),
+    # D-40 E6: L6 의 이득을 「깨끗한 입력 쌍」과 「L3 의 MAE·차분 항」으로 가른다.
+    # clean 통과 항은 (입력 = 정답 = clean) 쌍을 배치에 덧붙이는 것과 같으므로,
+    # L1C − L1 이 그 쌍의 몫이고 L6 − L1C 가 L3 항의 몫이다.
+    "L1C": dict(w_mse=1.0, w_clean=0.5, clean_frac=0.25),
 }
 
 LOSS_NAMES = tuple(_PRESETS)
