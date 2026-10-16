@@ -2,7 +2,7 @@
   "env": {
     "python": "3.11.15",
     "platform": "Linux-6.18.44-fc-v139-x86_64-with-glibc2.39",
-    "git": "a2f8d1d",
+    "git": "17112d0",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "pywt": "1.8.0",
@@ -22,7 +22,8 @@
       0,
       1,
       2
-    ]
+    ],
+    "ema_decay": 0.0
   },
   "sources": {
     "ecgdn/train.py": "994c8bd585a3c5d7",
