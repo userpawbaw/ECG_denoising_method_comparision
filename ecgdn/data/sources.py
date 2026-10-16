@@ -49,8 +49,12 @@ class SyntheticSource:
 
     def __init__(self, n_train: int = 18, n_val: int = 4, n_test: int = 22,
                  dur_s: float = 300.0, fs: float = FS, pvc_prob: float = 0.06,
-                 kernel_jitter: bool = True):
+                 kernel_jitter: bool = True, ref_noise_snr: float | None = None):
         self.dur_s, self.fs, self.pvc_prob = float(dur_s), float(fs), float(pvc_prob)
+        # D-39 E2′: 기록 **자체에** 고정 잡음을 넣는다 — MIT-BIH 의 고유 잡음과 같은
+        # 구조(참조와 입력에 함께 들어간다)를 형태는 그대로 둔 채 만든다.
+        # None 이면 예전과 **비트 단위로** 같다 (tests/test_ref_noise.py).
+        self.ref_noise_snr = None if ref_noise_snr is None else float(ref_noise_snr)
         # **기록마다 다른 morphology 를 준다.** 끄면 모든 기록이 같은 파형이 되어
         # 신경망이 생성기를 외우고 성능이 10 dB 이상 과대평가된다 (synthetic.jitter_kernel 참조).
         self.kernel_jitter = bool(kernel_jitter)
@@ -89,7 +93,14 @@ class SyntheticSource:
                       kernel=kern, pvc_kernel=pvc,
                       pvc_prob=self.pvc_prob, seed=1000 + sid)
         sym = np.asarray(s.beat_labels[:len(s.r_peaks)])
-        rec = CleanRecord(name=name, x=s.x, fs=s.fs, r_peaks=s.r_peaks, symbols=sym)
+        x = s.x
+        if self.ref_noise_snr is not None:
+            from .mixer import mix_at_snr
+            from .noise import SYNTH_KINDS, mixed_noise
+            # 합성 종류만 — NSTDB(bw/ma/em)는 「더하는 잡음」 쪽이라 섞으면 둘이 안 갈린다
+            nz, _ = mixed_noise(x.size, s.fs, make_rng("refnoise", sid), kinds=SYNTH_KINDS)
+            x, _, _ = mix_at_snr(x, nz, self.ref_noise_snr)
+        rec = CleanRecord(name=name, x=x, fs=s.fs, r_peaks=s.r_peaks, symbols=sym)
         self._cache[name] = rec
         return rec
 
@@ -121,6 +132,10 @@ def get_source(kind: str = "auto", **kw) -> CleanSource:
     """'auto' 면 MIT-BIH 가 있으면 그것을, 없으면 합성을 쓴다."""
     if kind in ("mitdb", "auto"):
         root = Path(kw.pop("root", "data/raw/mitdb"))
+        if kw.get("ref_noise_snr") is not None and root.exists() and any(root.glob("*.hea")):
+            # 조용히 무시하면 「참조에 잡음을 넣었다」고 믿은 채 D1 결과가 나온다
+            raise ValueError("ref_noise_snr 는 합성 축(D0)에서만 뜻이 있다 — "
+                             "MIT-BIH 기록에는 이미 고유 잡음이 있다 (D-39)")
         if root.exists() and any(root.glob("*.hea")):
             return MITDBSource(root=root, **{k: v for k, v in kw.items()
                                              if k in ("fs", "lead")})
@@ -129,7 +144,7 @@ def get_source(kind: str = "auto", **kw) -> CleanSource:
                 f"MIT-BIH not found at {root}. run: python scripts/download_data.py --db mitdb")
     return SyntheticSource(**{k: v for k, v in kw.items()
                               if k in ("n_train", "n_val", "n_test", "dur_s", "fs",
-                                       "pvc_prob")})
+                                       "pvc_prob", "ref_noise_snr")})
 
 
 def resolve_source_kind(kind: str = "auto", root: str | Path = "data/raw/mitdb") -> str:

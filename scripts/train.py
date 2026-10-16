@@ -37,7 +37,8 @@ def build_datasets(cfg: dict):
                      dur_s=float(d.get("dur_s", 300.0)),
                      n_train=int(d.get("n_train", 18)),
                      n_val=int(d.get("n_val", 4)),
-                     n_test=int(d.get("n_test", 22)))
+                     n_test=int(d.get("n_test", 22)),
+                     ref_noise_snr=d.get("ref_noise_snr"))   # D-39 E2′, 합성 축만
     nstdb_root = d.get("nstdb_root", "data/raw/nstdb")
     kw = dict(win=int(d.get("win", 1024)), hop=int(d.get("hop", 512)),
               snr_range=tuple(d.get("snr_range", (-5.0, 20.0))),
