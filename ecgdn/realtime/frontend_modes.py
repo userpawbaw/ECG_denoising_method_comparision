@@ -40,11 +40,24 @@ front-end 를 «표본 번호를 바꾸는 것» 으로 만들었다면 정렬�
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 from scipy import signal as sps
 
 from ..config import DEFAULT_FE, DEFAULT_FE_CAUSAL, FS
 from .frontend_stream import StreamingFrontEnd
+
+# 전원선 노치는 **세 모드 모두 항상 건다** (D-50). 전에는 zerophase·median 에
+# 노치가 아예 없었고, causal 은 첫 4 초에 한 번만 판정했다 — 시작 뒤에 충전기를
+# 꽂으면 60 Hz 가 그대로 지나갔다. 실보드에서 잡음이 신호의 3 배를 넘었다.
+NOTCH_HZ = (60.0, 120.0)
+
+
+def _notch_bank(fs: float, cfg=DEFAULT_FE) -> list:
+    nyq = fs / 2.0
+    return [sps.tf2sos(*sps.iirnotch(f0, cfg.notch_q, fs))
+            for f0 in NOTCH_HZ if f0 < nyq * 0.98]
 
 __all__ = ["FE_MODES", "fe_intrinsic", "build_fe",
            "CausalFE", "BlockZeroPhaseFE", "MedianBaselineFE"]
@@ -101,7 +114,8 @@ class CausalFE(_Base):
 
     def __init__(self, fs: float = FS, cfg=DEFAULT_FE_CAUSAL):
         super().__init__(fs)
-        self._fe = StreamingFrontEnd(fs, cfg)
+        self._fe = StreamingFrontEnd(fs, replace(cfg, notch_hz=NOTCH_HZ, auto_notch=False),
+                                     decide_after_s=0.0)
 
     def push(self, block):
         out = self._fe.push(block)
@@ -140,6 +154,10 @@ class _Windowed(_Base):
         self._acc = np.zeros(0)
         self._wsum = np.zeros(0)
         self._acc0 = 0                    # _acc[0] 의 절대 표본 번호
+        # 노치는 창 안의 filtfilt 가 아니라 **들어오는 길목에서 상태를 이어 가며**
+        # 건다. 창마다 filtfilt 로 걸면 창 끝에서 노치가 울려 잡음의 14~26 % 가
+        # 남았다 (D-50). Q 30 노치의 위상 왜곡은 60 Hz ±1 Hz 밖에서 무시할 만하다.
+        self._notch = [[sos, None] for sos in _notch_bank(fs)]
 
     def _process(self, w: np.ndarray) -> np.ndarray:   # pragma: no cover
         raise NotImplementedError
@@ -147,6 +165,8 @@ class _Windowed(_Base):
     def reset(self) -> None:
         super().reset()
         self._acc, self._wsum, self._acc0 = np.zeros(0), np.zeros(0), 0
+        for st in self._notch:
+            st[1] = None
 
     def _fade(self, m: int) -> np.ndarray:
         """양 끝을 raised-cosine 으로 눕힌 가중치. 겹치는 두 조각의 합이 1 이다."""
@@ -158,8 +178,17 @@ class _Windowed(_Base):
             w[-k:] = r[::-1]
         return w
 
+    def _prefilter(self, block: np.ndarray) -> np.ndarray:
+        for st in self._notch:
+            if not block.size:
+                break
+            if st[1] is None:           # 첫 표본 값으로 상태를 맞춘다 — DC 계단 방지
+                st[1] = sps.sosfilt_zi(st[0]) * block[0]
+            block, st[1] = sps.sosfilt(st[0], block, zi=st[1])
+        return block
+
     def push(self, block):
-        block = np.asarray(block, dtype=np.float64).ravel()
+        block = self._prefilter(np.asarray(block, dtype=np.float64).ravel())
         self._buf.extend(block.tolist())
         self._n_seen += block.size
         out: list[float] = []
