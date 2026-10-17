@@ -57,11 +57,20 @@ def tone_counts(x: np.ndarray, f0: float) -> float:
 
 
 def analyse(vals: list[int]) -> list[str]:
+    # 펌웨어는 D10·D11(lead-off)이 HIGH 면 -1 을 보낸다. AFE 에 그 핀이 없어 떠 있으면
+    # 무작위로 HIGH 가 되어 샘플이 숭숭 빠진다 — 따로 세서 알린다.
+    n_off = sum(1 for v in vals if v < 0)
+    vals = [v for v in vals if v >= 0]
+    head = []
+    if n_off:
+        frac = n_off / (n_off + len(vals))
+        head.append(f"[주의] lead-off 샘플 {n_off} 개 ({100 * frac:.0f} %). 전극이 떨어졌거나, AFE 에 "
+                    "LO+ · LO- 출력이 없어 D10 · D11 이 떠 있다 — 없으면 D10 · D11 을 GND 에 연결할 것.")
     a = adc_summary(vals)
     if not a.get("n"):
-        return ["[실패] 샘플을 하나도 못 받았다 — 펌웨어가 올라갔는지, 포트가 맞는지 확인."]
+        return head + ["[실패] 쓸 수 있는 샘플이 없다 — 펌웨어 · 포트 · 위의 lead-off 를 확인."]
     x = np.asarray(vals, dtype=float)
-    lines = [f"샘플 {a['n']} 개 ({a['n'] / FS:.1f} 초), 기대 {int(SECONDS * FS)} 개",
+    lines = head + [f"샘플 {a['n']} 개 ({a['n'] / FS:.1f} 초), 기대 {int(SECONDS * FS)} 개",
              f"ADC 범위 {a['lo']} ~ {a['hi']} (폭 {a['hi'] - a['lo']} 칸), 중앙값 {a['med']}, "
              f"서로 다른 값 {a['unique']} 개"]
     pp = {f: tone_counts(x, f) for f in (60.0, 120.0)}
