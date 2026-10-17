@@ -101,7 +101,7 @@ def main() -> int:
 
     print("\n실시간 화면을 띄운다 (끝내려면 이 창을 닫거나 Ctrl+C)...")
     bridge = subprocess.Popen([sys.executable, str(ROOT / "scripts" / "serial_bridge.py"),
-                               "--port", port, "--methods", "M_FE,M01", "--serve"])
+                               "--port", port, "--methods", "M_FE,M01,M04", "--serve"])
     time.sleep(4)
     webbrowser.open("http://127.0.0.1:8765/live.html")
     try:

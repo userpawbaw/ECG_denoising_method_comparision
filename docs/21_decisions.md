@@ -3316,7 +3316,7 @@ CPU 가 모자랄 때 쓰는 옵션으로 남긴다(`--hop-for`).
 
 ### 고른 것과 근거
 
-(c). `scripts/build_input_check.py` 가 만든다(68 MB, torch 제외 — 점검에는 M_FE · M01 이면 충분하다). 점검기
+(c). `scripts/build_input_check.py` 가 만든다(68 MB, torch 제외 — 점검에는 M_FE · M01 · M04 면 충분하다). 점검기
 `tools/input_check/check_input.py` 는 포트 자동 선택 -> 10 초 ADC 수집 -> 폭 · 60 Hz 크기 · 포화 판정 -> `결과_날짜.txt`
 저장 -> 실시간 화면. `[측정]` 묶음의 app 트리를 numpy · scipy · pyserial · PyWavelets 만 있는 venv 에서 replay 로 돌려
 브리지가 뜨는 것을 확인했다. `_bootstrap` 의 matplotlib 은 없으면 건너뛰게 바꿨다.
