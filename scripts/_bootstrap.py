@@ -11,6 +11,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-import matplotlib  # noqa: E402
-
-matplotlib.use("Agg")
+try:  # 입력 점검 패키지(tools/input_check)는 matplotlib 없이 돈다
+    import matplotlib  # noqa: E402
+except ImportError:
+    matplotlib = None
+else:
+    matplotlib.use("Agg")
