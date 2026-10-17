@@ -3320,3 +3320,8 @@ CPU 가 모자랄 때 쓰는 옵션으로 남긴다(`--hop-for`).
 `tools/input_check/check_input.py` 는 포트 자동 선택 -> 10 초 ADC 수집 -> 폭 · 60 Hz 크기 · 포화 판정 -> `결과_날짜.txt`
 저장 -> 실시간 화면. `[측정]` 묶음의 app 트리를 numpy · scipy · pyserial · PyWavelets 만 있는 venv 에서 replay 로 돌려
 브리지가 뜨는 것을 확인했다. `_bootstrap` 의 matplotlib 은 없으면 건너뛰게 바꿨다.
+
+**후속 — 펌웨어도 묶음에 넣는다.** 사용자 보드에 `raw_plot` 이 올라간 채로 브리지를 띄워 «샘플이 하나도 안 맞는다» 가 났다.
+팀원 보드도 같을 수 있다. 묶음에 우노용 `arduino_ecg_logger.hex`(arduino-cli 로 컴파일)와 Windows avrdude
+(Arduino 공식 8.0.0-arduino1, SHA-256 검증)를 넣고, 점검기가 샘플 0 개일 때 «올릴까?» 를 물어 115200 -> 57600 순으로 올린다.
+`[측정]` 같은 인자를 리눅스 avrdude 에 주면 포트 열기 단계까지 간다 — 실보드 업로드는 확인 전이다. 70 MB.

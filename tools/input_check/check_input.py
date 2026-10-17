@@ -25,6 +25,7 @@ BAUD = 115200
 FS = 250.0
 SECONDS = 10.0
 # 아두이노 정품 · CH340 · FTDI · CP210x
+FW = ROOT.parent / "firmware"          # 묶음에서만 있다: avrdude.exe + 로거 hex
 KNOWN_VID = {0x2341: "Arduino", 0x2A03: "Arduino", 0x1A86: "CH340", 0x0403: "FTDI", 0x10C4: "CP210x"}
 
 
@@ -78,19 +79,51 @@ def analyse(vals: list[int]) -> list[str]:
     return lines
 
 
+def flash(port: str) -> bool:
+    """측정 펌웨어(arduino_ecg_logger)를 우노에 올린다. Arduino IDE 가 필요 없다."""
+    exe, conf = FW / "avrdude" / "bin" / "avrdude.exe", FW / "avrdude" / "etc" / "avrdude.conf"
+    hexf = FW / "arduino_ecg_logger.hex"
+    if not (exe.exists() and hexf.exists()):
+        print("[실패] 묶음에 펌웨어 도구가 없다 — Arduino IDE 로 arduino_ecg_logger 를 올릴 것.")
+        return False
+    # 우노 · 새 나노는 115200, 옛 부트로더 나노는 57600
+    for baud in (115200, 57600):
+        print(f"펌웨어를 올린다 ({port}, {baud})...")
+        r = subprocess.run([str(exe), f"-C{conf}", "-patmega328p", "-carduino", f"-P{port}",
+                            f"-b{baud}", "-D", f"-Uflash:w:{hexf}:i"])
+        if r.returncode == 0:
+            print("올렸다.")
+            time.sleep(2)
+            return True
+    print("[실패] 업로드가 안 됐다. 보드가 우노/나노(ATmega328P)인지, 다른 프로그램이 포트를 잡고 있지 않은지 확인.")
+    return False
+
+
+def collect(port: str) -> list[int] | None:
+    print(f"\n{SECONDS:.0f} 초 동안 받는다. 전극을 붙이고 가만히 있을 것...")
+    try:
+        return read_adc(serial, port, BAUD, SECONDS)
+    except serial.SerialException as e:
+        print(f"[실패] 포트를 못 열었다: {e}\n  Arduino IDE 의 시리얼 모니터·플로터가 켜져 있으면 끌 것.")
+        return None
+
+
 def main() -> int:
     print("=== AFE 입력 점검 ===\n")
     port = pick_port()
     if not port:
         input("\nEnter 를 누르면 닫힌다")
         return 1
-    print(f"\n{SECONDS:.0f} 초 동안 받는다. 전극을 붙이고 가만히 있을 것...")
-    try:
-        vals = read_adc(serial, port, BAUD, SECONDS)
-    except serial.SerialException as e:
-        print(f"[실패] 포트를 못 열었다: {e}\n  Arduino IDE 의 시리얼 모니터가 켜져 있으면 끌 것.")
+    vals = collect(port)
+    if vals is None:
         input("\nEnter 를 누르면 닫힌다")
         return 1
+    if not vals:
+        # 바이트가 와도 형식이 다르면 0 개다 — 다른 스케치(raw_plot 등)가 올라가 있는 경우
+        print("\n샘플을 하나도 못 알아들었다. 보드에 측정 펌웨어가 아닌 다른 스케치가 올라가 있을 수 있다.")
+        if input("측정 펌웨어를 지금 올릴까? (Enter = 예, n = 아니오): ").strip().lower() != "n":
+            if flash(port):
+                vals = collect(port) or []
     lines = analyse(vals)
     print("\n" + "\n".join(lines))
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")

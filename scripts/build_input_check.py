@@ -10,6 +10,8 @@ torch 는 넣지 않는다 — 점검에는 front-end · M01 이면 충분하고
 from __future__ import annotations
 
 import argparse
+import hashlib
+import tarfile
 import shutil
 import subprocess
 import sys
@@ -20,6 +22,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PY_VER = "3.11.9"
 PY_URL = f"https://www.python.org/ftp/python/{PY_VER}/python-{PY_VER}-embed-amd64.zip"
+# 펌웨어 업로드 도구 — Arduino 공식 package_index 의 avrdude 8.0.0-arduino1 Windows 판과 그 SHA-256
+AVRDUDE_URL = "https://downloads.arduino.cc/tools/avrdude_8.0-arduino.1_Windows_32bit.tar.gz"
+AVRDUDE_SHA = "833aa1a66a8e70cd597fcfdbd7e559a91a00eca1d7aa3be2ce9bcadf7ccb987c"
 WHEELS = ["numpy", "scipy", "pyserial", "PyWavelets"]
 APP_FILES = ["scripts/serial_bridge.py", "scripts/_bootstrap.py", "scripts/probe_serial.py",
              "tools/input_check/check_input.py"]
@@ -38,6 +43,8 @@ README = """AFE 입력 점검
 2. START_HERE.bat 를 더블클릭한다. (설치할 것 없음. 'Windows 의 PC 보호' 가 뜨면
    '추가 정보' -> '실행')
 3. 10 초 동안 가만히 있으면 판정이 나오고, 이 폴더에 결과_날짜.txt 가 생긴다.
+   샘플을 못 알아들으면 '측정 펌웨어를 올릴까?' 를 묻는다 — Enter 를 누르면
+   알아서 올린다(우노 · 나노). Arduino IDE 는 필요 없지만, 켜져 있으면 끌 것.
 4. 이어서 브라우저에 실시간 화면이 뜬다. 끝내려면 검은 창을 닫는다.
 
 결과_날짜.txt 를 보내 주면 된다. (ADC 원값이 들어 있다 — 측정한 사람의 심전도다.)
@@ -45,7 +52,30 @@ README = """AFE 입력 점검
 """
 
 
-def build(out: Path) -> Path:
+def add_firmware(stage: Path, out: Path, cli: str) -> None:
+    """측정 펌웨어를 우노용 hex 로 굽고, Windows avrdude 와 함께 넣는다.
+
+    팀원 보드에 다른 스케치가 올라가 있으면 브리지가 «샘플이 하나도 안 맞는다» 로
+    끝난다 — 점검기가 그때 이것으로 펌웨어를 올린다 (Arduino IDE 불필요).
+    """
+    fw = stage / "firmware"
+    fw.mkdir()
+    build_dir = out / "hex"
+    subprocess.run([cli, "compile", "-b", "arduino:avr:uno", "--output-dir", str(build_dir),
+                    str(ROOT / "hardware" / "arduino_ecg_logger")], check=True)
+    shutil.copy2(build_dir / "arduino_ecg_logger.ino.hex", fw / "arduino_ecg_logger.hex")
+    tgz = out / "avrdude_win.tar.gz"
+    if not tgz.exists():
+        urllib.request.urlretrieve(AVRDUDE_URL, tgz)
+    if hashlib.sha256(tgz.read_bytes()).hexdigest() != AVRDUDE_SHA:
+        tgz.unlink()
+        raise SystemExit("avrdude 체크섬이 다르다 — 받은 파일을 지웠다")
+    with tarfile.open(tgz) as t:
+        t.extractall(out / "avrdude_x", filter="data")
+    shutil.copytree(next((out / "avrdude_x").iterdir()), fw / "avrdude", dirs_exist_ok=True)
+
+
+def build(out: Path, cli: str) -> Path:
     stage = out / "ecg_input_check"
     if stage.exists():
         shutil.rmtree(stage)
@@ -75,6 +105,7 @@ def build(out: Path) -> Path:
         shutil.copy2(ROOT / f, app / f)
     for d in APP_DIRS:
         shutil.copytree(ROOT / d, app / d, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    add_firmware(stage, out, cli)
     (stage / "START_HERE.bat").write_bytes(BAT.replace("\n", "\r\n").encode())
     (stage / "README.txt").write_text(README.replace("\n", "\r\n"), encoding="utf-8-sig")
     z = out / "ecg_input_check_win64.zip"
@@ -87,7 +118,10 @@ def build(out: Path) -> Path:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", required=True, help="작업 · 출력 폴더 (git 밖을 권한다)")
-    z = build(Path(ap.parse_args().out).resolve())
+    ap.add_argument("--arduino-cli", default="arduino-cli",
+                    help="펌웨어 컴파일에 쓸 arduino-cli 경로 (arduino:avr 코어가 깔려 있어야 한다)")
+    args = ap.parse_args()
+    z = build(Path(args.out).resolve(), args.arduino_cli)
     print(f"만들었다: {z} ({z.stat().st_size / 2**20:.0f} MB)")
     return 0
 
