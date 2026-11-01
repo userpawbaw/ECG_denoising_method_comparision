@@ -28,6 +28,13 @@
 | [`S12_fe_tradeoff.png`](../results/slides/S12_fe_tradeoff.png) | **실시간 front-end 는 무엇을 지킬 것인가의 문제다.** 평평함(가로)과 ST 충실도(세로)가 **같은 방향이 아니고**, 좌하단의 '둘 다 좋음' 자리가 비어 있다. 점 크기가 추가 지연이다 — 인과 방식만 어느 축으로도 3 위다. |
 | [`S13_frontend_flip.png`](../results/slides/S13_frontend_flip.png) | **F-10 의 결과 한 장.** 바꾼 것은 '딥러닝에도 같은 front-end 를 준다' 하나인데 결론이 둘 뒤집혔다 — 15 dB 승자가 M04(7.79)에서 M08(8.71)로, M06 대 M01 이 n.s.(p=0.101)에서 유의(p=9e-6)로. 왜곡 하한 두 행은 **참조 정의가 달라 방향만** 읽는다. |
 | [`S14_measurement_traps.png`](../results/slides/S14_measurement_traps.png) | **6 장 머리말 한 장.** 측정 틀이 틀렸던 아홉 건과 각각을 잡아낸 것. 아홉 중 다섯이 '참조를 무엇으로 둘 것인가' 이고, 아홉 다 p 값이 유의했다 — 통계는 전제가 틀렸다는 것을 알려주지 않는다. |
+| [`S15_kalman_phantom.png`](../results/slides/S15_kalman_phantom.png) | **판넬 결과 R3.** 칼만은 참값에 없는 자리에 **깨끗한 QRS** 를 그린다. 왼쪽은 가장 뚜렷한 예시(그렇게 골랐다고 그림에 적었다), 오른쪽은 **비율** — 오검출 개수는 front-end 와 같아도 심박 모양인 것이 많다. 근거 D-42 · F-58. |
+| [`S16_wavelet_placement.png`](../results/slides/S16_wavelet_placement.png) | **판넬 결과 R4.** 같은 backbone 에 wavelet 의 자리만 바꿨다. 직렬(M07)은 seed 짝으로 유의하게 손해, 특성공간(M08)은 이 예산으로 못 가린다. 깨끗한 신호 보존(EXP-C)도 같은 순서다. |
+| [`S17_dl_journey.png`](../results/slides/S17_dl_journey.png) | **판넬 결과 R5.** 딥러닝 개선 시도 16 개를 같은 자(seed 짝 · 고정 평가)로. 좋은 쪽으로 유의하게 움직인 것은 전부 「무엇을 맞추게 하느냐」(손실 · 동작점) 묶음이고, 구조 · 깊이 · 용량 · 학습 세부는 못 가리거나 손해다. |
+| [`S18_pipeline.png`](../results/slides/S18_pipeline.png) | **판넬 작품 내용 A2.** 취득 → 공통 front-end → 기법 네 계열 + 상한 → 평가 4 층 · 안전성 프로브 · 시연. 비교의 판 전체를 한 장에. |
+| [`S19_swt.png`](../results/slides/S19_swt.png) | **판넬 이론 (1).** SWT 세부계수 다섯 단과 단별 임계 띠, QRS 자리에서 좁아지는 보호 창. 실험과 같은 M04 인스턴스(D0 튜닝값 — garrote · QRS 보호)로 그렸고, D1 튜닝은 hard · 보호 끔을 골랐다는 것을 부제가 설정에서 읽어 적는다. |
+| [`S20_kalman_model.png`](../results/slides/S20_kalman_model.png) | **판넬 이론 (2).** Sameni 모형 — 위상 원 위의 가우시안 커널 합. 위상이 검출 R-peak 로 매겨진다는 것이 S15 의 기제다. |
+| [`S21_resunet.png`](../results/slides/S21_resunet.png) | **판넬 이론 (3).** Residual U-Net 과 출력단 잔차(x̂ = y - n̂), 손실 L6. 채널과 파라미터 수는 체크포인트에서 읽는다. |
 
 ## 색 배정 (그림마다 바뀌지 않는다)
 

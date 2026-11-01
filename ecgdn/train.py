@@ -370,7 +370,8 @@ class Trainer:
         if not p.exists():
             return False
         ck = torch.load(p, map_location=self.device, weights_only=False)
-        self.model.load_state_dict(ck["model"])
+        from .models import upgrade_state_dict
+        self.model.load_state_dict(upgrade_state_dict(self.model, ck["model"]))
         if self.ema is not None:
             if "ema" in ck:
                 self.ema = {k: v.to(self.device) for k, v in ck["ema"].items()}

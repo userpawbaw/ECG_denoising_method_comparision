@@ -30,13 +30,13 @@ def load_checkpoint(path: str | Path, device: str = "cpu"):
     """체크포인트에서 모델을 복원한다."""
     import torch
 
-    from ..models import build_model
+    from ..models import build_model, upgrade_state_dict
 
     ck = torch.load(Path(path), map_location=device, weights_only=False)
     name = ck.get("model_name", "resunet1d")
     kw = ck.get("model_kwargs", {}) or {}
     model = build_model(name, **kw)
-    model.load_state_dict(ck["model"])
+    model.load_state_dict(upgrade_state_dict(model, ck["model"]))
     model.to(device).eval()
     return model, ck
 

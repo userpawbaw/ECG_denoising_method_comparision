@@ -13,3 +13,5 @@ torch>=2.0
 # 실시간 시연(R-5)에서 아두이노 시리얼을 읽을 때만 필요하다.
 # --replay 경로는 이것 없이도 돈다.
 pyserial>=3.5
+# 전시 판넬 · 브로셔 시안(scripts/build_panel.py)을 만들 때만 필요하다.
+python-pptx>=0.6

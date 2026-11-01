@@ -739,6 +739,42 @@ F-26 을 고치고 `verify_stream_processor.py` 를 다시 돌리는 중에, 배
 
 ---
 
+## O-38. 주 실험 체크포인트가 **현재 코드로 안 열렸다** — 시연 브리지가 `M06` 을 켜는 순간 죽었다
+
+| 시점 | 잃은 것 | 재발 방지 |
+|---|---|---|
+| D-27(`n_blocks`) 이후 ~ 2026-11-01 발견 | 주 체크포인트를 읽는 모든 경로 — 실시간 브리지 · 실험 재실행 · 안전성 프로브 · 시연 은행 재생성 | `upgrade_state_dict` + `tests/test_legacy_checkpoints.py` |
+
+**증상** `[로그]` — 판넬 그림을 위해 `DLDenoiser(ckpt="results/d1/m06_l1/best.pt")` 를
+열자 `Missing key(s): "enc.0.0.c1.weight" … Unexpected key(s): "enc.0.c1.weight"`.
+`results/{d0,d1}/` 의 tracked `best.pt` 42 개를 다 열어 보니 **전부** 같았다 `[측정]`.
+`python scripts/serial_bridge.py --replay synth --methods M_FE,M06 --serve` 가 시작
+즉시 이 오류로 끝났다 — **전시 시연 경로**다.
+
+**원인** `[코드]` — D-27 에서 `ResUNet1D._stack()` 이 레벨마다 `nn.Sequential(ResBlock…)`
+을 만들게 바뀌어 인코더 키가 `enc.{i}.c1` → `enc.{i}.0.c1` 이 됐다. 주 체크포인트는
+그 전에 학습됐다. `film.py` 의 `ResStack` 설명은 «종래 키가 `enc.0.0.c1`» 이라고 적고
+있었는데 **실제 종래 키는 `enc.0.c1`** 이었다 — 키 호환을 확인했다고 믿게 만든 문장이다.
+
+**왜 아무도 못 봤나** — `pytest tests/` 의 어떤 시험도 실제 체크포인트를 열지 않는다.
+D-27 이후의 학습은 전부 새로 시작하는 판이라 옛 키를 만날 일이 없었다. 실험 산출물
+(exp_a/b/g …)은 그 전에 이미 만들어져 있어 다시 돌릴 일이 없었다. **«열 일이 없는
+경로» 는 깨져도 조용하다** — O-34(시리얼 경로)와 같은 모양이다.
+
+**조치**
+
+1. `ecgdn/models/__init__.py::upgrade_state_dict` — 옛 인코더 키를 지금 키로 옮기되,
+   **옮긴 결과가 모델의 키 집합과 정확히 같을 때만** 쓴다. 부분 일치 재매핑은 다른
+   모델을 조용히 여는 것이라 하지 않는다. `load_checkpoint` 와 `Trainer.try_resume`
+   둘 다 이것을 거친다.
+2. `tests/test_legacy_checkpoints.py` — 모델 종류별 대표 넷은 기본 묶음에서, tracked
+   주 체크포인트 전부는 `-m slow` 에서 연다. 부분 재매핑 거부도 시험한다.
+3. 브리지를 `--methods M_FE,M04,M06,M08` 로 띄워 `live.html` 이 네 계열을 그리는 것을
+   눈으로 확인했다 `[측정]`. 이 컨테이너 CPU 에서는 처리 여유(RTF)가 0.95 로 밀림이
+   생겼다 — 로드와 별개로 **시연 노트북에서 방법 수를 정할 때** 볼 값이다.
+
+`film.py` 의 틀린 서술도 고쳤다.
+
 ## O-37. 하네스가 백그라운드 실행을 **약 30 분에 끊었다** — 재개가 없는 판 하나가 그 한도와 맞먹었다
 
 | 시점 | 잃은 것 | 재발 방지 |

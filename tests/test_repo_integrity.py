@@ -766,6 +766,15 @@ FIGURE_DATA = {
     "S10_loss_by_noise.png": ["results/d0/exp_g/metrics.parquet",
                               "results/d1/exp_g/metrics.parquet"],
     "S11_nofe_grid.png": ["results/d1/exp_nofe/metrics.parquet"],
+    "S15_kalman_phantom.png": ["results/d0/phantom/summary.json",
+                               "results/d1/phantom/summary.json",
+                               "results/d1/phantom/example.npz"],
+    "S16_wavelet_placement.png": ["results/ext/structure/sweep.csv",
+                                  "results/d0/exp_c/metrics.parquet",
+                                  "results/d1/exp_c/metrics.parquet"],
+    "S17_dl_journey.png": [f"results/ext/{d}/sweep.csv" for d in
+                           ("structure", "depth", "blocks", "d41", "d40_ref",
+                            "l6cond", "cond", "band")],
 }
 SLIDES = ROOT / "results" / "slides"
 

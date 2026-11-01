@@ -54,9 +54,10 @@ class ResStack(nn.Module):
     """(선택적 ConvBlock) + ResBlock n 개 — 블록마다 FiLM 을 건다.
 
     `nn.Sequential` 을 쓰지 않는 이유는 조건 벡터를 블록마다 넘겨야 해서다.
-    **조건을 끄면 `ResUNet1D` 는 종래대로 `nn.Sequential` 을 쓴다** — 여기로
-    갈아끼우면 state_dict 키가 `enc.0.0.c1` 에서 `enc.0.blocks.0.c1` 로 바뀌어
-    **지금까지 학습한 체크포인트가 전부 안 열린다**(F-9 계열의 사고).
+    **조건을 끄면 `ResUNet1D` 는 `nn.Sequential` 을 쓴다** — 여기로 갈아끼우면
+    state_dict 키가 `enc.0.0.c1` 에서 `enc.0.blocks.0.c1` 로 바뀐다.
+    (그 `enc.0.0.c1` 자체가 D-27 에서 생긴 키이고, 주 실험 체크포인트는 그 전의
+    `enc.0.c1` 이다 — `upgrade_state_dict` 가 옮긴다, O-38.)
     """
 
     def __init__(self, ch: int, k: int, n: int, cond_dim: int,

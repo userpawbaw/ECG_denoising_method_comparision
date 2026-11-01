@@ -1,0 +1,31 @@
+{
+  "env": {
+    "python": "3.13.18",
+    "platform": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39",
+    "git": "c179a56",
+    "numpy": "2.5.3",
+    "scipy": "1.18.1",
+    "pywt": "1.8.0",
+    "wfdb": "4.3.1",
+    "neurokit2": "0.3.0",
+    "torch": "2.15.0+cu132"
+  },
+  "config": {
+    "source": "mitdb",
+    "snrs": [
+      -5.0,
+      0.0
+    ],
+    "conds": [
+      "awgn",
+      "mixed"
+    ],
+    "limit": null
+  },
+  "sources": {
+    "scripts/probe_phantom_beats.py": "c4d5e9eb032da0e8",
+    "ecgdn/methods/kalman_sameni.py": "fac92b1f9ae9b3aa",
+    "ecgdn/eval/rpeak.py": "7fc1e662149e64c4",
+    "ecgdn/data/dataset.py": "096a0be31d976980"
+  }
+}

@@ -70,6 +70,9 @@ results/.train.lock.stale-*
 # 감당되지만 반복되면 git LFS 로 옮겨야 한다.
 !results/**/best.pt
 !results/**/*.parquet
+#   phantom/example.npz  판넬 그림 S15 의 파형 발췌 (축당 약 60 KB). 다시 만들려면 칼만을
+#                22 기록에 돌려야 한다(scripts/probe_phantom_beats.py, 약 25 분) — D-42.
+!results/*/phantom/example.npz
 
 # last.pt 는 되살리지 않는다 — optimizer·scaler 상태와 history 를 담은
 # **재개 전용** 파일이고 이 기계 밖에서는 쓸 일이 없다. 182 MB 로 전체

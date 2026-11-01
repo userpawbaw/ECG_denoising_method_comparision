@@ -1,25 +1,28 @@
 {
   "env": {
-    "python": "3.11.15",
-    "platform": "Linux-6.18.44-fc-v24-x86_64-with-glibc2.39",
-    "git": "1b0c7e6",
-    "numpy": "2.4.6",
-    "scipy": "1.17.1",
+    "python": "3.13.18",
+    "platform": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39",
+    "git": "c179a56",
+    "numpy": "2.5.3",
+    "scipy": "1.18.1",
     "pywt": "1.8.0",
     "wfdb": "4.3.1",
-    "neurokit2": "0.2.13",
-    "torch": "2.13.0+cu130"
+    "neurokit2": "0.3.0",
+    "torch": "2.15.0+cu132"
   },
   "config": {
     "only": null,
     "snr": -5.0
   },
   "sources": {
-    "scripts/make_slides.py": "2fd53a5b4579c650",
-    "scripts/run_exp.py": "8f8d2d42e02a32b7",
-    "ecgdn/data/dataset.py": "3855d8b22fbc7695",
-    "ecgdn/methods/frontend.py": "b764ed73a82083ba",
+    "scripts/make_slides.py": "3000d2a9d0ffa2f3",
+    "scripts/run_exp.py": "4b5eeb596c0d7ccd",
+    "ecgdn/data/dataset.py": "096a0be31d976980",
+    "ecgdn/methods/frontend.py": "f1806de8d2667faf",
     "ecgdn/eval/engine.py": "191230413ed4946d",
-    "ecgdn/models/losses.py": "30f5e5e5ff52196e"
+    "ecgdn/models/losses.py": "321b60a279a08953",
+    "scripts/probe_phantom_beats.py": "82c73d48a51df921",
+    "ecgdn/methods/kalman_sameni.py": "fac92b1f9ae9b3aa",
+    "ecgdn/methods/wavelet.py": "85dde2371fcac435"
   }
 }

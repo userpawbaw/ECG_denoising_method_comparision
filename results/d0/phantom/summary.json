@@ -1,0 +1,71 @@
+{
+ "axis": "d0",
+ "snrs": [
+  -5.0,
+  0.0
+ ],
+ "conds": [
+  "awgn",
+  "mixed"
+ ],
+ "n_segments": 88,
+ "threshold": 0.8,
+ "methods": {
+  "M_FE": {
+   "n_fp": 1112,
+   "n_tp": 6538,
+   "n_ref": 6776,
+   "cc_median": -0.015295100041258556,
+   "beatlike": {
+    "0.7": 0,
+    "0.8": 0,
+    "0.9": 0
+   },
+   "beatlike_frac": 0.0,
+   "beatlike_records": 0,
+   "beatlike_top2_share": null
+  },
+  "M04": {
+   "n_fp": 365,
+   "n_tp": 6637,
+   "n_ref": 6776,
+   "cc_median": -0.017653684897818298,
+   "beatlike": {
+    "0.7": 3,
+    "0.8": 1,
+    "0.9": 0
+   },
+   "beatlike_frac": 0.0027397260273972603,
+   "beatlike_records": 1,
+   "beatlike_top2_share": 1.0
+  },
+  "M05": {
+   "n_fp": 959,
+   "n_tp": 6508,
+   "n_ref": 6776,
+   "cc_median": 0.19603212907643436,
+   "beatlike": {
+    "0.7": 59,
+    "0.8": 26,
+    "0.9": 8
+   },
+   "beatlike_frac": 0.027111574556830033,
+   "beatlike_records": 10,
+   "beatlike_top2_share": 0.46153846153846156
+  },
+  "M06": {
+   "n_fp": 50,
+   "n_tp": 6676,
+   "n_ref": 6776,
+   "cc_median": -0.2615351560128193,
+   "beatlike": {
+    "0.7": 0,
+    "0.8": 0,
+    "0.9": 0
+   },
+   "beatlike_frac": 0.0,
+   "beatlike_records": 0,
+   "beatlike_top2_share": null
+  }
+ }
+}

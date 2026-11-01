@@ -832,6 +832,31 @@ INDEX = [
      "**6 장 머리말 한 장.** 측정 틀이 틀렸던 아홉 건과 각각을 잡아낸 것. "
      "아홉 중 다섯이 '참조를 무엇으로 둘 것인가' 이고, 아홉 다 p 값이 "
      "유의했다 — 통계는 전제가 틀렸다는 것을 알려주지 않는다."),
+    ("S15_kalman_phantom.png",
+     "**판넬 결과 R3.** 칼만은 참값에 없는 자리에 **깨끗한 QRS** 를 그린다. 왼쪽은 "
+     "가장 뚜렷한 예시(그렇게 골랐다고 그림에 적었다), 오른쪽은 **비율** — 오검출 "
+     "개수는 front-end 와 같아도 심박 모양인 것이 많다. 근거 D-42 · F-58."),
+    ("S16_wavelet_placement.png",
+     "**판넬 결과 R4.** 같은 backbone 에 wavelet 의 자리만 바꿨다. 직렬(M07)은 seed "
+     "짝으로 유의하게 손해, 특성공간(M08)은 이 예산으로 못 가린다. 깨끗한 신호 "
+     "보존(EXP-C)도 같은 순서다."),
+    ("S17_dl_journey.png",
+     "**판넬 결과 R5.** 딥러닝 개선 시도 16 개를 같은 자(seed 짝 · 고정 평가)로. "
+     "좋은 쪽으로 유의하게 움직인 것은 전부 「무엇을 맞추게 하느냐」(손실 · 동작점) "
+     "묶음이고, 구조 · 깊이 · 용량 · 학습 세부는 못 가리거나 손해다."),
+    ("S18_pipeline.png",
+     "**판넬 작품 내용 A2.** 취득 → 공통 front-end → 기법 네 계열 + 상한 → 평가 4 층 · "
+     "안전성 프로브 · 시연. 비교의 판 전체를 한 장에."),
+    ("S19_swt.png",
+     "**판넬 이론 (1).** SWT 세부계수 다섯 단과 단별 임계 띠, QRS 자리에서 좁아지는 "
+     "보호 창. 실험과 같은 M04 인스턴스(D0 튜닝값 — garrote · QRS 보호)로 그렸고, D1 "
+     "튜닝은 hard · 보호 끔을 골랐다는 것을 부제가 설정에서 읽어 적는다."),
+    ("S20_kalman_model.png",
+     "**판넬 이론 (2).** Sameni 모형 — 위상 원 위의 가우시안 커널 합. 위상이 검출 "
+     "R-peak 로 매겨진다는 것이 S15 의 기제다."),
+    ("S21_resunet.png",
+     "**판넬 이론 (3).** Residual U-Net 과 출력단 잔차(x̂ = y - n̂), 손실 L6. "
+     "채널과 파라미터 수는 체크포인트에서 읽는다."),
 ]
 
 
@@ -1359,6 +1384,520 @@ def s10_loss_by_noise(TXT):
     print("  S10_loss_by_noise.png")
 
 
+
+# =====================================================================
+# 판넬용 신규 그림 (docs/94_panel_plan.md) — S15 ~ S21
+# =====================================================================
+from matplotlib.patches import FancyBboxPatch  # noqa: E402
+
+PHANTOM = "#d03b3b"     # 가짜 심박 표시 (DIVERGE 의 손해 쪽 끝과 같은 색)
+OUTK = "#22324a"        # 패싯 파형의 출력선 — 방법 색을 쓰지 않는다(행 이름이 방법이다)
+C_DL = "#1baf7a"        # 딥러닝 계열 막대 (M08 슬롯과 같은 계열 색)
+BOXC = {"acq": "#ece9e1", "fe": "#f6d6e3", "cls": "#d5e4f7", "tf": "#fbdccc",
+        "mdl": "#fbecc2", "dl": "#cdeee1", "orc": "#e4e2dc", "ev": "#e9e6f4"}
+
+
+def _box(ax, x, y, w, h, text, fc, fs=10.5, bold=False, ec="#9a978e"):
+    ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.012,rounding_size=0.02",
+                                fc=fc, ec=ec, lw=1.1))
+    ax.text(x + w / 2, y + h / 2, text, ha="center", va="center", fontsize=fs,
+            fontweight="bold" if bold else "normal", color=INK, linespacing=1.35)
+
+
+def _arrow(ax, x0, y0, x1, y1, c=INK2):
+    ax.annotate("", (x1, y1), (x0, y0),
+                arrowprops=dict(arrowstyle="-|>", color=c, lw=1.4, shrinkA=0, shrinkB=0))
+
+
+# ------------------------------------------------- S15 칼만의 가짜 심박 (D-42 · F-58)
+def s15_kalman_phantom(TXT):
+    """**말할 것 하나**: 칼만은 오검출 자리에 **깨끗하고 그럴듯한 QRS** 를 그린다.
+
+    왼쪽은 파형(가장 뚜렷한 예시 — 그렇게 골랐다고 그림에 적는다, F-24),
+    오른쪽은 **비율**(심박 모양 오검출 수, 두 축). 예시만 실으면 분포의 끝을
+    대표로 보이게 된다 — 오른쪽 막대가 그 균형추다.
+    """
+    import json
+    summ = {}
+    for tag in ("d0", "d1"):
+        f = Path("results") / tag / "phantom" / "summary.json"
+        if f.exists():
+            summ[tag] = json.loads(f.read_text())
+    exf = Path("results/d1/phantom/example.npz")
+    if "d1" not in summ or not exf.exists():
+        print("  [skip] S15 — results/d1/phantom 없음 (scripts/probe_phantom_beats.py)")
+        return
+    ex = np.load(exf, allow_pickle=True)
+    fs = float(ex["fs"])
+    t = (np.arange(len(ex["clean"])) - (int(ex["center"]) - int(ex["i0"]))) / fs
+    ref = np.asarray(ex["ref_peaks"])
+    rows = [("noisy", "입력 (잡음 섞임)"), ("M_FE", "front-end 단독"),
+            ("M04", "M04  SWT"), ("M05", "M05  칼만 (Sameni EKS)"), ("M06", "M06  딥러닝 (Res U-Net)")]
+    fig = plt.figure(figsize=(14.0, 7.2))
+    gs = fig.add_gridspec(len(rows), 2, width_ratios=[2.15, 1.0], wspace=0.30, hspace=0.18)
+    tol = int(round(0.075 * fs))
+    for k, (key, lab) in enumerate(rows):
+        ax = fig.add_subplot(gs[k, 0])
+        ax.plot(t, ex["clean"], color=CLEAN, lw=3.0, zorder=1)
+        sig = ex[key]
+        ax.plot(t, sig, color=NOISY if key == "noisy" else OUTK, lw=0.8 if key == "noisy" else 1.1, zorder=2)
+        for r in ref:
+            ax.axvline(t[r], color="#bdbab1", lw=0.8, ls=":", zorder=0)
+        n_fp = 0
+        if key != "noisy":
+            det = np.asarray(ex[f"det_{key}"])
+            for d in det:
+                if ref.size == 0 or np.abs(ref - d).min() > tol:
+                    ax.axvspan(t[d] - 0.2, t[d] + 0.2, color=PHANTOM, alpha=0.16, lw=0, zorder=0)
+                    n_fp += 1
+        lo, hi = np.percentile(np.r_[ex["clean"], ex["M06"]], [0.5, 99.5])
+        pad = 0.35 * (hi - lo)
+        ax.set_ylim(lo - pad, hi + pad) if key != "noisy" else None
+        ax.set_yticks([])
+        ax.set_ylabel(lab, rotation=0, ha="right", va="center", fontsize=10.5, color=INK)
+        if key != "noisy":
+            ax.text(0.995, 0.88, f"없는 자리의 검출 {n_fp}", transform=ax.transAxes, ha="right",
+                    fontsize=9, color=PHANTOM if n_fp else INK2)
+        if k < len(rows) - 1:
+            ax.set_xticklabels([])
+        ax.grid(axis="y", visible=False)
+    ax.set_xlabel("시간 [s]  (창의 가운데 = 0)")
+    fig.text(0.04, 0.955, f"MIT-BIH {ex['record']} · {ex['cond']} {float(ex['snr']):+.0f} dB · "
+             f"고른 규칙: {ex['rule']}  "
+             "(회색 굵은 선 = 참값, 점선 = 진짜 심박, 붉은 띠 = 참값에 없는 자리의 검출)",
+             fontsize=9.5, color=INK2)
+
+    ax = fig.add_subplot(gs[:, 1])
+    ms = ["M_FE", "M04", "M05", "M06"]
+    col = {"M_FE": C["M_FE"], "M04": C["M04"], "M05": C["M05"], "M06": C_DL}
+    yy = np.arange(len(ms))
+    for j, (tag, hgt, alpha) in enumerate((("d1", 0.36, 1.0), ("d0", 0.36, 0.45))):
+        if tag not in summ:
+            continue
+        thr = str(summ[tag]["threshold"])
+        vals = [summ[tag]["methods"][m]["beatlike"][thr] for m in ms]
+        fr = [summ[tag]["methods"][m]["beatlike_frac"] or 0.0 for m in ms]
+        nf = [summ[tag]["methods"][m]["n_fp"] for m in ms]
+        off = -0.2 if tag == "d1" else 0.2
+        ax.barh(yy + off, vals, height=hgt, color=[col[m] for m in ms], alpha=alpha,
+                edgecolor="none")
+        for y, v, f_, n_ in zip(yy + off, vals, fr, nf):
+            ax.text(v, y, f"  {v}  ({f_ * 100:.1f} % / 오검출 {n_})", va="center", fontsize=8.8,
+                    color=INK)
+    ax.set_yticks(yy)
+    ax.set_yticklabels(["front-end", "M04 SWT", "M05 칼만", "M06 딥러닝"], fontsize=10.5)
+    ax.invert_yaxis()
+    ax.set_xlabel("심박 모양 가짜 검출 수 (자기 template 과의 상관 > 0.8)")
+    ax.set_title("진한 막대 = D1 MIT-BIH, 옅은 막대 = D0 합성\n저 SNR(-5·0 dB) · 백색·혼합 잡음 · 축당 88 구간",
+                 fontsize=10, color=INK2)
+    ax.margins(x=0.62)
+    ax.grid(axis="y", visible=False)
+    d1 = summ["d1"]["methods"]
+    thr = str(summ["d1"]["threshold"])
+    k5, k4, k6 = (d1[m]["beatlike"][thr] for m in ("M05", "M04", "M06"))
+    fig.suptitle("칼만은 없는 자리에 깨끗한 심박을 그린다 — 오검출 수는 front-end 와 같지만 모양이 다르다\n"
+                 f"D1 에서 심박 모양 가짜가 M05 {k5}개 · M04 {k4}개 · M06 {k6}개 "
+                 f"(SWT 의 {k5 / max(k4, 1):.0f}배, 딥러닝의 {k5 / max(k6, 1):.0f}배)",
+                 fontsize=12.5, x=0.5, y=1.02)
+    fig.savefig(OUT / "S15_kalman_phantom.png", dpi=175, bbox_inches="tight"); plt.close(fig)
+    print("  S15_kalman_phantom.png")
+
+
+# ------------------------------------------------- 같은 자(seed 짝) 위의 Δ
+def _sweep(d: str) -> dict:
+    import json
+    out = {}
+    for p in Path("results/ext", d).glob("*/summary.json"):
+        j = json.loads(p.read_text())
+        out[(j["arm"], int(j["seed"]))] = j
+    return out
+
+
+def _paired(sweep: str, arm: str, base: str, key: str, base_sweep: str | None = None):
+    """같은 seed 끼리의 Δ. (평균, seed 별 Δ 배열, p) — 없으면 None."""
+    from scipy import stats
+    a = _sweep(sweep)
+    b = _sweep(base_sweep) if base_sweep else a
+    seeds = sorted(s for (m, s) in a if m == arm and (base, s) in b
+                   and key in a[(m, s)] and key in b[(base, s)])
+    if not seeds:
+        return None
+    y = np.array([a[(arm, s)][key] for s in seeds])
+    x = np.array([b[(base, s)][key] for s in seeds])
+    d = y - x
+    p = float(stats.ttest_rel(y, x).pvalue) if len(d) > 1 else float("nan")
+    return float(d.mean()), d, p
+
+
+# ------------------------------------------------- S16 wavelet 을 어디에 둘 것인가
+def s16_wavelet_placement(TXT):
+    """**말할 것 하나**: 같은 backbone 에 wavelet 의 **자리만** 바꿨다 — 직렬은 손해,
+    특성공간은 이 예산으로 못 가린다.
+
+    위 = 세 구조(차이는 주황 블록의 자리 하나), 아래 왼쪽 = 같은 자(seed 4 짝, 고정
+    평가)의 Δ, 아래 오른쪽 = 깨끗한 신호를 얼마나 덜 건드리나(EXP-C, 두 축).
+    D0 seed 0 한 판에서는 M08 > M06 이 유의했는데 D1 에서 사라졌다(5.8.5) —
+    그래서 판정은 **seed 짝 Δ** 에 얹는다.
+    """
+    import pandas as pd
+    fig = plt.figure(figsize=(14.0, 8.4))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.05, 1.0], hspace=0.42, wspace=0.28)
+    BB, SW = "#c9d6e8", "#fbdccc"
+    designs = [
+        ("M06  wavelet 안 씀", [("입력 y", "#ece9e1"), ("Residual U-Net", BB), ("출력 = y - 예측 잡음", "#ece9e1")]),
+        ("M07  전처리(직렬)", [("입력 y", "#ece9e1"), ("SWT 임계처리\n(M04)", SW), ("Residual U-Net", BB),
+                              ("출력", "#ece9e1")]),
+        ("M08  특성공간", [("입력 y", "#ece9e1"), ("SWT 6 대역\n= 6 채널", SW), ("대역별 conv\n+ U-Net", BB),
+                          ("역 SWT\n(미분 가능)", SW), ("출력", "#ece9e1")]),
+    ]
+    for j, (title, blocks) in enumerate(designs):
+        ax = fig.add_subplot(gs[0, j])
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+        n = len(blocks)
+        gap = 0.04
+        h = (0.94 - gap * (n - 1)) / n
+        for i, (txt, fc) in enumerate(blocks):
+            y = 0.97 - (i + 1) * h - i * gap
+            _box(ax, 0.18, y, 0.64, h, txt, fc, fs=10)
+            if i:
+                _arrow(ax, 0.5, y + h + gap, 0.5, y + h + 0.004)
+        ax.set_title(title, fontsize=12, color=INK, pad=4)
+    ax0 = fig.add_subplot(gs[1, :2])
+    rows = [("M07  전처리(직렬)", "m07_l1"), ("M08  특성공간", "m08_l1")]
+    ax0.axvline(0, color=INK2, lw=1.2)
+    for i, (lab, arm) in enumerate(rows):
+        r = _paired("structure", arm, "m06_l1", "fixed_snr_imp_scaled")
+        if r is None:
+            continue
+        m, d, p = r
+        sig = p < 0.05
+        ax0.plot([d.min(), d.max()], [i, i], color="#8a8a8a", lw=3, solid_capstyle="round")
+        ax0.scatter(d, [i] * len(d), s=26, color="#8a8a8a", zorder=3)
+        ax0.scatter([m], [i], s=170, color=PHANTOM if sig and m < 0 else "#184f95" if sig else SURFACE,
+                    edgecolor=PHANTOM if m < 0 else "#184f95", lw=2, zorder=4)
+        verdict = "유의하게 손해" if sig and m < 0 else "유의한 이득" if sig else "이 예산으로 못 가림"
+        ax0.annotate(f"{m:+.2f} dB  (p = {p:.3f}, seed {len(d)} 짝) — {verdict}", (m, i),
+                     xytext=(0, 14), textcoords="offset points", ha="center", fontsize=10,
+                     color=INK)
+    ax0.set_yticks(range(len(rows))); ax0.set_yticklabels([r[0] for r in rows], fontsize=11)
+    ax0.set_ylim(-0.6, len(rows) - 0.3); ax0.invert_yaxis(); ax0.grid(axis="y", visible=False)
+    ax0.set_xlabel("M06 대비 Δ  snr_imp_scaled [dB]  (D1 · 고정 평가 · 작은 점 = seed 하나)")
+    ax0.margins(x=0.35)
+    ax1 = fig.add_subplot(gs[1, 2])
+    ms, labs = ["M06", "M07", "M08"], ["M06", "M07\n직렬", "M08\n특성공간"]
+    for k, (tag, alpha) in enumerate((("d0", 0.45), ("d1", 1.0))):
+        f = Path("results") / tag / "exp_c" / "metrics.parquet"
+        if not f.exists():
+            continue
+        d = pd.read_parquet(f)
+        d = d[d.metric == "snr_out_strict"].groupby("method").value.mean()
+        v = [float(d.get(m, np.nan)) for m in ms]
+        xs = np.arange(len(ms)) + (k - 0.5) * 0.38
+        ax1.bar(xs, v, width=0.36, color=[BB] * 3, alpha=alpha, edgecolor="#6d86a8")
+        for x_, v_ in zip(xs, v):
+            ax1.text(x_, v_ + 0.4, f"{v_:.1f}", ha="center", fontsize=9)
+    ax1.set_xticks(range(len(ms))); ax1.set_xticklabels(labs)
+    ax1.set_ylabel("잡음 0 입력의 출력 SNR [dB]")
+    ax1.set_title("깨끗한 신호 보존 (EXP-C)\n옅은 = D0 합성, 진한 = D1", fontsize=10.5, color=INK2)
+    ax1.grid(axis="x", visible=False)
+    fig.suptitle("wavelet 을 어디에 둘 것인가 — 같은 backbone, 자리만 다르다\n"
+                 "주황 = wavelet(SWT), 파랑 = 같은 Residual U-Net", fontsize=13)
+    fig.savefig(OUT / "S16_wavelet_placement.png", dpi=175, bbox_inches="tight"); plt.close(fig)
+    print("  S16_wavelet_placement.png")
+
+
+# ------------------------------------------------- S17 딥러닝 개선 여정
+JOURNEY = [  # (묶음, 라벨, sweep, arm, 기준 arm, 기준 sweep)
+    ("구조", "M07  SWT 를 앞에 (직렬)", "structure", "m07_l1", "m06_l1", None),
+    ("구조", "M08  wavelet 특성공간", "structure", "m08_l1", "m06_l1", None),
+    ("구조", "M09  CNN + Transformer", "structure", "m09_l1", "m06_l1", None),
+    ("구조", "M10  해상도 유지 (dilated)", "structure", "m10_l1", "m06_l1", None),
+    ("깊이·용량", "폭 1/2", "structure", "m06_l1_half", "m06_l1", None),
+    ("깊이·용량", "폭 1/4", "structure", "m06_l1_quarter", "m06_l1", None),
+    ("깊이·용량", "깊이 x2 (등파라미터)", "depth", "m06_l1_deep2", "m06_l1", None),
+    ("깊이·용량", "깊이 x4 (등파라미터)", "depth", "m06_l1_deep4", "m06_l1", None),
+    ("깊이·용량", "블록 x4 (파라미터 1.9배)", "blocks", "m06_l1_nb4", "m06_l1", None),
+    ("학습 세부", "정규화 빼기 (EDSR 식)", "d41", "m06_l1_nonorm", "m06_l1", "l6cond"),
+    ("학습 세부", "가중치 EMA ※", "d41", "m06_l1_ema", "m06_l1", "l6cond"),
+    ("목표·조준", "손실 L3 (+MAE·차분)", "structure", "m06_l3", "m06_l1", None),
+    ("목표·조준", "손실 L6 (+깨끗하면 건드리지 마라)", "l6cond", "m06_l6", "m06_l1", None),
+    ("목표·조준", "SNR 조건화 (FiLM)", "cond", "m06_cond", "m06_l1", None),
+    ("목표·조준", "L6 위에 조건화 더하기", "l6cond", "m06_cond_l6", "m06_l6", None),
+    ("목표·조준", "15~20 dB 전담 모델 (상한)", "band", "m06_l1_band_hi", "m06_l1", None),
+]
+GROUP_C = {"구조": "#8a8a8a", "깊이·용량": "#8a8a8a", "학습 세부": "#8a8a8a", "목표·조준": "#184f95"}
+
+
+def s17_dl_journey(TXT):
+    """**말할 것 하나**: 딥러닝을 끌어올리려던 열여섯 개입 중 측정 산포를 넘어 **좋은 쪽으로**
+    움직인 것은 전부 「무엇을 맞추게 하느냐」(손실 · 동작점)였다.
+
+    전부 **같은 자** — 자기 sweep 의 기준 arm 과 같은 seed 끼리 짝지은 Δ, 고정 평가
+    (F-41). 왼쪽 열 = 전 구간, 오른쪽 열 = 15~20 dB 대역(대역 열이 없는 sweep 은 빈칸).
+    정규화 빼기 · EMA 는 F-57 과 같이 `l6cond`(seed 0~3) 기준으로 그리고, EMA 의 같은
+    환경 기준값(`d40_ref`, seed 0·1)을 각주로 단다 — F-57 의 결론이 그 값이다.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(13.6, 9.2), sharey=True,
+                             gridspec_kw=dict(width_ratios=[1.0, 1.0], wspace=0.06))
+    keys = [("fixed_snr_imp_scaled", "전 구간 (-5~20 dB)"), ("band_15_20", "고 SNR 대역 (15~20 dB)")]
+    ypos, y, last = [], 0.0, None
+    for g, *_ in JOURNEY:
+        if g != last and last is not None:
+            y += 0.7
+        ypos.append(y); y += 1.0; last = g
+    good = {k: [] for k, _ in keys}
+    for ax, (key, title) in zip(axes, keys):
+        ax.axvline(0, color=INK2, lw=1.2, zorder=1)
+        for (g, lab, sw, arm, base, bsw), yy in zip(JOURNEY, ypos):
+            r = _paired(sw, arm, base, key, bsw)
+            if r is None:
+                ax.text(0, yy, "대역 열 없음", ha="center", va="center", fontsize=8.5, color="#a8a59c")
+                continue
+            m, d, p = r
+            sig = bool(p < 0.05)
+            if sw == "d41" and bsw == "l6cond":
+                # 기준이 다른 환경(torch 판)이다 — 같은 환경 seed 0·1 로 다시 재서
+                # 부호·크기가 버티지 않으면 유의 표시를 하지 않는다 (F-57)
+                same = _paired(sw, arm, base, key, "d40_ref")
+                if same is None or abs(same[0]) < 0.1 or np.sign(same[0]) != np.sign(m):
+                    sig = False
+            c = GROUP_C[g]
+            ax.plot([d.min(), d.max()], [yy, yy], color=c, lw=2.4, alpha=0.55, solid_capstyle="round")
+            ax.scatter([m], [yy], s=110, zorder=4, color=c if sig else SURFACE, edgecolor=c, lw=1.8)
+            ax.text(max(d.max(), m) + 0.12, yy, f"{m:+.2f}" + ("*" if sig else "") + f"  n={len(d)}",
+                    va="center", fontsize=8.8, color=INK if sig else INK2)
+            if sig and m > 0:
+                good[key].append(g)
+        ax.set_title(title, fontsize=12, color=INK)
+        ax.set_xlabel("기준 대비 Δ snr_imp_scaled [dB]  (점 = 평균, 막대 = seed 범위)")
+        ax.grid(axis="y", visible=False)
+        ax.margins(x=0.18)
+    axes[0].set_yticks(ypos)
+    axes[0].set_yticklabels([lab for _, lab, *_ in JOURNEY], fontsize=10)
+    for t_ in axes[0].get_yticklabels():
+        g = next(g for g, lab, *_ in JOURNEY if lab == t_.get_text())
+        t_.set_color(GROUP_C[g] if g == "목표·조준" else INK)
+    axes[0].invert_yaxis()
+    last = None
+    for (g, *_), yy in zip(JOURNEY, ypos):
+        if g != last:
+            axes[0].text(-0.02, yy - 0.62, g, transform=axes[0].get_yaxis_transform(), ha="right",
+                         fontsize=10.5, fontweight="bold", color=GROUP_C[g] if g == "목표·조준" else INK2)
+            last = g
+    allg = set(good[keys[0][0]]) | set(good[keys[1][0]])
+    which = " · ".join(sorted(allg)) or "없다"
+    ema = _paired("d41", "m06_l1_ema", "m06_l1", "fixed_snr_imp_scaled", "d40_ref")
+    if ema is not None:
+        fig.text(0.01, -0.01, "※ 정규화 빼기 · EMA 의 기준은 l6cond(seed 0~3, torch 2.13)라 환경 차이가 섞인다. "
+                 f"같은 환경(seed 0·1) 기준 EMA 전 구간 Δ = {ema[0]:+.2f} dB — 효과 없음으로 읽는다 (F-57). "
+                 "같은 환경에서도 버티는 것만 채운 점으로 그렸다.",
+                 fontsize=9.2, color=INK2)
+    fig.suptitle("딥러닝 개선 시도 16 개를 같은 자로 — 좋은 쪽으로 유의하게 움직인 묶음: " + which + "\n"
+                 "채운 점 = p < 0.05 (seed 짝 t 검정), 빈 점 = 이 예산으로 못 가림 · "
+                 "학습 런 간 산포(seed 만 바꿔 1.43 dB 폭)를 먼저 잰 뒤의 판정이다",
+                 fontsize=12.2, y=0.995)
+    fig.savefig(OUT / "S17_dl_journey.png", dpi=175, bbox_inches="tight"); plt.close(fig)
+    print("  S17_dl_journey.png")
+
+
+# ------------------------------------------------- S18 전체 파이프라인
+def s18_pipeline(TXT):
+    """판넬 「작품 내용」 의 블록도 — 취득 · 공통 전처리 · 기법 네 계열 + 상한 · 평가."""
+    fig, ax = plt.subplots(figsize=(14.0, 6.4))
+    ax.set_xlim(0, 14); ax.set_ylim(-0.5, 6.4); ax.axis("off")
+    _box(ax, 0.2, 3.6, 2.3, 1.9, "취득\n전극 → AD8232\n→ Arduino Uno\n250 Hz", BOXC["acq"], bold=False)
+    _box(ax, 0.2, 0.9, 2.3, 2.2, "데이터 축\nD0 합성 ECG\nD1 MIT-BIH + NSTDB\nD3 실측 (진행 중)", BOXC["acq"], fs=9.8)
+    _box(ax, 3.1, 2.6, 2.3, 2.2, "공통 front-end\nHPF 0.5 Hz\nLPF 100 Hz\nnotch (조건부)", BOXC["fe"])
+    _arrow(ax, 2.5, 4.5, 3.1, 4.0); _arrow(ax, 2.5, 2.0, 3.1, 3.1)
+    fam = [("고전 필터\nM01 Bandpass · M02 SavGol", BOXC["cls"]),
+           ("시간-주파수\nM03 DWT · M04 SWT 적응 임계", BOXC["tf"]),
+           ("모형 기반\nM05 Sameni EKF/EKS", BOXC["mdl"]),
+           ("딥러닝\nM06 Res U-Net · M07 · M08 · M09 · M10", BOXC["dl"]),
+           ("상한 (정답을 아는 oracle)\nB01 wavelet · B02 Wiener", BOXC["orc"])]
+    for i, (t_, fc) in enumerate(fam):
+        y = 5.35 - i * 1.12
+        _box(ax, 6.0, y, 3.5, 0.92, t_, fc, fs=9.8)
+        _arrow(ax, 5.4, 3.7, 6.0, y + 0.46)
+    _box(ax, 10.1, 3.3, 3.7, 2.6, "평가 4 층 (같은 자)\n① 재구성  SNR 3분할 · RMSE · PRDN\n② 형태  cc · beat_cc · QRS 폭\n"
+         "③ 하류 과제  R-peak Se · PPV\n④ 주파수  PSD 거리", BOXC["ev"], fs=9.6)
+    _box(ax, 10.1, 1.75, 3.7, 1.2, "안전성 프로브\nbeat 지우기 · 3 s 심정지 · PVC", BOXC["ev"], fs=9.6)
+    _box(ax, 10.1, 0.25, 3.7, 1.15, "시연\n모드 B 녹음본 비교 · 모드 A 실시간", "#f3f1ea", fs=9.6)
+    for i in range(5):
+        _arrow(ax, 9.5, 5.81 - i * 1.12, 10.1, 4.6 if i < 3 else 2.4)
+    ax.text(7.0, -0.35, "잡음 7 종 × 입력 SNR 7 단계 (-5~25 dB) · 기록 단위 짝 검정 · 지표 분해능(floor) 먼저",
+            ha="center", fontsize=9.8, color=INK2)
+    fig.suptitle("같은 입력 · 같은 전처리 · 같은 지표 — 비교의 판", fontsize=13)
+    fig.savefig(OUT / "S18_pipeline.png", dpi=175, bbox_inches="tight"); plt.close(fig)
+    print("  S18_pipeline.png")
+
+
+# ------------------------------------------------- S19 SWT 적응 임계 — 알고리즘 도해
+def s19_swt(cache, TXT):
+    """이론적 배경 (1): 세부계수 다섯 단에 **단마다 다른 임계**, QRS 근처에서는 낮춘다.
+
+    실험과 같은 M04 인스턴스(축별 튜닝값)를 쓰고, 그 내부 루프를 그대로 따라
+    λ_j 와 보호 창을 그린다 — 그림 전용 임계를 따로 계산하지 않는다.
+    """
+    import pywt
+
+    from ecgdn.methods.wavelet import qrs_protection_mask
+    sys.path.insert(0, "scripts")
+    from run_exp import build_methods  # noqa: PLC0415
+    d = cache[("synthetic", 5.0, "awgn")]
+    m04 = build_methods({"methods": ["M04"], "frontend": True}, d["tag"])["M04"]
+    other = build_methods({"methods": ["M04"], "frontend": True}, "d1")["M04"].cfg
+    cfg, fs = m04.cfg, d["fs"]
+    x = m04.fe(d["y"], fs)
+    i0, i1 = _window(d, dur=2.56)
+    n = 512
+    seg = x[i0:i0 + n]
+    rp = d["r_peaks"][(d["r_peaks"] >= i0) & (d["r_peaks"] < i0 + n)] - i0
+    co = pywt.swt(seg, cfg.wavelet, level=cfg.level)          # [(cA5,cD5), ..., (cA1,cD1)]
+    det = [c[1] for c in co][::-1]                            # D1..D5
+    sig_src = getattr(cfg, "sigma_source", "d1")
+    from ecgdn.methods.wavelet import mad_sigma
+    sigma = mad_sigma(det[1] if sig_src == "d2" else det[0])
+    kv = np.asarray(cfg.k, float)
+    g = qrs_protection_mask(n, rp, fs, cfg.protect_ms) if cfg.protect_qrs else np.zeros(n)
+    t = np.arange(n) / fs
+    fig, axes = plt.subplots(7, 1, figsize=(9.6, 9.4), sharex=True,
+                             gridspec_kw=dict(height_ratios=[1.3, 1, 1, 1, 1, 1, 1.3], hspace=0.12))
+    axes[0].plot(t, seg, color=NOISY, lw=0.9)
+    axes[0].set_ylabel("입력\n(FE 후)", rotation=0, ha="right", va="center")
+    band = ["62~125 Hz", "31~62 Hz", "16~31 Hz", "8~16 Hz", "4~8 Hz"]
+    for j in range(cfg.level):
+        ax = axes[j + 1]
+        lam = kv[min(j, kv.size - 1)] * sigma * np.sqrt(2 * np.log(n)) * (1 - (1 - cfg.protect_rho) * g)
+        ax.fill_between(t, -lam, lam, color=C["M04"], alpha=0.22, lw=0)
+        ax.plot(t, det[j], color=OUTK, lw=0.8)
+        ax.set_ylabel(f"D{j + 1}\n{band[j]}", rotation=0, ha="right", va="center", fontsize=9.5)
+        ax.set_yticks([])
+    out = m04(d["y"], fs, {})[i0:i0 + n]
+    axes[-1].plot(t, d["x"][i0:i0 + n], color=CLEAN, lw=3)
+    axes[-1].plot(t, out, color=C["M04"], lw=1.2)
+    axes[-1].set_ylabel("출력\n(회색 = 참값)", rotation=0, ha="right", va="center")
+    for a in axes:
+        a.grid(axis="y", visible=False)
+        for r in rp:
+            a.axvspan(t[max(r - 6, 0)], t[min(r + 6, n - 1)], color="#e9e6f4", lw=0, zorder=0)
+    axes[-1].set_xlabel("시간 [s]")
+    prot = ("연보라(QRS) 자리에서는 띠를 좁혀 봉우리를 지킨다" if cfg.protect_qrs
+            else "QRS 보호는 꺼져 있다")
+    fig.suptitle(f"SWT 적응 임계 (M04, D0 튜닝: {cfg.mode} · 잡음 세기는 {cfg.sigma_source.upper()} 에서) "
+                 "— 주황 띠 안의 계수를 지우고 밖은 남긴다\n"
+                 f"띠 폭 = 단별 k x 전역 잡음 세기, {prot}. "
+                 f"실데이터(D1) 튜닝은 {other.mode} · QRS 보호 {'켬' if other.protect_qrs else '끔'} 을 골랐다",
+                 fontsize=11)
+    fig.savefig(OUT / "S19_swt.png", dpi=175, bbox_inches="tight"); plt.close(fig)
+    print("  S19_swt.png")
+
+
+# ------------------------------------------------- S20 칼만 — 위상 위의 가우시안 커널
+def s20_kalman_model(cache, TXT):
+    """이론적 배경 (2): ECG = 위상 θ 위의 가우시안 봉우리 합. 그 template 을 상태방정식으로
+    삼아 칼만 필터를 돈다. **위상은 입력에서 검출한 R-peak 마다 0 으로 되돌아간다** — S15 의 기제.
+
+    왼쪽 = 한 주기의 모형(커널 하나씩 + 합), 오른쪽 = 실제 구간에서 θ(t) 톱니와 출력.
+    """
+    from ecgdn.methods.kalman_sameni import SameniKalman, _kernel_sum
+    d = cache[("mitdb", 5.0, "mixed")]
+    k = SameniKalman(smooth=True)
+    out = k(d["y"], d["fs"], {})
+    info, fs = k.last_info, d["fs"]
+    fit = info["fit"]
+    grid = np.asarray(fit.template_grid)
+    fig = plt.figure(figsize=(13.6, 5.0))
+    gs = fig.add_gridspec(2, 2, width_ratios=[1.0, 1.55], height_ratios=[1, 1.25],
+                          wspace=0.22, hspace=0.12)
+    ax = fig.add_subplot(gs[:, 0])
+    ax.plot(grid, np.asarray(fit.template), color=CLEAN, lw=3.2, label="이 기록의 위상 평균")
+    for a_, b_, t_ in sorted(zip(np.asarray(fit.alpha), np.asarray(fit.b), np.asarray(fit.theta)),
+                             key=lambda z: z[2]):
+        g1 = _kernel_sum(grid, np.array([a_]), np.array([b_]), np.array([t_]))
+        ax.plot(grid, g1, color=OUTK, lw=0.8, alpha=0.55)
+    ax.plot(grid, np.asarray(fit.fitted), color=C["M05"], lw=2.0,
+            label=f"가우시안 커널 합 (결정계수 {fit.r2:.3f})")
+    ax.set_xlabel("위상 θ [rad]  (R 봉우리 = 0)")
+    ax.set_ylabel("정규화 진폭")
+    ax.legend(fontsize=9.5, loc="upper left")
+    ax.set_title("한 주기의 모형 — 가는 선 = 커널 하나씩", fontsize=10.5, color=INK2)
+    i0, i1 = _window(d, dur=3.2)
+    t = np.arange(i0, i1) / fs
+    th = np.asarray(info["theta"])[i0:i1]
+    from ecgdn.eval.rpeak import detect_rpeaks
+    x_in = k.fe(d["y"], fs) if k.fe is not None else d["y"]
+    rp = np.asarray(detect_rpeaks(x_in, fs))
+    rp = rp[(rp >= i0) & (rp < i1)]
+    a1 = fig.add_subplot(gs[0, 1])
+    a1.plot(t, th, color=C["M05"], lw=1.6)
+    for r in rp:
+        a1.axvline(r / fs, color=PHANTOM, lw=1.0, ls="--")
+    a1.set_ylabel("위상 θ(t)")
+    a1.set_yticks([-np.pi, 0, np.pi]); a1.set_yticklabels(["-π", "0", "π"])
+    a1.tick_params(labelbottom=False)
+    a1.set_title("붉은 점선 = 입력에서 검출한 R-peak — θ 가 거기서 0 을 지나도록 맞춰진다",
+                 fontsize=10.5, color=INK2)
+    a2 = fig.add_subplot(gs[1, 1], sharex=a1)
+    a2.plot(t, d["x"][i0:i1], color=CLEAN, lw=3.0)
+    a2.plot(t, x_in[i0:i1], color=NOISY, lw=0.6, alpha=0.5)
+    a2.plot(t, out[i0:i1], color=C["M05"], lw=1.4)
+    for r in rp:
+        a2.axvline(r / fs, color=PHANTOM, lw=1.0, ls="--")
+    a2.set_ylabel("진폭 [mV]"); a2.set_xlabel("시간 [s]")
+    a2.set_yticks([])
+    a2.text(0.995, 0.92, "회색 굵은 = 참값 · 옅은 = 입력 · 노랑 = 칼만 출력", transform=a2.transAxes,
+            ha="right", fontsize=9, color=INK2)
+    for a_ in (a1, a2):
+        a_.grid(axis="y", visible=False)
+    fig.suptitle("Sameni EKF/EKS (M05) — ECG 를 위상 위의 가우시안 커널 합으로 모형화하고 상태 [θ, z] 를 추정한다\n"
+                 "θ 는 검출한 R-peak 마다 0 으로 맞춰진다: 검출이 틀리면 그 자리에 template 의 QRS 가 그려진다 (S15)",
+                 fontsize=11.5, y=1.03)
+    fig.savefig(OUT / "S20_kalman_model.png", dpi=175, bbox_inches="tight"); plt.close(fig)
+    print("  S20_kalman_model.png")
+
+
+# ------------------------------------------------- S21 Residual U-Net + L6
+def s21_resunet(TXT):
+    """이론적 배경 (3): 잡음을 예측해서 **뺀다**(출력단 잔차), 손실에 「깨끗하면 건드리지 마라」.
+
+    채널 수 · 파라미터 수는 체크포인트에서 읽는다 — 손으로 적지 않는다.
+    """
+    import torch
+
+    from ecgdn.methods.dl_wrapper import load_checkpoint
+    ck = "results/d1/m06_l1/best.pt"
+    model, meta = load_checkpoint(ck)
+    chs = list(model.chs)
+    npar = sum(p.numel() for p in model.parameters())
+    fig, ax = plt.subplots(figsize=(13.0, 5.6))
+    ax.set_xlim(0, 13); ax.set_ylim(0, 5.6); ax.axis("off")
+    L = 1024
+    xs_enc = [1.2 + i * 1.15 for i in range(len(chs))]
+    for i, c in enumerate(chs):
+        h = 2.6 - i * 0.42
+        _box(ax, xs_enc[i], 4.6 - h, 0.85, h, f"{c}ch\n{L >> i}", "#c9d6e8", fs=8.6)
+        xd = 12.0 - (xs_enc[i] - 1.2) - 0.85 - 0.6
+        if i < len(chs) - 1:
+            _box(ax, xd, 4.6 - h, 0.85, h, f"{c}ch\n{L >> i}", "#cdeee1", fs=8.6)
+            ax.annotate("", (xd, 4.6 - h / 2), (xs_enc[i] + 0.85, 4.6 - h / 2),
+                        arrowprops=dict(arrowstyle="-|>", color="#a8a59c", lw=0.9, ls="--"))
+    _box(ax, 0.05, 3.1, 0.85, 1.0, "입력 y\n1 x 1024", "#ece9e1", fs=8.6)
+    _box(ax, 11.95, 3.1, 0.95, 1.0, "예측\n잡음", "#f6c9c9", fs=8.6)
+    _box(ax, 9.0, 0.35, 3.9, 1.05, "출력 = 입력 y - 예측 잡음\n신호를 그리지 않는다 → 없는 자리엔 뺄 것도 없다", "#fbecc2", fs=9.4)
+    ax.annotate("", (12.4, 1.42), (12.4, 3.08), arrowprops=dict(arrowstyle="-|>", color=INK2, lw=1.3))
+    ax.annotate("", (9.0, 0.88), (0.45, 3.08),
+                arrowprops=dict(arrowstyle="-|>", color=INK2, lw=1.3, connectionstyle="angle,angleA=-90,angleB=180"))
+    ax.text(6.0, 5.35, f"Residual 1D U-Net (M06) — 해상도 {len(chs)} 단, 단마다 잔차 블록 1 개"
+            f"(Conv k9 · GroupNorm · SiLU 를 두 번 + 지름길), 파라미터 {npar / 1e3:.0f} K",
+            ha="center", fontsize=10.5, color=INK)
+    ax.text(4.4, 1.55, "손실 L6 = MSE + 0.5 MAE + 0.3 · 기울기 오차 + λ · (깨끗한 입력 통과 오차)\n"
+            "마지막 항 = 깨끗한 창을 넣었을 때 아무것도 빼지 마라", ha="center", fontsize=10, color="#184f95")
+    ax.text(6.0, 2.2, "점선 = skip 연결 (같은 해상도의 특징을 그대로 넘긴다)", ha="center", fontsize=9, color=INK2)
+    fig.savefig(OUT / "S21_resunet.png", dpi=175, bbox_inches="tight"); plt.close(fig)
+    print("  S21_resunet.png")
+    del torch
+
+
 def main() -> int:
     import argparse
     global NAME, TXT
@@ -1370,7 +1909,8 @@ def main() -> int:
     a = ap.parse_args()
     want = set(a.only) if a.only else {"S1", "S2", "S3", "S4", "S5", "S6",
                                        "S7", "S8", "S9", "S10", "S11", "S12",
-                                       "S13", "S14"}
+                                       "S13", "S14", "S15", "S16", "S17", "S18",
+                                       "S19", "S20", "S21"}
 
     NAME, TXT = slide_style()
     ensure_dir(OUT)
@@ -1381,6 +1921,10 @@ def main() -> int:
         need |= {(s, v, "mixed") for s in ("synthetic", "mitdb") for v in (5.0, a.snr)}
     if {"S2", "S3"} & want:
         need |= {(s, a.snr, "mixed") for s in ("synthetic", "mitdb")}
+    if "S19" in want:
+        need |= {("synthetic", 5.0, "awgn")}
+    if "S20" in want:
+        need |= {("mitdb", 5.0, "mixed")}
     if "S4" in want:
         need |= {(s, a.snr, k) for s in ("synthetic", "mitdb")
                  for k in ("bw", "ma", "impulse")}
@@ -1421,11 +1965,26 @@ def main() -> int:
         s9_structure_vs_loss(TXT)
     if "S10" in want:
         s10_loss_by_noise(TXT)
+    if "S15" in want:
+        s15_kalman_phantom(TXT)
+    if "S16" in want:
+        s16_wavelet_placement(TXT)
+    if "S17" in want:
+        s17_dl_journey(TXT)
+    if "S18" in want:
+        s18_pipeline(TXT)
+    if "S19" in want:
+        s19_swt(cache, TXT)
+    if "S20" in want:
+        s20_kalman_model(cache, TXT)
+    if "S21" in want:
+        s21_resunet(TXT)
 
     save_manifest(OUT, cfg=vars(a), sources=[
         "scripts/make_slides.py", "scripts/run_exp.py", "ecgdn/data/dataset.py",
         "ecgdn/methods/frontend.py", "ecgdn/eval/engine.py",
-        "ecgdn/models/losses.py"])
+        "ecgdn/models/losses.py", "scripts/probe_phantom_beats.py",
+        "ecgdn/methods/kalman_sameni.py", "ecgdn/methods/wavelet.py"])
     write_index()
     return 0
 
