@@ -131,6 +131,7 @@
 - [ ] 설정값을 **의미로** 적었나 — 「hard · QRS 끔」이 아니라 「임계값 이하 계수 제거, QRS 구간 완화 미적용」 (C3)
 - [ ] 수치마다 데이터 · 조건 · 검정이 붙었나, 대외 글이 보고서보다 **강하게** 주장하지 않나 (E1 · E2 · §7)
 - [ ] 내부 기록은 고치지 않았나 — 두 문체는 적용 범위로 가른다 (D-43)
+- [ ] 원고 전체를 고치기 전에 `python3 scripts/style_review.py --rules F --open results/style_review/open_coding.csv` 로 후보를 뽑고 **사람이 판정**했나 — 자동 탐지는 후보일 뿐이다 (`docs/95_academic_style.md` §6)
 
 ---
 
