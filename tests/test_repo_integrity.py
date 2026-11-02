@@ -367,8 +367,9 @@ def test_report_body_matches_regenerated_artifacts():
     original = rep.read_text()
     try:
         # 정본과 다른 값을 심는다 (작은 어긋남도 잡혀야 한다)
-        broken = re.sub(r"(\|\s*`M04`\s*\|\s*\*\*)([0-9.]+)(\*\*)",
-                        r"\g<1>99.99\g<3>", original, count=1)
+        i53 = original.index("## 5.3 RQ3")                  # 5.3 절 안의 M04 행만 바꾼다
+        broken = original[:i53] + re.sub(r"(\|\s*`M04`\s*\|\s*(?:\*\*)?)([0-9.]+)",
+                                         r"\g<1>99.99", original[i53:], count=1)
         assert broken != original, "5.3 절의 M04 행을 찾지 못했다 (표 형식이 바뀌었나)"
         rep.write_text(broken)
         bad = mod.check_report_matches_generated_docs()
@@ -725,7 +726,7 @@ def test_s13_numbers_match_report_5_7():
     """
     body = REPORT.read_text(encoding="utf-8")
     tbl = body[body.index("## 5.7 "):]
-    tbl = tbl[:tbl.index("\n\n**결론이")]
+    tbl = tbl[:tbl.index("\n\n결론이")]
     rows = [ln for ln in tbl.splitlines() if ln.startswith("|")]
 
     def find(*needles: str) -> str:

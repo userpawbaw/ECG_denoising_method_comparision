@@ -1398,7 +1398,7 @@ BOXC = {"acq": "#ece9e1", "fe": "#f6d6e3", "cls": "#d5e4f7", "tf": "#fbdccc",
 
 
 # 대외 글 표기 (docs/95_academic_style.md §3 · D-43)
-MODE_KO = {"hard": "경임계값 처리", "soft": "연임계값 처리", "garrote": "가로트 임계값 처리"}
+MODE_KO = {"hard": "hard thresholding", "soft": "soft thresholding", "garrote": "garrote thresholding"}
 COND_KO = {"awgn": "백색 잡음", "mixed": "혼합 잡음", "bw": "기저선 변동", "ma": "근전도 잡음",
            "em": "전극 움직임 잡음", "pli": "전원선 잡음", "impulse": "임펄스 잡음"}
 
@@ -1630,7 +1630,7 @@ JOURNEY = [  # (묶음, 라벨, sweep, arm, 기준 arm, 기준 sweep)
     ("학습 목표", "손실: 무잡음 입력 보존항 추가", "l6cond", "m06_l6", "m06_l1", None),
     ("학습 목표", "SNR 조건부 특징 변조 (FiLM)", "cond", "m06_cond", "m06_l1", None),
     ("학습 목표", "보존항 손실에 SNR 조건화 추가", "l6cond", "m06_cond_l6", "m06_l6", None),
-    ("학습 목표", "고 SNR 전용 모델 (상한 추정)", "band", "m06_l1_band_hi", "m06_l1", None),
+    ("학습 목표", "입력 SNR 15~20 dB 전용 학습 모델\n(회수 가능한 개선량의 상한 추정)", "band", "m06_l1_band_hi", "m06_l1", None),
 ]
 GROUP_C = {"구조": "#8a8a8a", "규모": "#8a8a8a", "학습 기법": "#8a8a8a", "학습 목표": "#184f95"}
 
@@ -1699,7 +1699,7 @@ def s17_dl_journey(TXT):
                  f"동일 환경 기준 EMA의 효과는 전 구간 {ema[0]:+.2f} dB로 유의하지 않으며, "
                  "동일 환경에서도 유지되는 효과만 채운 점으로 표시하였다.",
                  fontsize=9.2, color=INK2)
-    fig.suptitle("딥러닝 성능 개선 시도 16종의 효과 (동일 시드 대응 비교, 고정 평가 집합)\n"
+    fig.suptitle("잔차 U-Net의 구조 · 학습 조건 변경 16종에 따른 SNR 개선량 변화 (동일 시드 대응 비교, 고정 평가 집합)\n"
                  "채운 점: p < 0.05 (대응 t-검정), 빈 점: 유의한 차이 없음.  유의한 개선이 관찰된 범주: "
                  + which,
                  fontsize=12.2, y=0.995)
@@ -1843,7 +1843,7 @@ def s20_kalman_model(cache, TXT):
     a1.set_ylabel("위상 θ(t)")
     a1.set_yticks([-np.pi, 0, np.pi]); a1.set_yticklabels(["-π", "0", "π"])
     a1.tick_params(labelbottom=False)
-    a1.set_title("적색 점선: 입력 신호에서 검출한 R파 위치 (θ = 0 으로 재설정되는 시점)",
+    a1.set_title("적색 점선: 입력 신호에서 검출한 R파 위치 (θ = 0으로 재설정되는 시점)",
                  fontsize=10.5, color=INK2)
     a2 = fig.add_subplot(gs[1, 1], sharex=a1)
     a2.plot(t, d["x"][i0:i1], color=CLEAN, lw=3.0)

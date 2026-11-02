@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "results" / "style_review"
 HANGUL = re.compile(r"[가-힣]")
 sys.path.insert(0, str(ROOT / "scripts"))
-from style_rules import F_CONTEXT, GROUPS, open_category, ruleset  # noqa: E402
+from style_rules import COMMON_ABBREV, F_CONTEXT, GROUPS, open_category, ruleset  # noqa: E402
 
 PANEL_SIDE = {"판넬", "판넬 그림", "브로셔"}
 
@@ -174,6 +174,8 @@ def review(version: str) -> list[dict]:
             ctx.update(F_CONTEXT)
             if u.source in PANEL_SIDE:
                 ctx["abbrev_set"] = F_CONTEXT["abbrev_set_panel"]
+            if version == "F2":                       # 분야 공통 약어는 판넬에서도 풀지 않는다
+                ctx["abbrev_set"] = F_CONTEXT["abbrev_set"] - COMMON_ABBREV
         hits = []
         for r in rules:
             for h in r.hits(u.text, ctx):
@@ -188,7 +190,7 @@ def review(version: str) -> list[dict]:
     return rows
 
 
-RULE_TIER = {v: {r.rid: r.tier for r in ruleset(v)} for v in ("T1", "F")}
+RULE_TIER = {v: {r.rid: r.tier for r in ruleset(v)} for v in ("T1", "F", "F2")}
 
 
 def _order(rid: str) -> tuple:
@@ -309,13 +311,13 @@ def write(version: str, rows: list[dict], open_codes: dict | None) -> dict:
     return summ
 
 
-MODE = {v: {r.rid: r.mode for r in ruleset(v)} for v in ("T1", "F")}
+MODE = {v: {r.rid: r.mode for r in ruleset(v)} for v in ("T1", "F", "F2")}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--rules", default="F", choices=("T1", "F"),
-                    help="어느 규칙판으로 추출하나 (T1 = 임시 규칙 1, F = 대조를 거친 최종 규칙)")
+    ap.add_argument("--rules", default="F2", choices=("T1", "F", "F2"),
+                    help="어느 규칙판으로 추출하나 (T1 = 임시 규칙 1, F = 대조를 거친 최종 규칙, F2 = 사용자 판정을 반영한 최종 규칙)")
     ap.add_argument("--open", default=None, metavar="CSV",
                     help="개방 코딩 CSV — 주면 대조표(compare_<판>.md)를 쓰고 후보에 개방 코딩 범주를 함께 싣는다")
     a = ap.parse_args()

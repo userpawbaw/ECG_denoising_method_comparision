@@ -23,7 +23,7 @@ from style_rules import F_CONTEXT, GROUPS, OPEN_CODEBOOK, open_category, ruleset
 OUT = ROOT / "results" / "style_review"
 
 
-@pytest.mark.parametrize("version", ["T1", "F"])
+@pytest.mark.parametrize("version", ["T1", "F", "F2"])
 def test_rule_form_is_complete(version):
     rules = ruleset(version)
     assert len({r.rid for r in rules}) == len(rules)
@@ -46,9 +46,10 @@ def test_final_rule_has_same_shape_and_records_changes():
             assert r.note, f"{rid} 는 T1 에서 바뀌었는데 바뀐 이유(note)가 없다"
 
 
-def test_final_rules_agree_with_their_own_examples():
+@pytest.mark.parametrize("version", ["F", "F2"])
+def test_final_rules_agree_with_their_own_examples(version):
     """교정 지침의 예 — 수정 전은 그 범주에 걸리고, 수정 후는 걸리지 않아야 한다."""
-    for r in ruleset("F"):
+    for r in ruleset(version):
         for before, after in r.examples:
             ctx = dict(F_CONTEXT, kind="제목" if r.rid == "B8" else "", abbrev_scope="sentence",
                        coined_scope="sentence")
@@ -97,9 +98,12 @@ def test_every_open_code_maps_to_a_category():
     assert not unknown, f"코드표에 없는 개방 코드: {sorted(unknown)}"
 
 
-@pytest.mark.parametrize("version", ["T1", "F"])
+@pytest.mark.parametrize("version", ["F2"])
 def test_saved_candidates_match_current_rules(version):
-    """규칙을 고치고 산출물을 다시 안 뽑으면 여기서 걸린다 (O-35 와 같은 이유)."""
+    """규칙을 고치고 산출물을 다시 안 뽑으면 여기서 걸린다 (O-35 와 같은 이유).
+
+    T1 · F 의 후보 파일은 원문(판넬 · 보고서)을 고치기 **전**의 기록이라 대조하지 않는다 — 그 판들의
+    대조표(`compare_T1.md` · `compare_F.md`)가 그 시점의 근거다."""
     rows = sr.review(version)
     oc = sr.load_open(OUT / "open_coding.csv", version)
     with open(OUT / f"candidates_{version}.csv", encoding="utf-8-sig") as f:
@@ -109,13 +113,25 @@ def test_saved_candidates_match_current_rules(version):
     assert fresh_auto == saved_auto
     summ = json.loads((OUT / f"summary_{version}.json").read_text(encoding="utf-8"))
     assert summ["units"] == len(rows) and summ["candidates"] == len(saved)
-    assert len(oc) == len({(r["where"], r["text"]) for r in rows})      # 같은 줄의 같은 문장은 한 키
+    assert oc, "개방 코딩을 읽지 못했다"     # 개방 코딩은 교정 전 원문 기준 — 문장 수 대조는 하지 않는다
 
 
 def test_examples_point_at_real_candidates():
-    md = (OUT / "examples_F.md").read_text(encoding="utf-8")
-    with open(OUT / "candidates_F.csv", encoding="utf-8-sig") as f:
+    md = (OUT / "examples_F2.md").read_text(encoding="utf-8")
+    with open(OUT / "candidates_F2.csv", encoding="utf-8-sig") as f:
         texts = {r["text"] for r in csv.DictReader(f)}
     origs = re.findall(r"^- \*\*원문\*\* — (.*)$", md, re.M)
-    assert len(origs) >= 30
+    assert len(origs) >= 20
     assert all(o in texts for o in origs)
+
+
+def test_f2_reflects_user_verdicts():
+    """사용자 판정(F2)이 바꾼 것 — 정착 원어 · 분야 공통 약어는 후보가 아니고, 억지 번역어와 굵은 글씨는 후보다."""
+    f2 = {r.rid: r for r in ruleset("F2")}
+    ctx = dict(F_CONTEXT, kind="")
+    assert not f2["A6"].hits("hard thresholding 과 window 길이, seed, 튜닝", dict(ctx, plain="hard thresholding 과 window 길이, seed, 튜닝"))
+    assert f2["A6"].hits("clean 입력과 beat", dict(ctx, plain="clean 입력과 beat"))
+    assert f2["A1"].hits("경임계값 처리", dict(ctx, plain="경임계값 처리"))
+    assert f2["B3"].tier == 1 and not f2["B3"].exclude
+    assert "동의어" in f2["D1"].guide
+    assert "SNR" in __import__("style_rules").COMMON_ABBREV

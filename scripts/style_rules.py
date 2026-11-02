@@ -326,6 +326,15 @@ def open_category(code: str, detail: str, version: str) -> str | None:
             return "D4"
         if code == "SP":
             return "X"                                    # 개방 코딩은 「붙여 쓴 쪽」을 불일치로 표시 — 맞춤법상 옳은 쪽이다
+    if version == "F2":                                   # 사용자 판정으로 후보에서 빠진 표시 — 판정 제외
+        d = detail.strip()
+        if code in ("EN", "영어 혼용", "외래어") and (d.lower() in {t.lower() for t in TERMS_KEEP} or
+                                                   (d in LOANWORDS and d not in LOANWORDS_COLLOQUIAL)):
+            return "X"
+        if code in ("CO", "구어", "외래 구어") and d in ("튜닝", "프로브") and d not in LOANWORDS_COLLOQUIAL:
+            return "X"
+        if code in ("UA", "약어", "풀이 없는 약어") and d in COMMON_ABBREV:
+            return "X"
     return OPEN_CODEBOOK.get(code)
 
 
@@ -730,9 +739,79 @@ F_CONTEXT = {
 }
 
 
+# =====================================================================  F2 — 사용자 판정 반영
+# 검토판에 남긴 판정 16 건(판넬 쪽 수정 예시 15 · 보고서 1) 중, 현 규칙이 **체계적으로** 바로잡지 못하는
+# 지적만 반영한다. 「수정 예시대로」 11 건과 「유지」 1 건은 규칙대로 처리된 것이라 손대지 않았다.
+# 근거 판정은 note 에 「판정:」으로 적는다.
+
+# 학계 · 교재에서 원어(또는 음차)로 쓰는 기술 용어 — 번역을 새로 만들면 오히려 A1(조어)이 된다
+TERMS_KEEP = {
+    "hard", "soft", "garrote", "thresholding", "threshold", "attention", "epoch", "batch", "dropout", "skip",
+    "oracle", "window", "ablation", "residual", "Residual", "Dilated", "ResNet", "U-Net", "encoder", "decoder",
+    "bandpass", "notch", "highpass", "lowpass", "filtfilt", "seed", "template", "baseline", "wander",
+    "overlap-add", "zero-phase", "causal", "lookahead", "early", "stopping", "fine-tune", "transfer", "learning",
+    "rank-biserial", "effect", "size", "Holm", "paired", "t-test", "Wilcoxon", "TOST", "noise-level", "map",
+}
+# 음차어 중 일상 구어에 가까워 학술 글에서 바꾸는 것만 남긴다 (체크포인트 · 파이프라인 · 버퍼 등 정착어는 뺀다)
+LOANWORDS_COLLOQUIAL = ("러너", "프로브", "디노이징", "디노이저", "리포트", "스케치", "셀")
+# 연구 중 억지로 만든 번역어 — 원어가 정착한 용어를 새로 옮긴 것
+FORCED_TRANSLATIONS = ("경임계값", "연임계값", "가로트 임계값", "공통 잡음 뽑기")
+# 분야 공통 약어 — 판넬 · 보고서 모두 풀이 없이 쓴다 (판정: 「SNR 이라는 단어를 굳이 바꿔야 할 이유는?」)
+COMMON_ABBREV = {"SNR", "dB", "ECG", "QRS", "Hz", "MIT-BIH"}
+
+
+def _latin_words_f2(text: str, ctx: dict) -> list[str]:
+    return [w for w in _latin_words(text, dict(ctx, latin_fix=True)) if w not in TERMS_KEEP
+            and w.lower() not in {t.lower() for t in TERMS_KEEP}]
+
+
+F2_REVISIONS: dict[str, dict] = {
+    "A1": dict(patterns=_T["A1"].patterns + tuple(re.escape(t) for t in FORCED_TRANSLATIONS),
+               include=_T["A1"].include + " 원어가 정착한 기술 용어를 연구 중에 새로 번역한 말(경임계값 · 연임계값).",
+               guide=_T["A1"].guide + " ④ 정착한 번역어가 없으면 새로 만들지 말고 원어를 그대로 쓴다(hard thresholding).",
+               note="판정: 「경임계값이라는 단어도 좀 어색하네 … 억지로 한글로 직역하지 말 것」. T1 · F 의 A6 지침이 정착한 원어까지 "
+                    "번역을 권했고, 그 결과 교정안이 새 조어를 만들었다. 억지 번역어를 A1 로 잡는다."),
+    "A6": dict(name="일상어 대용 영어 · 구어 음차어",
+               define="한국어 일상어 · 정착한 학술어가 있는데 영어 낱말을 약칭처럼 섞어 쓴 것, 또는 구어에 가까운 음차어.",
+               include="clean · beat · arm · best · floor · front-end 처럼 대응어(무잡음 · 박동 · 조건 · 최고치 · 바닥값 · 공통 전처리)가 "
+                       "분명한 낱말, 러너 · 프로브 · 디노이징 같은 구어 음차어.",
+               exclude="학계 · 교재에서 원어나 음차로 쓰는 기술 용어(hard/soft thresholding · window · epoch · batch · seed · U-Net · "
+                       "attention · 튜닝 · 체크포인트 · 파이프라인 · 버퍼 · 템플릿). 이것은 그대로 쓴다 — 실제 국내 논문 · 교재의 "
+                       "표기를 따른다. 고유명 · 단위 · 기호.",
+               guide="① 대응어가 분명한 일상어 대용 영어만 한국어로 바꾼다: clean → 무잡음, beat → 박동. "
+                     "② 기술 용어는 원어를 유지한다. 처음 한 번 뜻을 붙이면 된다: hard thresholding(임계값 이하 계수를 0 으로). "
+                     "③ 원어를 억지로 옮겨 새 말을 만들지 않는다(A1).",
+               examples=(("seed 마다 다른 val 잡음 뽑기", "seed 마다 다른 검증용 잡음 표본"),),
+               func=lambda t, c: _latin_words_f2(t, c) + [w for w in LOANWORDS_COLLOQUIAL if w in t],
+               note="판정: 「영단어나 튜닝 같은 외국어는 그대로 쓰는 게 오히려 적절할 가능성이 높다. 실제 논문 및 학술 저서의 서술 방식을 "
+                    "참고할 것」. F 까지의 A6 은 영어 · 음차어를 모두 후보로 삼아 번역을 강제했다. 범주를 「대응어가 분명한 일상어 대용 영어」"
+                    "로 좁히고 정착 기술 용어 목록(TERMS_KEEP)을 둔다."),
+    "B3": dict(tier=1, define="굵은 글씨(**…**)로 문장 · 표 칸의 일부를 강조한 것. 강조가 서술 구조를 대신하고, 생성형 AI 출력물의 전형적 형태로 읽힌다.",
+               include="본문 · 목록 · 표 칸의 **…** 전부.", exclude="",
+               guide="① 강조를 모두 지운다. ② 꼭 드러내야 할 결론은 문단 첫 문장이나 결론 절로 옮긴다. ③ 용어 정의는 강조 대신 「용어(정의)」 형식으로.",
+               note="판정: 「** 강조 처리는 수정되어야 하는 것으로 보임. 대표적인 ai 출력물 형태」. F 는 등급 2 였고 정의 용어 · 표 머리를 예외로 "
+                    "두었다. 등급 1 로 올리고 예외를 없앤다."),
+    "C5": dict(note="판정: 「SNR 이라는 단어를 굳이 바꿔야 할 이유는?」. F 는 판넬 쪽에서 SNR · dB 에도 풀이를 요구했다. 분야 공통 약어"
+                    "(SNR · dB · ECG · QRS)는 판넬에서도 풀지 않는다.",
+               exclude="ECG · SNR · dB · Hz · QRS 같은 분야 공통 약어 — 판넬 · 브로셔에서도 풀지 않는다."),
+    "C6": dict(guide=_T["C6"].guide + " ③ 지면이 좁아 정의를 붙일 수 없으면 그 정보를 빼고 발표자 해설 노트로 옮긴다 — 정의 없이 남기지 않는다.",
+               note="판정: 「QRS 구간 완화가 뭔지 설명하지 않을 거라면 제외해야 하는 서술이다」. 교정안이 정의 없는 용어를 남겼다. "
+                    "「정의하거나 뺀다」를 지침에 넣었다."),
+    "D1": dict(tier=2, guide="① 특정 모델 하나의 결과를 말하면 그 모델 이름을 쓴다: 딥러닝이 앞선다 → 웨이블릿 U-Net 이 SWT 보다 높다. "
+                     "② 계열 전체를 말하는 자리의 「딥러닝」은 그대로 둔다 — 「신경망」 같은 동의어로 바꾸지 않는다. "
+                     "③ 한 문서 안에서 계열 이름은 하나로 통일한다(판넬은 「딥러닝」).",
+               examples=(("딥러닝이 −5 ~ 15 dB 전 구간에서 최고다", "웨이블릿 부대역 U-Net 의 SNR 개선량이 −5~15 dB 전 구간에서 가장 높다"),),
+               mode="자동+수동",
+               note="판정: 「딥러닝이라는 단어를 굳이 신경망이라는 단어로 바꿀 근거가 뭐지? 통일성이 아니라면 우선순위가 낮다」. "
+                    "F 의 지침이 동의어 교체를 처방했다. 범주의 대상은 「특정 모델을 범주어로 부른 것」뿐이고, 판정 「우선순위가 낮다」에 따라 등급 2 로 내렸다."),
+}
+
+
 def ruleset(name: str) -> list[Rule]:
     if name == "T1":
         return T1
     if name == "F":
         return [replace(r, **F_REVISIONS.get(r.rid, {})) for r in T1]
+    if name == "F2":
+        return [replace(r, **F2_REVISIONS.get(r.rid, {})) for r in ruleset("F")]
     raise KeyError(name)
