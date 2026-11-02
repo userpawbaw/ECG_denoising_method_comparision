@@ -66,10 +66,10 @@ SURFACE = "#fcfcfb"
 
 ORDER = ["noisy", "M_FE", "M01", "M04", "M05", "M08"]
 NAME_KO = {
-    "clean": "참조 (정답)", "noisy": "입력 (잡음 섞임)",
-    "M_FE": "M_FE  front-end 단독", "M01": "M01  Bandpass 0.5–40 Hz",
-    "M04": "M04  SWT thresholding", "M05": "M05  Sameni EKS",
-    "M08": "M08  딥러닝 (wavelet U-Net)",
+    "clean": "기준 신호", "noisy": "입력 신호 (잡음 포함)",
+    "M_FE": "공통 전처리", "M01": "대역통과 필터 (0.5-40 Hz)",
+    "M04": "SWT 임계값 처리", "M05": "확장 칼만 평활기 (EKS)",
+    "M08": "웨이블릿 부대역 U-Net",
 }
 NAME_EN = {
     "clean": "reference", "noisy": "input (noisy)",
@@ -78,9 +78,9 @@ NAME_EN = {
     "M08": "M08  deep learning",
 }
 TXT_KO = {
-    "time": "시간 [s]", "amp": "진폭 [mV]", "resid": "잔차 (출력 - 참조)",
+    "time": "시간 [s]", "amp": "진폭 [mV]", "resid": "잔차 (출력 - 기준 신호)",
     "output": "출력 파형", "in_snr": "입력 SNR [dB]",
-    "gain": "front-end 대비 개선 [dB]",
+    "gain": "공통 전처리 대비 SNR 개선량 [dB]",
 }
 TXT_EN = {
     "time": "time [s]", "amp": "amplitude [mV]", "resid": "residual (out - ref)",
@@ -350,7 +350,7 @@ def s4_noise(cache, src, snr=-5.0):
     **어느 계열이 어디에 강한지**가 드러난다: 기저선 변동은 front-end 가
     거의 다 해결하고, 임펄스는 딥러닝만 해결한다.
     """
-    kinds = [("bw", "기저선 변동 (bw)"), ("ma", "근전도 (ma)"), ("impulse", "임펄스")]
+    kinds = [("bw", "기저선 변동"), ("ma", "근전도 잡음"), ("impulse", "임펄스 잡음")]
     show = ["M_FE", "M04", "M08"]
     # **행 안에서 y 축을 공유한다.** 같은 조건을 비교하는 칸들의 세로 눈금이
     # 다르면 잘 지운 방법이 실제보다 좋아 보인다 (잘린 y 축과 같은 왜곡이다).
@@ -380,9 +380,9 @@ def s4_noise(cache, src, snr=-5.0):
                 ax.set_title(NAME[m], fontsize=10.5, color=C[m])
         for ax in axes[r]:
             ax.set_xlabel(TXT["time"] if r == len(kinds) - 1 else "")
-    axis_lab = "D0 합성 ECG" if src == "synthetic" else "D1 MIT-BIH 실기록"
-    fig.suptitle(f"잡음 종류가 답을 바꾼다 — {axis_lab} · 입력 SNR {snr:+.0f} dB"
-                 f"    (숫자 = SNR 개선 · 행마다 같은 세로 눈금)",
+    axis_lab = "합성 ECG" if src == "synthetic" else "MIT-BIH 실측 기록"
+    fig.suptitle(f"잡음 종류별 기법 출력 비교 ({axis_lab}, 입력 SNR {snr:+.0f} dB)"
+                 f"    수치: SNR 개선량, 행별 동일 세로축",
                  fontsize=12.5, y=0.995)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     tag = cache[(src, snr, kinds[0][0])]["tag"]
@@ -403,8 +403,8 @@ def s5_crossover():
     from ecgdn.eval.stats import compare_methods
 
     fig, ax = plt.subplots(figsize=(9.5, 5.4))
-    styles = {"d0": (C["M01"], "D0  합성 ECG", "o", "-"),
-              "d1": (C["M04"], "D1  MIT-BIH 실기록", "s", "-")}
+    styles = {"d0": (C["M01"], "합성 ECG", "o", "-"),
+              "d1": (C["M04"], "MIT-BIH 실측 기록", "s", "-")}
     for tag, (col, lab, mk, ls) in styles.items():
         p = Path("results") / tag / "exp_a" / "metrics.parquet"
         if not p.exists():
@@ -443,10 +443,10 @@ def s5_crossover():
                 break
     ax.axhline(0, color=INK2, lw=1.2, zorder=2)
     ax.set_xlabel(TXT["in_snr"]); ax.set_ylabel(TXT["gain"])
-    ax.set_title("딥러닝(M08)이 공통 front-end 위에 더하는 것\n"
-                 "채운 표식 = 통계적으로 유의 (paired Wilcoxon + Holm, 22 기록)",
+    ax.set_title("공통 전처리 대비 딥러닝(웨이블릿 부대역 U-Net)의 SNR 개선량\n"
+                 "채운 표식: 통계적으로 유의 (대응 Wilcoxon 검정, Holm 보정, 기록 22개)",
                  fontsize=12)
-    ax.text(0.015, 0.03, "0 아래 = front-end 만 쓰는 편이 낫다",
+    ax.text(0.015, 0.03, "0 이하: 공통 전처리 단독이 우수",
             transform=ax.transAxes, fontsize=10, color=INK2)
     # 표식의 채움 여부가 무엇을 뜻하는지는 직접 라벨로는 전할 수 없다.
     from matplotlib.lines import Line2D
@@ -1397,6 +1397,12 @@ BOXC = {"acq": "#ece9e1", "fe": "#f6d6e3", "cls": "#d5e4f7", "tf": "#fbdccc",
         "mdl": "#fbecc2", "dl": "#cdeee1", "orc": "#e4e2dc", "ev": "#e9e6f4"}
 
 
+# 대외 글 표기 (docs/95_academic_style.md §3 · D-43)
+MODE_KO = {"hard": "경임계값 처리", "soft": "연임계값 처리", "garrote": "가로트 임계값 처리"}
+COND_KO = {"awgn": "백색 잡음", "mixed": "혼합 잡음", "bw": "기저선 변동", "ma": "근전도 잡음",
+           "em": "전극 움직임 잡음", "pli": "전원선 잡음", "impulse": "임펄스 잡음"}
+
+
 def _box(ax, x, y, w, h, text, fc, fs=10.5, bold=False, ec="#9a978e"):
     ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.012,rounding_size=0.02",
                                 fc=fc, ec=ec, lw=1.1))
@@ -1431,8 +1437,8 @@ def s15_kalman_phantom(TXT):
     fs = float(ex["fs"])
     t = (np.arange(len(ex["clean"])) - (int(ex["center"]) - int(ex["i0"]))) / fs
     ref = np.asarray(ex["ref_peaks"])
-    rows = [("noisy", "입력 (잡음 섞임)"), ("M_FE", "front-end 단독"),
-            ("M04", "M04  SWT"), ("M05", "M05  칼만 (Sameni EKS)"), ("M06", "M06  딥러닝 (Res U-Net)")]
+    rows = [("noisy", "입력 신호"), ("M_FE", "공통 전처리"),
+            ("M04", "SWT 임계값 처리"), ("M05", "확장 칼만 평활기"), ("M06", "잔차 학습 U-Net")]
     fig = plt.figure(figsize=(14.0, 7.2))
     gs = fig.add_gridspec(len(rows), 2, width_ratios=[2.15, 1.0], wspace=0.30, hspace=0.18)
     tol = int(round(0.075 * fs))
@@ -1456,15 +1462,15 @@ def s15_kalman_phantom(TXT):
         ax.set_yticks([])
         ax.set_ylabel(lab, rotation=0, ha="right", va="center", fontsize=10.5, color=INK)
         if key != "noisy":
-            ax.text(0.995, 0.88, f"없는 자리의 검출 {n_fp}", transform=ax.transAxes, ha="right",
+            ax.text(0.995, 0.88, f"위양성 검출 {n_fp}건", transform=ax.transAxes, ha="right",
                     fontsize=9, color=PHANTOM if n_fp else INK2)
         if k < len(rows) - 1:
             ax.set_xticklabels([])
         ax.grid(axis="y", visible=False)
-    ax.set_xlabel("시간 [s]  (창의 가운데 = 0)")
-    fig.text(0.04, 0.955, f"MIT-BIH {ex['record']} · {ex['cond']} {float(ex['snr']):+.0f} dB · "
-             f"고른 규칙: {ex['rule']}  "
-             "(회색 굵은 선 = 참값, 점선 = 진짜 심박, 붉은 띠 = 참값에 없는 자리의 검출)",
+    ax.set_xlabel("시간 [s]  (구간 중심 = 0)")
+    fig.text(0.04, 0.955, f"MIT-BIH 기록 {ex['record']}, {COND_KO.get(str(ex['cond']), ex['cond'])}, "
+             f"입력 SNR {float(ex['snr']):+.0f} dB.  사례 선정 기준: 칼만 평활기의 가성 QRS군이 가장 많이 "
+             "포함된 4초 구간.  회색 굵은 선: 기준 신호, 점선: 실제 R파, 음영: 위양성 검출 위치",
              fontsize=9.5, color=INK2)
 
     ax = fig.add_subplot(gs[:, 1])
@@ -1482,22 +1488,22 @@ def s15_kalman_phantom(TXT):
         ax.barh(yy + off, vals, height=hgt, color=[col[m] for m in ms], alpha=alpha,
                 edgecolor="none")
         for y, v, f_, n_ in zip(yy + off, vals, fr, nf):
-            ax.text(v, y, f"  {v}  ({f_ * 100:.1f} % / 오검출 {n_})", va="center", fontsize=8.8,
+            ax.text(v, y, f"  {v}건  ({f_ * 100:.1f}%, 위양성 {n_}건 중)", va="center", fontsize=8.8,
                     color=INK)
     ax.set_yticks(yy)
-    ax.set_yticklabels(["front-end", "M04 SWT", "M05 칼만", "M06 딥러닝"], fontsize=10.5)
+    ax.set_yticklabels(["공통 전처리", "SWT 임계값 처리", "확장 칼만 평활기", "잔차 학습 U-Net"], fontsize=10)
     ax.invert_yaxis()
-    ax.set_xlabel("심박 모양 가짜 검출 수 (자기 template 과의 상관 > 0.8)")
-    ax.set_title("진한 막대 = D1 MIT-BIH, 옅은 막대 = D0 합성\n저 SNR(-5·0 dB) · 백색·혼합 잡음 · 축당 88 구간",
+    ax.set_xlabel("가성 QRS군 수 (출력의 평균 박동과 상관계수 0.8 초과)")
+    ax.set_title("진한 막대: MIT-BIH 실측 기록, 옅은 막대: 합성 ECG\n입력 SNR -5, 0 dB, 백색 및 혼합 잡음, 데이터별 88개 구간",
                  fontsize=10, color=INK2)
     ax.margins(x=0.62)
     ax.grid(axis="y", visible=False)
     d1 = summ["d1"]["methods"]
     thr = str(summ["d1"]["threshold"])
     k5, k4, k6 = (d1[m]["beatlike"][thr] for m in ("M05", "M04", "M06"))
-    fig.suptitle("칼만은 없는 자리에 깨끗한 심박을 그린다 — 오검출 수는 front-end 와 같지만 모양이 다르다\n"
-                 f"D1 에서 심박 모양 가짜가 M05 {k5}개 · M04 {k4}개 · M06 {k6}개 "
-                 f"(SWT 의 {k5 / max(k4, 1):.0f}배, 딥러닝의 {k5 / max(k6, 1):.0f}배)",
+    fig.suptitle("기법별 가성 QRS군 생성: 대표 사례(좌)와 발생 수(우)\n"
+                 f"MIT-BIH 실측 기록: 확장 칼만 평활기 {k5}건, SWT 임계값 처리 {k4}건, 잔차 학습 U-Net {k6}건 "
+                 f"(SWT 대비 {k5 / max(k4, 1):.0f}배, U-Net 대비 {k5 / max(k6, 1):.0f}배)",
                  fontsize=12.5, x=0.5, y=1.02)
     fig.savefig(OUT / "S15_kalman_phantom.png", dpi=175, bbox_inches="tight"); plt.close(fig)
     print("  S15_kalman_phantom.png")
@@ -1544,11 +1550,12 @@ def s16_wavelet_placement(TXT):
     gs = fig.add_gridspec(2, 3, height_ratios=[1.05, 1.0], hspace=0.42, wspace=0.28)
     BB, SW = "#c9d6e8", "#fbdccc"
     designs = [
-        ("M06  wavelet 안 씀", [("입력 y", "#ece9e1"), ("Residual U-Net", BB), ("출력 = y - 예측 잡음", "#ece9e1")]),
-        ("M07  전처리(직렬)", [("입력 y", "#ece9e1"), ("SWT 임계처리\n(M04)", SW), ("Residual U-Net", BB),
-                              ("출력", "#ece9e1")]),
-        ("M08  특성공간", [("입력 y", "#ece9e1"), ("SWT 6 대역\n= 6 채널", SW), ("대역별 conv\n+ U-Net", BB),
-                          ("역 SWT\n(미분 가능)", SW), ("출력", "#ece9e1")]),
+        ("웨이블릿 미사용", [("입력 신호", "#ece9e1"), ("잔차 학습 U-Net", BB),
+                         ("출력 = 입력 - 추정 잡음", "#ece9e1")]),
+        ("전처리 직렬 결합", [("입력 신호", "#ece9e1"), ("SWT 임계값 처리", SW), ("잔차 학습 U-Net", BB),
+                          ("출력", "#ece9e1")]),
+        ("특징 공간 결합", [("입력 신호", "#ece9e1"), ("SWT 6개 부대역\n(6채널 입력)", SW),
+                        ("부대역별 합성곱\n+ U-Net", BB), ("역 SWT\n(미분 가능)", SW), ("출력", "#ece9e1")]),
     ]
     for j, (title, blocks) in enumerate(designs):
         ax = fig.add_subplot(gs[0, j])
@@ -1563,7 +1570,7 @@ def s16_wavelet_placement(TXT):
                 _arrow(ax, 0.5, y + h + gap, 0.5, y + h + 0.004)
         ax.set_title(title, fontsize=12, color=INK, pad=4)
     ax0 = fig.add_subplot(gs[1, :2])
-    rows = [("M07  전처리(직렬)", "m07_l1"), ("M08  특성공간", "m08_l1")]
+    rows = [("전처리 직렬 결합", "m07_l1"), ("특징 공간 결합", "m08_l1")]
     ax0.axvline(0, color=INK2, lw=1.2)
     for i, (lab, arm) in enumerate(rows):
         r = _paired("structure", arm, "m06_l1", "fixed_snr_imp_scaled")
@@ -1575,16 +1582,16 @@ def s16_wavelet_placement(TXT):
         ax0.scatter(d, [i] * len(d), s=26, color="#8a8a8a", zorder=3)
         ax0.scatter([m], [i], s=170, color=PHANTOM if sig and m < 0 else "#184f95" if sig else SURFACE,
                     edgecolor=PHANTOM if m < 0 else "#184f95", lw=2, zorder=4)
-        verdict = "유의하게 손해" if sig and m < 0 else "유의한 이득" if sig else "이 예산으로 못 가림"
-        ax0.annotate(f"{m:+.2f} dB  (p = {p:.3f}, seed {len(d)} 짝) — {verdict}", (m, i),
+        verdict = "유의한 성능 저하" if sig and m < 0 else "유의한 개선" if sig else "유의한 차이 없음"
+        ax0.annotate(f"{m:+.2f} dB  (p = {p:.3f}, n = {len(d)}): {verdict}", (m, i),
                      xytext=(0, 14), textcoords="offset points", ha="center", fontsize=10,
                      color=INK)
     ax0.set_yticks(range(len(rows))); ax0.set_yticklabels([r[0] for r in rows], fontsize=11)
     ax0.set_ylim(-0.6, len(rows) - 0.3); ax0.invert_yaxis(); ax0.grid(axis="y", visible=False)
-    ax0.set_xlabel("M06 대비 Δ  snr_imp_scaled [dB]  (D1 · 고정 평가 · 작은 점 = seed 하나)")
+    ax0.set_xlabel("웨이블릿 미사용 대비 SNR 개선량 차이 [dB]  (MIT-BIH, 고정 평가 집합, 작은 점: 개별 난수 시드)")
     ax0.margins(x=0.35)
     ax1 = fig.add_subplot(gs[1, 2])
-    ms, labs = ["M06", "M07", "M08"], ["M06", "M07\n직렬", "M08\n특성공간"]
+    ms, labs = ["M06", "M07", "M08"], ["미사용", "직렬\n결합", "특징 공간\n결합"]
     for k, (tag, alpha) in enumerate((("d0", 0.45), ("d1", 1.0))):
         f = Path("results") / tag / "exp_c" / "metrics.parquet"
         if not f.exists():
@@ -1597,35 +1604,35 @@ def s16_wavelet_placement(TXT):
         for x_, v_ in zip(xs, v):
             ax1.text(x_, v_ + 0.4, f"{v_:.1f}", ha="center", fontsize=9)
     ax1.set_xticks(range(len(ms))); ax1.set_xticklabels(labs)
-    ax1.set_ylabel("잡음 0 입력의 출력 SNR [dB]")
-    ax1.set_title("깨끗한 신호 보존 (EXP-C)\n옅은 = D0 합성, 진한 = D1", fontsize=10.5, color=INK2)
+    ax1.set_ylabel("무잡음 입력 시 출력 SNR [dB]")
+    ax1.set_title("무잡음 신호 보존\n옅은 막대: 합성 ECG, 진한 막대: MIT-BIH", fontsize=10.5, color=INK2)
     ax1.grid(axis="x", visible=False)
-    fig.suptitle("wavelet 을 어디에 둘 것인가 — 같은 backbone, 자리만 다르다\n"
-                 "주황 = wavelet(SWT), 파랑 = 같은 Residual U-Net", fontsize=13)
+    fig.suptitle("웨이블릿 결합 위치에 따른 구조와 성능 비교\n"
+                 "주황: 웨이블릿 변환(SWT), 파랑: 동일한 잔차 학습 U-Net", fontsize=13)
     fig.savefig(OUT / "S16_wavelet_placement.png", dpi=175, bbox_inches="tight"); plt.close(fig)
     print("  S16_wavelet_placement.png")
 
 
 # ------------------------------------------------- S17 딥러닝 개선 여정
 JOURNEY = [  # (묶음, 라벨, sweep, arm, 기준 arm, 기준 sweep)
-    ("구조", "M07  SWT 를 앞에 (직렬)", "structure", "m07_l1", "m06_l1", None),
-    ("구조", "M08  wavelet 특성공간", "structure", "m08_l1", "m06_l1", None),
-    ("구조", "M09  CNN + Transformer", "structure", "m09_l1", "m06_l1", None),
-    ("구조", "M10  해상도 유지 (dilated)", "structure", "m10_l1", "m06_l1", None),
-    ("깊이·용량", "폭 1/2", "structure", "m06_l1_half", "m06_l1", None),
-    ("깊이·용량", "폭 1/4", "structure", "m06_l1_quarter", "m06_l1", None),
-    ("깊이·용량", "깊이 x2 (등파라미터)", "depth", "m06_l1_deep2", "m06_l1", None),
-    ("깊이·용량", "깊이 x4 (등파라미터)", "depth", "m06_l1_deep4", "m06_l1", None),
-    ("깊이·용량", "블록 x4 (파라미터 1.9배)", "blocks", "m06_l1_nb4", "m06_l1", None),
-    ("학습 세부", "정규화 빼기 (EDSR 식)", "d41", "m06_l1_nonorm", "m06_l1", "l6cond"),
-    ("학습 세부", "가중치 EMA ※", "d41", "m06_l1_ema", "m06_l1", "l6cond"),
-    ("목표·조준", "손실 L3 (+MAE·차분)", "structure", "m06_l3", "m06_l1", None),
-    ("목표·조준", "손실 L6 (+깨끗하면 건드리지 마라)", "l6cond", "m06_l6", "m06_l1", None),
-    ("목표·조준", "SNR 조건화 (FiLM)", "cond", "m06_cond", "m06_l1", None),
-    ("목표·조준", "L6 위에 조건화 더하기", "l6cond", "m06_cond_l6", "m06_l6", None),
-    ("목표·조준", "15~20 dB 전담 모델 (상한)", "band", "m06_l1_band_hi", "m06_l1", None),
+    ("구조", "SWT 전처리 직렬 결합", "structure", "m07_l1", "m06_l1", None),
+    ("구조", "웨이블릿 특징 공간 결합", "structure", "m08_l1", "m06_l1", None),
+    ("구조", "CNN + Transformer", "structure", "m09_l1", "m06_l1", None),
+    ("구조", "해상도 유지 (팽창 합성곱)", "structure", "m10_l1", "m06_l1", None),
+    ("규모", "채널 폭 1/2", "structure", "m06_l1_half", "m06_l1", None),
+    ("규모", "채널 폭 1/4", "structure", "m06_l1_quarter", "m06_l1", None),
+    ("규모", "깊이 2배 (파라미터 수 동일)", "depth", "m06_l1_deep2", "m06_l1", None),
+    ("규모", "깊이 4배 (파라미터 수 동일)", "depth", "m06_l1_deep4", "m06_l1", None),
+    ("규모", "잔차 블록 4배 (파라미터 1.9배)", "blocks", "m06_l1_nb4", "m06_l1", None),
+    ("학습 기법", "정규화 제거 (EDSR 방식)", "d41", "m06_l1_nonorm", "m06_l1", "l6cond"),
+    ("학습 기법", "가중치 지수이동평균 (EMA) ※", "d41", "m06_l1_ema", "m06_l1", "l6cond"),
+    ("학습 목표", "손실: MAE와 미분 오차 추가", "structure", "m06_l3", "m06_l1", None),
+    ("학습 목표", "손실: 무잡음 입력 보존항 추가", "l6cond", "m06_l6", "m06_l1", None),
+    ("학습 목표", "SNR 조건부 특징 변조 (FiLM)", "cond", "m06_cond", "m06_l1", None),
+    ("학습 목표", "보존항 손실에 SNR 조건화 추가", "l6cond", "m06_cond_l6", "m06_l6", None),
+    ("학습 목표", "고 SNR 전용 모델 (상한 추정)", "band", "m06_l1_band_hi", "m06_l1", None),
 ]
-GROUP_C = {"구조": "#8a8a8a", "깊이·용량": "#8a8a8a", "학습 세부": "#8a8a8a", "목표·조준": "#184f95"}
+GROUP_C = {"구조": "#8a8a8a", "규모": "#8a8a8a", "학습 기법": "#8a8a8a", "학습 목표": "#184f95"}
 
 
 def s17_dl_journey(TXT):
@@ -1639,7 +1646,7 @@ def s17_dl_journey(TXT):
     """
     fig, axes = plt.subplots(1, 2, figsize=(13.6, 9.2), sharey=True,
                              gridspec_kw=dict(width_ratios=[1.0, 1.0], wspace=0.06))
-    keys = [("fixed_snr_imp_scaled", "전 구간 (-5~20 dB)"), ("band_15_20", "고 SNR 대역 (15~20 dB)")]
+    keys = [("fixed_snr_imp_scaled", "전 구간 (입력 SNR -5~20 dB)"), ("band_15_20", "고 SNR 구간 (15~20 dB)")]
     ypos, y, last = [], 0.0, None
     for g, *_ in JOURNEY:
         if g != last and last is not None:
@@ -1651,7 +1658,7 @@ def s17_dl_journey(TXT):
         for (g, lab, sw, arm, base, bsw), yy in zip(JOURNEY, ypos):
             r = _paired(sw, arm, base, key, bsw)
             if r is None:
-                ax.text(0, yy, "대역 열 없음", ha="center", va="center", fontsize=8.5, color="#a8a59c")
+                ax.text(0, yy, "측정하지 않음", ha="center", va="center", fontsize=8.5, color="#a8a59c")
                 continue
             m, d, p = r
             sig = bool(p < 0.05)
@@ -1669,32 +1676,32 @@ def s17_dl_journey(TXT):
             if sig and m > 0:
                 good[key].append(g)
         ax.set_title(title, fontsize=12, color=INK)
-        ax.set_xlabel("기준 대비 Δ snr_imp_scaled [dB]  (점 = 평균, 막대 = seed 범위)")
+        ax.set_xlabel("기준 모델 대비 SNR 개선량 차이 [dB]  (점: 평균, 막대: 시드 간 범위)")
         ax.grid(axis="y", visible=False)
         ax.margins(x=0.18)
     axes[0].set_yticks(ypos)
     axes[0].set_yticklabels([lab for _, lab, *_ in JOURNEY], fontsize=10)
     for t_ in axes[0].get_yticklabels():
         g = next(g for g, lab, *_ in JOURNEY if lab == t_.get_text())
-        t_.set_color(GROUP_C[g] if g == "목표·조준" else INK)
+        t_.set_color(GROUP_C[g] if g == "학습 목표" else INK)
     axes[0].invert_yaxis()
     last = None
     for (g, *_), yy in zip(JOURNEY, ypos):
         if g != last:
             axes[0].text(-0.02, yy - 0.62, g, transform=axes[0].get_yaxis_transform(), ha="right",
-                         fontsize=10.5, fontweight="bold", color=GROUP_C[g] if g == "목표·조준" else INK2)
+                         fontsize=10.5, fontweight="bold", color=GROUP_C[g] if g == "학습 목표" else INK2)
             last = g
     allg = set(good[keys[0][0]]) | set(good[keys[1][0]])
-    which = " · ".join(sorted(allg)) or "없다"
+    which = ", ".join(sorted(allg)) or "없음"
     ema = _paired("d41", "m06_l1_ema", "m06_l1", "fixed_snr_imp_scaled", "d40_ref")
     if ema is not None:
-        fig.text(0.01, -0.01, "※ 정규화 빼기 · EMA 의 기준은 l6cond(seed 0~3, torch 2.13)라 환경 차이가 섞인다. "
-                 f"같은 환경(seed 0·1) 기준 EMA 전 구간 Δ = {ema[0]:+.2f} dB — 효과 없음으로 읽는다 (F-57). "
-                 "같은 환경에서도 버티는 것만 채운 점으로 그렸다.",
+        fig.text(0.01, -0.01, "※ 정규화 제거와 EMA의 기준 모델은 다른 소프트웨어 환경(torch 2.13)에서 학습되었다. "
+                 f"동일 환경 기준 EMA의 효과는 전 구간 {ema[0]:+.2f} dB로 유의하지 않으며, "
+                 "동일 환경에서도 유지되는 효과만 채운 점으로 표시하였다.",
                  fontsize=9.2, color=INK2)
-    fig.suptitle("딥러닝 개선 시도 16 개를 같은 자로 — 좋은 쪽으로 유의하게 움직인 묶음: " + which + "\n"
-                 "채운 점 = p < 0.05 (seed 짝 t 검정), 빈 점 = 이 예산으로 못 가림 · "
-                 "학습 런 간 산포(seed 만 바꿔 1.43 dB 폭)를 먼저 잰 뒤의 판정이다",
+    fig.suptitle("딥러닝 성능 개선 시도 16종의 효과 (동일 시드 대응 비교, 고정 평가 집합)\n"
+                 "채운 점: p < 0.05 (대응 t-검정), 빈 점: 유의한 차이 없음.  유의한 개선이 관찰된 범주: "
+                 + which,
                  fontsize=12.2, y=0.995)
     fig.savefig(OUT / "S17_dl_journey.png", dpi=175, bbox_inches="tight"); plt.close(fig)
     print("  S17_dl_journey.png")
@@ -1705,28 +1712,28 @@ def s18_pipeline(TXT):
     """판넬 「작품 내용」 의 블록도 — 취득 · 공통 전처리 · 기법 네 계열 + 상한 · 평가."""
     fig, ax = plt.subplots(figsize=(14.0, 6.4))
     ax.set_xlim(0, 14); ax.set_ylim(-0.5, 6.4); ax.axis("off")
-    _box(ax, 0.2, 3.6, 2.3, 1.9, "취득\n전극 → AD8232\n→ Arduino Uno\n250 Hz", BOXC["acq"], bold=False)
-    _box(ax, 0.2, 0.9, 2.3, 2.2, "데이터 축\nD0 합성 ECG\nD1 MIT-BIH + NSTDB\nD3 실측 (진행 중)", BOXC["acq"], fs=9.8)
-    _box(ax, 3.1, 2.6, 2.3, 2.2, "공통 front-end\nHPF 0.5 Hz\nLPF 100 Hz\nnotch (조건부)", BOXC["fe"])
+    _box(ax, 0.2, 3.6, 2.3, 1.9, "신호 취득\n전극 → AD8232\n→ Arduino Uno\n표본화 250 Hz", BOXC["acq"], bold=False)
+    _box(ax, 0.2, 0.9, 2.3, 2.2, "평가 데이터\n합성 ECG (McSharry 모델)\nMIT-BIH + NSTDB 잡음\n자체 장치 실측 (진행 중)", BOXC["acq"], fs=9.8)
+    _box(ax, 3.1, 2.6, 2.3, 2.2, "공통 전처리\n고역통과 0.5 Hz\n저역통과 100 Hz\n노치 필터 (조건부)", BOXC["fe"])
     _arrow(ax, 2.5, 4.5, 3.1, 4.0); _arrow(ax, 2.5, 2.0, 3.1, 3.1)
-    fam = [("고전 필터\nM01 Bandpass · M02 SavGol", BOXC["cls"]),
-           ("시간-주파수\nM03 DWT · M04 SWT 적응 임계", BOXC["tf"]),
-           ("모형 기반\nM05 Sameni EKF/EKS", BOXC["mdl"]),
-           ("딥러닝\nM06 Res U-Net · M07 · M08 · M09 · M10", BOXC["dl"]),
-           ("상한 (정답을 아는 oracle)\nB01 wavelet · B02 Wiener", BOXC["orc"])]
+    fam = [("고전 필터\n대역통과 필터 · Savitzky-Golay", BOXC["cls"]),
+           ("시간-주파수 분석\n이산 웨이블릿 변환 · SWT 적응 임계값", BOXC["tf"]),
+           ("모델 기반\n확장 칼만 필터 · 평활기 (Sameni)", BOXC["mdl"]),
+           ("딥러닝\n잔차 학습 U-Net 외 4종", BOXC["dl"]),
+           ("이상적 상한 (기준 신호 사용)\n웨이블릿 · Wiener 필터", BOXC["orc"])]
     for i, (t_, fc) in enumerate(fam):
         y = 5.35 - i * 1.12
         _box(ax, 6.0, y, 3.5, 0.92, t_, fc, fs=9.8)
         _arrow(ax, 5.4, 3.7, 6.0, y + 0.46)
-    _box(ax, 10.1, 3.3, 3.7, 2.6, "평가 4 층 (같은 자)\n① 재구성  SNR 3분할 · RMSE · PRDN\n② 형태  cc · beat_cc · QRS 폭\n"
-         "③ 하류 과제  R-peak Se · PPV\n④ 주파수  PSD 거리", BOXC["ev"], fs=9.6)
-    _box(ax, 10.1, 1.75, 3.7, 1.2, "안전성 프로브\nbeat 지우기 · 3 s 심정지 · PVC", BOXC["ev"], fs=9.6)
-    _box(ax, 10.1, 0.25, 3.7, 1.15, "시연\n모드 B 녹음본 비교 · 모드 A 실시간", "#f3f1ea", fs=9.6)
+    _box(ax, 10.1, 3.3, 3.7, 2.6, "평가 지표 4개 범주\n① 재구성 오차: SNR · RMSE · PRDN\n② 파형 보존: 상관계수 · QRS 폭\n"
+         "③ 후속 처리: R파 검출 민감도 · 양성예측도\n④ 주파수 특성: PSD 거리", BOXC["ev"], fs=9.6)
+    _box(ax, 10.1, 1.75, 3.7, 1.2, "가성 파형 생성 검증\n박동 삭제 · 3초 무수축 · 심실조기수축", BOXC["ev"], fs=9.6)
+    _box(ax, 10.1, 0.25, 3.7, 1.15, "시연 시스템\n녹음 신호 비교 · 실시간 처리", "#f3f1ea", fs=9.6)
     for i in range(5):
         _arrow(ax, 9.5, 5.81 - i * 1.12, 10.1, 4.6 if i < 3 else 2.4)
-    ax.text(7.0, -0.35, "잡음 7 종 × 입력 SNR 7 단계 (-5~25 dB) · 기록 단위 짝 검정 · 지표 분해능(floor) 먼저",
+    ax.text(7.0, -0.35, "잡음 7종 × 입력 SNR 7단계 (-5~25 dB), 기록 단위 대응 검정, 지표 분해능 사전 측정",
             ha="center", fontsize=9.8, color=INK2)
-    fig.suptitle("같은 입력 · 같은 전처리 · 같은 지표 — 비교의 판", fontsize=13)
+    fig.suptitle("비교 실험 구성: 동일 입력, 공통 전처리, 동일 평가 지표", fontsize=13)
     fig.savefig(OUT / "S18_pipeline.png", dpi=175, bbox_inches="tight"); plt.close(fig)
     print("  S18_pipeline.png")
 
@@ -1763,7 +1770,7 @@ def s19_swt(cache, TXT):
     fig, axes = plt.subplots(7, 1, figsize=(9.6, 9.4), sharex=True,
                              gridspec_kw=dict(height_ratios=[1.3, 1, 1, 1, 1, 1, 1.3], hspace=0.12))
     axes[0].plot(t, seg, color=NOISY, lw=0.9)
-    axes[0].set_ylabel("입력\n(FE 후)", rotation=0, ha="right", va="center")
+    axes[0].set_ylabel("입력 신호\n(전처리 후)", rotation=0, ha="right", va="center")
     band = ["62~125 Hz", "31~62 Hz", "16~31 Hz", "8~16 Hz", "4~8 Hz"]
     for j in range(cfg.level):
         ax = axes[j + 1]
@@ -1775,18 +1782,19 @@ def s19_swt(cache, TXT):
     out = m04(d["y"], fs, {})[i0:i0 + n]
     axes[-1].plot(t, d["x"][i0:i0 + n], color=CLEAN, lw=3)
     axes[-1].plot(t, out, color=C["M04"], lw=1.2)
-    axes[-1].set_ylabel("출력\n(회색 = 참값)", rotation=0, ha="right", va="center")
+    axes[-1].set_ylabel("출력 신호\n(회색: 기준)", rotation=0, ha="right", va="center")
     for a in axes:
         a.grid(axis="y", visible=False)
         for r in rp:
             a.axvspan(t[max(r - 6, 0)], t[min(r + 6, n - 1)], color="#e9e6f4", lw=0, zorder=0)
     axes[-1].set_xlabel("시간 [s]")
-    prot = ("연보라(QRS) 자리에서는 띠를 좁혀 봉우리를 지킨다" if cfg.protect_qrs
-            else "QRS 보호는 꺼져 있다")
-    fig.suptitle(f"SWT 적응 임계 (M04, D0 튜닝: {cfg.mode} · 잡음 세기는 {cfg.sigma_source.upper()} 에서) "
-                 "— 주황 띠 안의 계수를 지우고 밖은 남긴다\n"
-                 f"띠 폭 = 단별 k x 전역 잡음 세기, {prot}. "
-                 f"실데이터(D1) 튜닝은 {other.mode} · QRS 보호 {'켬' if other.protect_qrs else '끔'} 을 골랐다",
+    prot = ("QRS 구간(보라)에서는 임계값을 낮추어 계수를 보존" if cfg.protect_qrs
+            else "QRS 구간 완화 미적용")
+    fig.suptitle(f"SWT 적응 임계값 처리 (합성 ECG, 백색 잡음 5 dB, {MODE_KO[cfg.mode]}): "
+                 "음영 내부(임계값 이하) 계수는 잡음으로 간주하여 제거\n"
+                 f"음영 폭: 단계별 계수 k × 잡음 표준편차 추정값.  {prot}.\n"
+                 f"MIT-BIH 실측 기록의 최적 설정: {MODE_KO[other.mode]}, "
+                 f"QRS 구간 완화 {'적용' if other.protect_qrs else '미적용'}",
                  fontsize=11)
     fig.savefig(OUT / "S19_swt.png", dpi=175, bbox_inches="tight"); plt.close(fig)
     print("  S19_swt.png")
@@ -1810,17 +1818,17 @@ def s20_kalman_model(cache, TXT):
     gs = fig.add_gridspec(2, 2, width_ratios=[1.0, 1.55], height_ratios=[1, 1.25],
                           wspace=0.22, hspace=0.12)
     ax = fig.add_subplot(gs[:, 0])
-    ax.plot(grid, np.asarray(fit.template), color=CLEAN, lw=3.2, label="이 기록의 위상 평균")
+    ax.plot(grid, np.asarray(fit.template), color=CLEAN, lw=3.2, label="기록의 위상 평균 파형")
     for a_, b_, t_ in sorted(zip(np.asarray(fit.alpha), np.asarray(fit.b), np.asarray(fit.theta)),
                              key=lambda z: z[2]):
         g1 = _kernel_sum(grid, np.array([a_]), np.array([b_]), np.array([t_]))
         ax.plot(grid, g1, color=OUTK, lw=0.8, alpha=0.55)
     ax.plot(grid, np.asarray(fit.fitted), color=C["M05"], lw=2.0,
-            label=f"가우시안 커널 합 (결정계수 {fit.r2:.3f})")
-    ax.set_xlabel("위상 θ [rad]  (R 봉우리 = 0)")
+            label=f"가우시안 함수 합 (결정계수 {fit.r2:.3f})")
+    ax.set_xlabel("위상 θ [rad]  (R파 = 0)")
     ax.set_ylabel("정규화 진폭")
     ax.legend(fontsize=9.5, loc="upper left")
-    ax.set_title("한 주기의 모형 — 가는 선 = 커널 하나씩", fontsize=10.5, color=INK2)
+    ax.set_title("1주기 모델 (가는 선: 개별 가우시안 함수)", fontsize=10.5, color=INK2)
     i0, i1 = _window(d, dur=3.2)
     t = np.arange(i0, i1) / fs
     th = np.asarray(info["theta"])[i0:i1]
@@ -1835,7 +1843,7 @@ def s20_kalman_model(cache, TXT):
     a1.set_ylabel("위상 θ(t)")
     a1.set_yticks([-np.pi, 0, np.pi]); a1.set_yticklabels(["-π", "0", "π"])
     a1.tick_params(labelbottom=False)
-    a1.set_title("붉은 점선 = 입력에서 검출한 R-peak — θ 가 거기서 0 을 지나도록 맞춰진다",
+    a1.set_title("적색 점선: 입력 신호에서 검출한 R파 위치 (θ = 0 으로 재설정되는 시점)",
                  fontsize=10.5, color=INK2)
     a2 = fig.add_subplot(gs[1, 1], sharex=a1)
     a2.plot(t, d["x"][i0:i1], color=CLEAN, lw=3.0)
@@ -1845,12 +1853,12 @@ def s20_kalman_model(cache, TXT):
         a2.axvline(r / fs, color=PHANTOM, lw=1.0, ls="--")
     a2.set_ylabel("진폭 [mV]"); a2.set_xlabel("시간 [s]")
     a2.set_yticks([])
-    a2.text(0.995, 0.92, "회색 굵은 = 참값 · 옅은 = 입력 · 노랑 = 칼만 출력", transform=a2.transAxes,
+    a2.text(0.995, 0.92, "회색 굵은 선: 기준 신호, 옅은 선: 입력, 노란 선: 칼만 평활기 출력", transform=a2.transAxes,
             ha="right", fontsize=9, color=INK2)
     for a_ in (a1, a2):
         a_.grid(axis="y", visible=False)
-    fig.suptitle("Sameni EKF/EKS (M05) — ECG 를 위상 위의 가우시안 커널 합으로 모형화하고 상태 [θ, z] 를 추정한다\n"
-                 "θ 는 검출한 R-peak 마다 0 으로 맞춰진다: 검출이 틀리면 그 자리에 template 의 QRS 가 그려진다 (S15)",
+    fig.suptitle("확장 칼만 평활기(Sameni 모델): 심장 위상 θ 위 가우시안 함수 합으로 ECG를 모델링하고 상태 [θ, z]를 추정\n"
+                 "θ는 검출된 R파마다 0으로 재설정되므로, 위양성 검출 위치에서는 모델의 QRS 파형이 출력된다",
                  fontsize=11.5, y=1.03)
     fig.savefig(OUT / "S20_kalman_model.png", dpi=175, bbox_inches="tight"); plt.close(fig)
     print("  S20_kalman_model.png")
@@ -1881,18 +1889,18 @@ def s21_resunet(TXT):
             _box(ax, xd, 4.6 - h, 0.85, h, f"{c}ch\n{L >> i}", "#cdeee1", fs=8.6)
             ax.annotate("", (xd, 4.6 - h / 2), (xs_enc[i] + 0.85, 4.6 - h / 2),
                         arrowprops=dict(arrowstyle="-|>", color="#a8a59c", lw=0.9, ls="--"))
-    _box(ax, 0.05, 3.1, 0.85, 1.0, "입력 y\n1 x 1024", "#ece9e1", fs=8.6)
-    _box(ax, 11.95, 3.1, 0.95, 1.0, "예측\n잡음", "#f6c9c9", fs=8.6)
-    _box(ax, 9.0, 0.35, 3.9, 1.05, "출력 = 입력 y - 예측 잡음\n신호를 그리지 않는다 → 없는 자리엔 뺄 것도 없다", "#fbecc2", fs=9.4)
+    _box(ax, 0.05, 3.1, 0.85, 1.0, "입력 신호\n1 × 1024", "#ece9e1", fs=8.6)
+    _box(ax, 11.95, 3.1, 0.95, 1.0, "추정\n잡음", "#f6c9c9", fs=8.6)
+    _box(ax, 9.0, 0.35, 3.9, 1.05, "출력 = 입력 - 추정 잡음\n신호를 직접 생성하지 않으므로, 박동이 없는 구간에서 가성 파형이 생기기 어렵다", "#fbecc2", fs=9.4)
     ax.annotate("", (12.4, 1.42), (12.4, 3.08), arrowprops=dict(arrowstyle="-|>", color=INK2, lw=1.3))
     ax.annotate("", (9.0, 0.88), (0.45, 3.08),
                 arrowprops=dict(arrowstyle="-|>", color=INK2, lw=1.3, connectionstyle="angle,angleA=-90,angleB=180"))
-    ax.text(6.0, 5.35, f"Residual 1D U-Net (M06) — 해상도 {len(chs)} 단, 단마다 잔차 블록 1 개"
-            f"(Conv k9 · GroupNorm · SiLU 를 두 번 + 지름길), 파라미터 {npar / 1e3:.0f} K",
+    ax.text(6.0, 5.35, f"잔차 학습 1D U-Net: 해상도 {len(chs)}단계, 단계별 잔차 블록 1개"
+            f"(합성곱 k=9, 그룹 정규화, SiLU 2회와 항등 연결), 파라미터 {npar / 1e3:.0f}K",
             ha="center", fontsize=10.5, color=INK)
-    ax.text(4.4, 1.55, "손실 L6 = MSE + 0.5 MAE + 0.3 · 기울기 오차 + λ · (깨끗한 입력 통과 오차)\n"
-            "마지막 항 = 깨끗한 창을 넣었을 때 아무것도 빼지 마라", ha="center", fontsize=10, color="#184f95")
-    ax.text(6.0, 2.2, "점선 = skip 연결 (같은 해상도의 특징을 그대로 넘긴다)", ha="center", fontsize=9, color=INK2)
+    ax.text(4.4, 1.55, "손실 함수 = MSE + 0.5 MAE + 0.3 미분 오차 + λ · 무잡음 입력 보존항\n"
+            "보존항: 무잡음 입력에 대한 출력 변화를 억제", ha="center", fontsize=10, color="#184f95")
+    ax.text(6.0, 2.2, "점선: 스킵 연결 (동일 해상도의 특징을 디코더로 전달)", ha="center", fontsize=9, color=INK2)
     fig.savefig(OUT / "S21_resunet.png", dpi=175, bbox_inches="tight"); plt.close(fig)
     print("  S21_resunet.png")
     del torch
