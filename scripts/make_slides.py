@@ -437,9 +437,15 @@ def s5_crossover():
             if ys[i] > 0 >= ys[i + 1]:
                 zx = xs[i] + (xs[i + 1] - xs[i]) * ys[i] / (ys[i] - ys[i + 1])
                 ax.axvline(zx, color=col, ls=":", lw=1.6, zorder=2)
-                ax.annotate(f"{zx:.0f} dB", (zx, ax.get_ylim()[0]), color=col,
-                            fontsize=10.5, fontweight="bold", ha="center",
-                            xytext=(0, 6), textcoords="offset points")
+                # 교차점 오른쪽의 뜻을 그림 안에서 바로 읽히게 한다(시각화 제안서 4 절, V-16).
+                if zx < xs.max() - 0.5:   # 측정 범위 안에서 0 을 지날 때만 구간을 칠한다
+                    ax.axvspan(zx, xs.max() + 1.0, color=col, alpha=0.07, zorder=1, lw=0)
+                    ax.text(zx + 0.3, 0.97, f"{lab.split()[0]}: 입력 SNR 약 {zx:.0f} dB\n"
+                            "이상에서는 공통 전처리\n단독의 개선량이 더 높다",
+                            transform=ax.get_xaxis_transform(), va="top", fontsize=9.5, color=col)
+                ax.text(zx, 0.015, f"{zx:.0f} dB", color=col, fontsize=10.5, fontweight="bold",
+                        ha="right" if zx >= xs.max() - 0.5 else "center", va="bottom",
+                        transform=ax.get_xaxis_transform())
                 break
     ax.axhline(0, color=INK2, lw=1.2, zorder=2)
     ax.set_xlabel(TXT["in_snr"]); ax.set_ylabel(TXT["gain"])
@@ -737,7 +743,7 @@ def s9_structure_vs_loss(TXT):
         ax.set_ylim(-0.7, len(ROWS) - 0.3)
         ax.invert_yaxis()
         ax.grid(axis="y", visible=False)
-        ax.set_title({"d0": "D0 합성", "d1": "D1 MIT-BIH"}[tag], fontsize=11.5, color=INK)
+        ax.set_title({"d0": "합성 ECG", "d1": "MIT-BIH"}[tag], fontsize=11.5, color=INK)
         ax.set_xlabel("기준 대비 Δ  snr_imp_scaled [dB]")
         ax.margins(x=0.20)
     axes[0].set_yticklabels([r[0] for r in ROWS], fontsize=10.5)
@@ -844,6 +850,10 @@ INDEX = [
      "**판넬 결과 R5.** 딥러닝 개선 시도 16 개를 같은 자(seed 짝 · 고정 평가)로. "
      "좋은 쪽으로 유의하게 움직인 것은 전부 「무엇을 맞추게 하느냐」(손실 · 동작점) "
      "묶음이고, 구조 · 깊이 · 용량 · 학습 세부는 못 가리거나 손해다."),
+    ("S10p_loss_by_snr.png",
+     "S10 의 판넬판. 잡음 7 종을 합쳐 입력 SNR 별 유의한 개선 · 저하 수만 보인다. 잡음을 임의로 묶지 않고 7 종을 그대로 센다."),
+    ("S17p_dl_journey_panel.png",
+     "S17 의 판넬판. 16 행 이름표 대신 범주 4 개를 두고, 유의한 항목에만 이름을 단다."),
     ("S18_pipeline.png",
      "**판넬 작품 내용 A2.** 취득 → 공통 front-end → 기법 네 계열 + 상한 → 평가 4 층 · "
      "안전성 프로브 · 시연. 비교의 판 전체를 한 장에."),
@@ -1354,7 +1364,7 @@ def s10_loss_by_noise(TXT):
         ax.set_yticks(range(len(CONDS)))
         ax.set_yticklabels([LAB[c] for c in CONDS], fontsize=10.5)
         ax.set_xlabel(TXT["in_snr"])
-        ax.set_title({"d0": "D0 합성", "d1": "D1 MIT-BIH"}[tag],
+        ax.set_title({"d0": "합성 ECG", "d1": "MIT-BIH"}[tag],
                      fontsize=11.5, color=INK)
         ax.tick_params(length=0)
         for sp in ax.spines.values():
@@ -1362,8 +1372,8 @@ def s10_loss_by_noise(TXT):
     if not got:
         plt.close(fig); print("  S10 건너뜀 (exp_g 없음)"); return
     # 주석은 축이 아니라 figure 에 둔다 — 축에 두면 x 라벨과 겹친다.
-    fig.text(0.5, 0.035, "* 와 굵은 숫자 = Holm 보정 후 유의  ·  "
-             "파랑 = L6 이 이김, 빨강 = L6 이 짐  ·  값은 M06L6 - M06 [dB]",
+    fig.text(0.5, 0.035, "* 와 굵은 숫자: Holm 보정 후 유의  ·  "
+             "파랑: 무잡음 입력 보존 손실이 더 높음, 빨강: 더 낮음  ·  값은 MSE 손실 대비 차이 [dB]",
              ha="center", fontsize=9.5, color=INK2)
     # **부제는 격자에서 계산한다.** 초판은 이 문장을 손으로 적었는데, EXP-G 를
     # 3 단계에서 7 단계로 넓힌 뒤에도 「손해 다섯 칸은 전부 0 dB」 이 남아 있었다
@@ -1373,15 +1383,48 @@ def s10_loss_by_noise(TXT):
     n_cell = sum(int(D.size) for D, _, _ in grids.values())
     lose_at = sorted({sn for D, _, sns in grids.values()
                       for i, sn in enumerate(sns) if (D[:, i] < 0).any()})
-    span = (f"손해는 전부 {max(lose_at):g} dB 이하에 있다" if lose_at
-            else "손해 칸이 하나도 없다")
-    fig.suptitle("L6 의 이득은 잡음 종류가 아니라 입력 SNR 이 가른다  "
-                 "(M06, TEST, 기록 단위 n=44)\n"
-                 f"{n_cell} 칸 · 유의 이득 {n_gain} · 유의 손해 {n_loss} — {span}. "
-                 "구조가 뚜렷한 잡음일수록 크게 번다", fontsize=12.5)
+    span = (f"저하는 모두 {max(lose_at):g} dB 이하에 있다" if lose_at
+            else "저하된 조건이 없다")
+    fig.suptitle("무잡음 입력 보존 손실의 효과는 잡음 종류가 아니라 입력 SNR 에 따라 달라진다\n"
+                 f"잔차 U-Net, TEST, 기록 단위 n=44. {n_cell} 조건 중 유의한 개선 {n_gain}, 유의한 저하 {n_loss}. "
+                 f"{span}", fontsize=12.5)
     fig.tight_layout(rect=(0, 0.07, 1, 0.86))
     fig.savefig(OUT / "S10_loss_by_noise.png", dpi=175); plt.close(fig)
     print("  S10_loss_by_noise.png")
+    s10p_loss_by_snr(grids, TXT)
+
+
+def s10p_loss_by_snr(grids, TXT):
+    """S10 의 판넬판(시각화 제안서 4 절). 잡음 7 종을 합쳐 입력 SNR 별 판정 수만 보인다.
+
+    잡음을 임의로 묶지 않는다 — 7 종을 그대로 세어 합친다. 판넬 거리에서도 「왼쪽 빨강,
+    오른쪽 파랑」 하나만 읽히게 한다.
+    """
+    fig, axes = plt.subplots(1, len(grids), figsize=(5.4 * len(grids), 3.9), sharey=True)
+    axes = np.atleast_1d(axes)
+    for ax, (tag, (D, S, snrs)) in zip(axes, grids.items()):
+        x = np.arange(len(snrs))
+        gain = ((D > 0) & S).sum(0); loss = ((D < 0) & S).sum(0); ns = (~S).sum(0)
+        ax.bar(x, gain, color=DIVERGE[-1], label="유의한 개선")
+        ax.bar(x, ns, bottom=gain, color=DIVERGE[3], edgecolor="#d8d6cf", label="유의하지 않음")
+        ax.bar(x, loss, bottom=gain + ns, color=DIVERGE[0], label="유의한 저하")
+        for j in range(len(snrs)):
+            if gain[j]:
+                ax.text(j, gain[j] / 2, str(int(gain[j])), ha="center", va="center", color="#ffffff", fontsize=10)
+            if loss[j]:
+                ax.text(j, gain[j] + ns[j] + loss[j] / 2, str(int(loss[j])), ha="center", va="center",
+                        color="#ffffff", fontsize=10)
+        ax.set_xticks(x); ax.set_xticklabels([f"{s:g}" for s in snrs])
+        ax.set_xlabel(TXT["in_snr"])
+        ax.set_title({"d0": "합성 ECG", "d1": "MIT-BIH"}[tag], fontsize=11.5)
+        ax.grid(axis="x", visible=False)
+    axes[0].set_ylabel("잡음 종류 수 (7 종)")
+    axes[-1].legend(frameon=False, fontsize=9.5, loc="upper left", bbox_to_anchor=(1.0, 1.0))
+    fig.suptitle("무잡음 입력 보존 손실의 효과: 입력 SNR 이 높을수록 유의한 개선이 늘고 저하가 사라진다\n"
+                 "잔차 U-Net, MSE 손실 대비, 잡음 7 종 × 입력 SNR 7 단계, Holm 보정", fontsize=12)
+    fig.tight_layout()
+    fig.savefig(OUT / "S10p_loss_by_snr.png", dpi=175); plt.close(fig)
+    print("  S10p_loss_by_snr.png")
 
 
 
@@ -1705,6 +1748,50 @@ def s17_dl_journey(TXT):
                  fontsize=12.2, y=0.995)
     fig.savefig(OUT / "S17_dl_journey.png", dpi=175, bbox_inches="tight"); plt.close(fig)
     print("  S17_dl_journey.png")
+    s17p_dl_journey_panel(TXT)
+
+
+def s17p_dl_journey_panel(TXT):
+    """S17 의 판넬판(시각화 제안서 4 절). 16 행 이름표 대신 범주 4 개만 두고, 유의한 항목만 이름을 단다."""
+    groups = list(dict.fromkeys(g for g, *_ in JOURNEY))
+    keys = [("fixed_snr_imp_scaled", "전 구간"), ("band_15_20", "고 SNR 구간 (15~20 dB)")]
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.6), sharey=True, gridspec_kw=dict(wspace=0.05))
+    for ax, (key, title) in zip(axes, keys):
+        ax.axvline(0, color=INK2, lw=1.1)
+        for gi, g in enumerate(groups):
+            items = [row for row in JOURNEY if row[0] == g]
+            for k, (_, lab, sw, arm, base, bsw) in enumerate(items):
+                r = _paired(sw, arm, base, key, bsw)
+                if r is None:
+                    continue
+                m, d, p = r
+                sig = bool(p < 0.05)
+                if sw == "d41" and bsw == "l6cond":
+                    same = _paired(sw, arm, base, key, "d40_ref")
+                    if same is None or abs(same[0]) < 0.1 or np.sign(same[0]) != np.sign(m):
+                        sig = False
+                yy = gi + (k - (len(items) - 1) / 2) * 0.09
+                c = GROUP_C[g]
+                ax.scatter([m], [yy], s=90 if sig else 45, color=c if sig else SURFACE, edgecolor=c,
+                           lw=1.5, zorder=3)
+                if sig:
+                    nsig = sum(1 for row in items[:k] if (lambda r: r is not None and r[2] < 0.05)(
+                        _paired(row[2], row[3], row[4], key, row[5])))
+                    # 같은 범주의 유의 항목이 셋이면 셋째는 점 왼쪽 아래에 둔다(축 밖으로 나가지 않게)
+                    xy_off, ha_ = (((0, 9), "center"), ((0, -17), "center"), ((-8, -16), "right"))[min(nsig, 2)]
+                    ax.annotate(lab.split("\n")[0], (m, yy), xytext=xy_off,
+                                textcoords="offset points", fontsize=8.6, color=c, ha=ha_,
+                                annotation_clip=False)
+        ax.set_title(title, fontsize=11.5)
+        ax.set_xlabel("기준 모델 대비 SNR 개선량 차이 [dB]")
+        ax.grid(axis="y", visible=False)
+        ax.margins(x=0.45)
+    axes[0].set_yticks(range(len(groups))); axes[0].set_yticklabels(groups, fontsize=11)
+    axes[0].set_ylim(len(groups) - 0.5, -0.5)
+    fig.suptitle("잔차 U-Net 의 변경 16종: 유의한 개선은 학습 목표(손실 함수 · SNR 조건화) 범주에서만 관찰되었다\n"
+                 "점 하나가 변경 하나(시드 대응 비교, 고정 평가 집합). 채운 점과 이름표: p < 0.05", fontsize=12, y=1.04)
+    fig.savefig(OUT / "S17p_dl_journey_panel.png", dpi=175, bbox_inches="tight"); plt.close(fig)
+    print("  S17p_dl_journey_panel.png")
 
 
 # ------------------------------------------------- S18 전체 파이프라인

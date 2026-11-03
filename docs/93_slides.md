@@ -31,6 +31,8 @@
 | [`S15_kalman_phantom.png`](../results/slides/S15_kalman_phantom.png) | **판넬 결과 R3.** 칼만은 참값에 없는 자리에 **깨끗한 QRS** 를 그린다. 왼쪽은 가장 뚜렷한 예시(그렇게 골랐다고 그림에 적었다), 오른쪽은 **비율** — 오검출 개수는 front-end 와 같아도 심박 모양인 것이 많다. 근거 D-42 · F-58. |
 | [`S16_wavelet_placement.png`](../results/slides/S16_wavelet_placement.png) | **판넬 결과 R4.** 같은 backbone 에 wavelet 의 자리만 바꿨다. 직렬(M07)은 seed 짝으로 유의하게 손해, 특성공간(M08)은 이 예산으로 못 가린다. 깨끗한 신호 보존(EXP-C)도 같은 순서다. |
 | [`S17_dl_journey.png`](../results/slides/S17_dl_journey.png) | **판넬 결과 R5.** 딥러닝 개선 시도 16 개를 같은 자(seed 짝 · 고정 평가)로. 좋은 쪽으로 유의하게 움직인 것은 전부 「무엇을 맞추게 하느냐」(손실 · 동작점) 묶음이고, 구조 · 깊이 · 용량 · 학습 세부는 못 가리거나 손해다. |
+| [`S10p_loss_by_snr.png`](../results/slides/S10p_loss_by_snr.png) | S10 의 판넬판. 잡음 7 종을 합쳐 입력 SNR 별 유의한 개선 · 저하 수만 보인다. 잡음을 임의로 묶지 않고 7 종을 그대로 센다. |
+| [`S17p_dl_journey_panel.png`](../results/slides/S17p_dl_journey_panel.png) | S17 의 판넬판. 16 행 이름표 대신 범주 4 개를 두고, 유의한 항목에만 이름을 단다. |
 | [`S18_pipeline.png`](../results/slides/S18_pipeline.png) | **판넬 작품 내용 A2.** 취득 → 공통 front-end → 기법 네 계열 + 상한 → 평가 4 층 · 안전성 프로브 · 시연. 비교의 판 전체를 한 장에. |
 | [`S19_swt.png`](../results/slides/S19_swt.png) | **판넬 이론 (1).** SWT 세부계수 다섯 단과 단별 임계 띠, QRS 자리에서 좁아지는 보호 창. 실험과 같은 M04 인스턴스(D0 튜닝값 — garrote · QRS 보호)로 그렸고, D1 튜닝은 hard · 보호 끔을 골랐다는 것을 부제가 설정에서 읽어 적는다. |
 | [`S20_kalman_model.png`](../results/slides/S20_kalman_model.png) | **판넬 이론 (2).** Sameni 모형 — 위상 원 위의 가우시안 커널 합. 위상이 검출 R-peak 로 매겨진다는 것이 S15 의 기제다. |

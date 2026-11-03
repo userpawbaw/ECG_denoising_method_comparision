@@ -77,6 +77,15 @@ def numbers() -> dict:
     e = e[e.probe == "p1"].groupby("method").halluc_energy.mean()
     n["he"] = {m: float(v) for m, v in e.items()}
     n["he_x_bp"] = n["he"]["M01"] / n["he"]["M06"]
+    # 판정 해상도(그림 S22) — 같은 설정의 시드 3 회 학습: 시드별 검증 잡음 대 고정 평가 집합 (F-40 · F-41)
+    import torch
+    seed_best = [float(torch.load(f"results/d1/{r}/best.pt", map_location="cpu", weights_only=False)["best_metric"])
+                 for r in ("m06_l1", "m06_l1_s1", "m06_l1_s2")]
+    cal = pd.read_csv("results/ext/calib/sweep.csv")
+    n["sd_seed"] = float(np.std(seed_best, ddof=1))
+    n["rng_seed"] = float(np.ptp(seed_best))
+    n["sd_fixed"] = float(cal[cal.arm == "m06_l1"].fixed_snr_imp_scaled.std(ddof=1))
+    n["l6_all"] = _paired("structure", "m06_l6", "m06_l1", "fixed_snr_imp_scaled")[0]
     return n
 
 
@@ -159,7 +168,7 @@ def _set(shape, paras, size, bold=False, color=INK):
 
 
 # ------------------------------------------------------------------ 판넬
-def build_panel(template: Path, n: dict) -> Path:
+def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     from pptx import Presentation
     prs = Presentation(str(template))
     slide = prs.slides[0]
@@ -188,10 +197,10 @@ def build_panel(template: Path, n: dict) -> Path:
     sh.image(SL / "S18_pipeline.png", 1.9, 22.9, 25.7, 13.5)
     sh.text(1.9, 36.5, 25.7, 1.0, "그림 1. 비교 실험 구성. 신호 취득, 공통 전처리, 네 계열의 잡음 제거 기법, "
             "이상적 상한(기준 신호를 아는 최적 필터), 4개 범주의 평가 지표.", size=13, color=INK2)
-    sh.frame(1.9, 37.9, 12.5, 9.2, "사진: 신호 취득 장치\n(전극, AD8232, Arduino Uno)\n[사진 삽입 예정]")
-    sh.image(OUT / "demo_mode_b.png", 15.1, 37.9, 12.5, 9.2)
-    sh.text(1.9, 47.3, 12.5, 1.0, "그림 2. 신호 취득 장치.", size=13, color=INK2)
-    sh.text(15.1, 47.3, 12.5, 1.6, "그림 3. 시연 화면(녹음 신호 비교 모드, 임펄스 잡음, 입력 SNR 0 dB).",
+    sh.frame(1.9, 37.9, 12.5, 11.0, "사진: 신호 취득 장치\n(전극, AD8232, Arduino Uno)\n[사진 삽입 예정]")
+    sh.image(OUT / "demo_mode_b.png", 15.1, 37.9, 12.5, 11.0)
+    sh.text(1.9, 49.1, 12.5, 1.0, "그림 2. 신호 취득 장치.", size=13, color=INK2)
+    sh.text(15.1, 49.1, 12.5, 1.6, "그림 3. 시연 화면(녹음 신호 비교 모드, 임펄스 잡음, 입력 SNR 0 dB).",
             size=13, color=INK2)
 
     # ---- 이론적 배경 (우) x 29.5 ~ 57.5
@@ -252,15 +261,16 @@ def build_panel(template: Path, n: dict) -> Path:
     sh.image(SL / "S4_noise_d1.png", 37.4, r1, 20.2, 9.6)
     sh.text(37.4, r1 + 9.8, 20.2, 1.8, "그림 6. 잡음 종류별 기법 출력(MIT-BIH, 입력 SNR −5 dB). "
             "기저선 변동은 공통 전처리만으로 제거되었고, 임펄스 잡음은 실제 적용 가능한 기법 중 딥러닝에서만 제거되었다.", size=cap)
-    sh.image(SL / "S16_wavelet_placement.png", 1.8, r2, 15.6, 10.0)
-    sh.text(1.8, r2 + 10.1, 15.6, 1.6, f"그림 7. 웨이블릿 결합 위치에 따른 비교(웨이블릿 미사용 대비). SWT 출력을 신경망 입력으로 쓰는 "
-            f"직렬 결합은 {n['m07']:+.2f} dB(p = {n['m07_p']:.3f}), 웨이블릿 계수를 신경망 특징으로 쓰는 특징 공간 "
-            f"결합은 {n['m08']:+.2f} dB(유의하지 않음).", size=cap)
-    sh.image(SL / "S17_dl_journey.png", 17.9, r2, 15.0, 10.0)
-    sh.text(17.9, r2 + 10.1, 15.0, 1.6, f"그림 8. 잔차 U-Net의 구조 · 학습 조건 변경 16종에 따른 SNR 개선량 변화. 유의한 증가는 손실 함수 "
-            f"변경과 SNR 조건화(입력 SNR을 신경망에 함께 입력)에서만 관찰되었다(무잡음 입력 보존항, 입력 SNR "
-            f"15~20 dB 구간 {n['l6_hi']:+.1f} dB).", size=cap)
-    sh.text(33.6, r2, 24.0, 11.6, [
+    # 판넬판 그림(시각화 제안서 6 절): S17 의 16 행 이름표 대신 범주 4 개(S17p), 판정 해상도(S22)
+    sh.image(SL / "S17p_dl_journey_panel.png", 1.8, r2, 17.2, 9.9)
+    sh.text(1.8, r2 + 9.0, 17.2, 1.7, f"그림 7. 잔차 U-Net의 구조 · 학습 조건 변경 16종에 따른 SNR 개선량 변화. 유의한 증가는 손실 함수 "
+            f"변경과 SNR 조건화(입력 SNR을 신경망에 함께 입력)에서만 관찰되었다(무잡음 입력 보존항, 15~20 dB 구간 "
+            f"{n['l6_hi']:+.1f} dB).", size=cap)
+    sh.image(OUT.parent / "slides" / "research" / "S22_resolution.png", 19.4, r2, 17.4, 9.9)
+    sh.text(19.4, r2 + 10.0, 17.4, 1.7, f"그림 8. 판정 전에 측정한 학습 반복 간 변동. 평가 잡음을 고정하자 표준편차가 "
+            f"{n['sd_seed']:.2f} dB에서 {n['sd_fixed']:.2f} dB로 줄었고, 이 변동을 넘은 개선은 손실 함수 변경뿐이었다"
+            f"(무잡음 입력 보존항 {n['l6_all']:+.2f} dB).", size=cap)
+    sh.text(37.4, r2, 20.2, 11.6, [
         H("고찰"),
         "• 모든 조건에서 최적인 단일 기법은 관찰되지 않았다. 잡음 종류와 입력 SNR에 따라 기법을 "
         "선택하는 것이 타당하다.",
@@ -271,21 +281,22 @@ def build_panel(template: Path, n: dict) -> Path:
         f"변경과 SNR 조건화에서만 관찰되었다. "
         f"보존항을 추가한 결과 무잡음 입력의 출력 SNR이 {n['clean_m06']:.1f} dB에서 "
         f"{n['clean_l6']:.1f} dB로 증가하였다(SWT {n['clean_swt']:.1f} dB).",
-        "• 개선 시도 16종의 유의성 판정은, 같은 설정을 난수 시드만 바꾸어 다시 학습했을 때의 SNR 개선량 "
-        "변동(최대 1.43 dB)을 먼저 측정한 뒤 수행하였다.",
+        f"• 개선 시도 16종의 유의성 판정은, 같은 설정을 난수 시드만 바꾸어 다시 학습했을 때의 SNR 개선량 "
+        f"변동(범위 {n['rng_seed']:.2f} dB)을 먼저 측정하고, 평가 잡음을 고정한 뒤 수행하였다(그림 8).",
         [("한계 ", {"bold": True}), ("두 데이터 모두 공개 데이터이며, 자체 장치의 실측 데이터 평가는 진행 "
                                       "중이다.", {})],
-    ], size=14)
-    sh.text(40.0, 0.4, 18.0, 0.6, "시안: build_panel.py 자동 생성, 수치는 실험 산출물에서 읽음",
-            size=9, color=INK2)
+    ], size=13)
+    if not final:
+        sh.text(40.0, 0.4, 18.0, 0.6, "시안: build_panel.py 자동 생성, 수치는 실험 산출물에서 읽음",
+                size=9, color=INK2)
     print(f"  panel 그림 면적 비율 (본문 구역 대비): {sh.ratio():.0%}")
-    p = OUT / "panel_draft.pptx"
+    p = OUT / ("panel.pptx" if final else "panel_draft.pptx")
     prs.save(str(p))
     return p
 
 
 # ------------------------------------------------------------------ 브로셔
-def build_brochure(n: dict) -> Path:
+def build_brochure(n: dict, final: bool = False) -> Path:
     from pptx import Presentation
     from pptx.util import Cm
     prs = Presentation()
@@ -328,19 +339,20 @@ def build_brochure(n: dict) -> Path:
             "유의한 개선은 손실 함수 변경과 SNR 조건화(입력 SNR을 신경망에 함께 입력)에서만 관찰되었고, 구조 · "
             "규모의 변경에서는 관찰되지 않았다.", size=9.5)
     print(f"  brochure 그림 면적 비율: {sh.ratio(1.6, 19.4):.0%}")
-    p = OUT / "brochure_draft.pptx"
+    p = OUT / ("brochure.pptx" if final else "brochure_draft.pptx")
     prs.save(str(p))
     return p
 
 
-def render(pptx: Path) -> None:
+def render(pptx: Path, dpi: int = 60) -> None:
     """LibreOffice 로 PDF → PNG. 글꼴은 이 환경의 대체 글꼴로 그려진다(맑은 고딕 없음)."""
     subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(pptx.parent),
                     str(pptx)], check=True, capture_output=True, timeout=300)
     pdf = pptx.with_suffix(".pdf")
-    subprocess.run(["pdftoppm", "-png", "-r", "60", "-singlefile", str(pdf), str(pptx.with_suffix(""))],
+    subprocess.run(["pdftoppm", "-png", "-r", str(dpi), "-singlefile", str(pdf), str(pptx.with_suffix(""))],
                    check=True, timeout=300)
-    pdf.unlink()
+    if dpi <= 60:
+        pdf.unlink()                                  # 시안은 미리보기만 남긴다. 최종판은 인쇄용 PDF 를 남긴다
     print(f"  {pptx.with_suffix('.png')}")
 
 
@@ -350,15 +362,18 @@ def main() -> int:
                     help="학과 판넬 양식 pptx (A00_panel). 저장소에 넣지 않는다 — 받은 파일 경로를 준다")
     ap.add_argument("--render", action="store_true",
                     help="LibreOffice 로 PNG 미리보기도 만든다 (soffice · pdftoppm 필요)")
+    ap.add_argument("--final", action="store_true",
+                    help="최종판: 시안 표지를 빼고 panel.pptx · brochure.pptx 로 저장, --render 시 PDF 와 100 dpi PNG 를 남긴다")
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     n = numbers()
     print("[numbers]", {k: (round(v, 3) if isinstance(v, float) else v) for k, v in n.items()})
-    p1, p2 = build_panel(Path(a.template), n), build_brochure(n)
+    p1, p2 = build_panel(Path(a.template), n, a.final), build_brochure(n, a.final)
     print(f"  {p1}\n  {p2}")
     if a.render:
-        render(p1)
-        render(p2)
+        dpi = 100 if a.final else 60
+        render(p1, dpi)
+        render(p2, 200 if a.final else 60)
     return 0
 
 

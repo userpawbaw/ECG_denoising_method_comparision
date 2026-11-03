@@ -19,8 +19,8 @@
 
 | | |
 |---|---|
-| 스크립트 | **39 개** |
-| 옵션 | **207 개** |
+| 스크립트 | **40 개** |
+| 옵션 | **209 개** |
 | 설명이 빈 옵션 | **0 개** (`(설명 없음)` 으로 표시된다) |
 
 ---
@@ -333,6 +333,7 @@ EXP-G 분석 — **`L6` 의 이득이 잡음 종류별로도 유지되는가.**
 |---|---|---|---|
 | `--template` | 문자열 | **필수** | 학과 판넬 양식 pptx (A00_panel). 저장소에 넣지 않는다 — 받은 파일 경로를 준다 |
 | `--render` | **켬/끔** | 끔 | LibreOffice 로 PNG 미리보기도 만든다 (soffice · pdftoppm 필요) |
+| `--final` | **켬/끔** | 끔 | 최종판: 시안 표지를 빼고 panel.pptx · brochure.pptx 로 저장, --render 시 PDF 와 100 dpi PNG 를 남긴다 |
 
 ### `scripts/check_academic_style.py`
 
@@ -428,6 +429,14 @@ STEP 29: 실측 Arduino 신호의 SNR 추정 — **"정말 15 dB 인가?" 에 �
 | 옵션 | 값 | 기본 | 설명 |
 |---|---|---|---|
 | `--axis` | 문자열 | `['d0', 'd1']` | 데이터 축 (d0 = 합성 · d1 = MIT-BIH). 산출물 경로가 갈린다 |
+
+### `scripts/make_research_figs.py`
+
+연구 과정 시각화 — 시각화 제안서(`docs/96_visual_proposal.md`) P1~P11.
+
+| 옵션 | 값 | 기본 | 설명 |
+|---|---|---|---|
+| `--only` | 문자열 | — | S22 S23 ... 일부만 생성 |
 
 ### `scripts/measure_metric_floor.py`
 
