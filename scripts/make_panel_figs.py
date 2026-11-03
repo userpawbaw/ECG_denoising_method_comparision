@@ -39,8 +39,9 @@ SIZES = {
     "F5": (18.2, 9.8),     # 결과: 칼만 가성 QRS군
     "F6": (18.6, 9.8),     # 결과: 잡음 종류별 출력
     "F7": (22.0, 11.0),    # 결과: 개선 시도 16종 (16 행)
-    "T1": (11.6, 8.6),     # 이론 카드 ①: SWT 임계값
-    "T2": (11.6, 8.6),     # 이론 카드 ②: 칼만 모델
+    "T1": (13.4, 8.6),     # 이론 카드 ①: SWT 임계값 (입력 | D1~D5 | 출력)
+    "T2": (13.4, 8.6),     # 이론 카드 ②: 칼만 모델 (1 주기 모델 | 위상 · 출력)
+    "T3": (13.4, 8.6),     # 이론 카드 ③: 잔차 학습 U-Net (높이 = 신호 길이, 겹 = 채널 수)
 }
 
 
@@ -234,8 +235,15 @@ def f7_journey():
 
 # ------------------------------------------------------------------ T1 SWT 임계값
 def t1_swt(cache):
-    import pywt
+    """입력(왼쪽) → 세부 계수 D1~D5 와 단별 임계값(가운데) → 출력(오른쪽).
+
+    「주파수 대역으로 나누어 대역마다 다른 임계값을 적용한 뒤 합친다」가 그림의 흐름으로 읽히게 한다.
+    실험과 같은 M04 인스턴스(합성 ECG 튜닝값)의 λ_j 와 QRS 완화 창을 그대로 그린다.
+    """
     import sys
+
+    import pywt
+    from matplotlib.patches import Patch
 
     from ecgdn.methods.wavelet import mad_sigma, qrs_protection_mask
     sys.path.insert(0, "scripts")
@@ -248,59 +256,179 @@ def t1_swt(cache):
     n = 512
     seg = x[i0:i0 + n]
     rp = d["r_peaks"][(d["r_peaks"] >= i0) & (d["r_peaks"] < i0 + n)] - i0
-    co = pywt.swt(seg, cfg.wavelet, level=cfg.level)
-    det = [c[1] for c in co][::-1]
+    det = [c[1] for c in pywt.swt(seg, cfg.wavelet, level=cfg.level)][::-1]          # D1..D5
     sigma = mad_sigma(det[1] if getattr(cfg, "sigma_source", "d1") == "d2" else det[0])
     kv = np.asarray(cfg.k, float)
     g = qrs_protection_mask(n, rp, fs, cfg.protect_ms) if cfg.protect_qrs else np.zeros(n)
-    t = np.arange(n) / fs
-    j = 2                                                     # D3 (16~31 Hz) — QRS 에너지가 큰 단
-    lam = kv[min(j, kv.size - 1)] * sigma * np.sqrt(2 * np.log(n)) * (1 - (1 - cfg.protect_rho) * g)
     out = m04(d["y"], fs, {})[i0:i0 + n]
+    t = np.arange(n) / fs
+    band = ["62~125 Hz", "31~62 Hz", "16~31 Hz", "8~16 Hz", "4~8 Hz"]
     w, h = SIZES["T1"]
-    fig, axes = plt.subplots(3, 1, figsize=(w * CM, h * CM), sharex=True,
-                             gridspec_kw=dict(left=0.2, right=0.99, top=0.98, bottom=0.17, hspace=0.12))
-    axes[0].plot(t, seg, color=MS.NOISY, lw=0.8)
-    axes[0].set_ylabel("입력", rotation=0, ha="right", va="center")
-    axes[1].fill_between(t, -lam, lam, color=MS.C["M04"], alpha=0.25, lw=0)
-    axes[1].plot(t, det[j], color=MS.OUTK, lw=0.8)
-    axes[1].set_ylabel("계수\n+ 임계값", rotation=0, ha="right", va="center")
-    axes[2].plot(t, d["x"][i0:i0 + n], color=MS.CLEAN, lw=2.6)
-    axes[2].plot(t, out, color=MS.C["M04"], lw=1.1)
-    axes[2].set_ylabel("출력", rotation=0, ha="right", va="center")
-    for a in axes:
-        a.set_yticks([]); a.grid(False)
-    axes[2].set_xlabel("시간 [s]")
+    fig = plt.figure(figsize=(w * CM, h * CM))
+    # 칸: 입력 | 화살표 | (대역 표지) 세부 계수 | 화살표 | 출력. 대역 표지는 계수 칸의 왼쪽 여백에 놓인다.
+    gs = fig.add_gridspec(5, 5, width_ratios=[1.0, 0.95, 1.5, 0.32, 1.0], left=0.02, right=0.985, top=0.88,
+                          bottom=0.14, wspace=0.0, hspace=0.2)
+    qrs = lambda a: [a.axvspan(t[max(r - 6, 0)], t[min(r + 6, n - 1)], color="#ddd8f0", lw=0, zorder=0)  # noqa: E731
+                     for r in rp]
+    ai = fig.add_subplot(gs[1:4, 0])
+    ai.plot(t, seg, color=MS.NOISY, lw=0.7)
+    ai.set_title("입력", fontsize=FS)
+    ao = fig.add_subplot(gs[1:4, 4])
+    ao.plot(t, d["x"][i0:i0 + n], color=MS.CLEAN, lw=2.4)
+    ao.plot(t, out, color=MS.C["M04"], lw=1.0)
+    ao.set_title("출력", fontsize=FS)
+    for a in (ai, ao):
+        qrs(a)
+    for j in range(cfg.level):
+        a = fig.add_subplot(gs[j, 2])
+        lam = kv[min(j, kv.size - 1)] * sigma * np.sqrt(2 * np.log(n)) * (1 - (1 - cfg.protect_rho) * g)
+        qrs(a)
+        a.fill_between(t, -lam, lam, color=MS.C["M04"], alpha=0.28, lw=0)
+        a.plot(t, det[j], color=MS.OUTK, lw=0.7)
+        a.set_ylabel(f"D{j + 1}\n{band[j]}", rotation=0, ha="right", va="center", fontsize=FS_S - 1,
+                     labelpad=4)
+        if j == 0:
+            a.set_title("대역별 세부 계수", fontsize=FS_S)
+    for a in fig.axes:
+        a.set_xticks([]); a.set_yticks([]); a.grid(False)
+        for sp in a.spines.values():
+            sp.set_color("#d6d3cb")
+    from matplotlib.patches import FancyArrowPatch
+    pi, po = ai.get_position(), ao.get_position()
+    pm = fig.axes[2].get_position()
+    for x0, x1 in ((pi.x1 + 0.008, pi.x1 + 0.045), (pm.x1 + 0.012, po.x0 - 0.012)):   # 분해 → 재구성 흐름
+        fig.add_artist(FancyArrowPatch((x0, 0.51), (x1, 0.51), transform=fig.transFigure,
+                                       arrowstyle="-|>", mutation_scale=14, color=MS.INK2))
+    fig.legend(handles=[Patch(color=MS.C["M04"], alpha=0.35, label="임계값(이하는 제거)"),
+                        Patch(color="#ddd8f0", label="QRS 구간(임계값 완화)")],
+               loc="lower center", ncol=2, frameon=False, fontsize=FS_S - 1, bbox_to_anchor=(0.5, -0.01))
     _save(fig, "T1", "T1_swt")
 
 
 # ------------------------------------------------------------------ T2 칼만 모델
 def t2_kalman(cache):
+    """McSharry 모델의 원리: 1 주기 = 위상 θ 위 가우시안의 합(왼쪽), θ(t)는 검출된 R파마다 0 으로
+    재설정되고(오른쪽 위), 그 모델로 칼만 평활기가 출력을 만든다(오른쪽 아래)."""
+    from ecgdn.eval.rpeak import detect_rpeaks
     from ecgdn.methods.kalman_sameni import SameniKalman, _kernel_sum
     d = cache[("mitdb", 5.0, "mixed")]
     k = SameniKalman(smooth=True)
-    k(d["y"], d["fs"], {})
-    fit = k.last_info["fit"]
+    out = k(d["y"], d["fs"], {})
+    info, fs = k.last_info, d["fs"]
+    fit = info["fit"]
     grid = np.asarray(fit.template_grid)
-    fig, ax = _fig("T2")
-    ax.plot(grid, np.asarray(fit.template), color=MS.CLEAN, lw=3.0, label="평균 박동")
+    w, h = SIZES["T2"]
+    fig = plt.figure(figsize=(w * CM, h * CM))
+    gs = fig.add_gridspec(2, 2, width_ratios=[1.0, 1.35], left=0.035, right=0.985, top=0.9, bottom=0.17,
+                          wspace=0.32, hspace=0.42)
+    ax = fig.add_subplot(gs[:, 0])
+    ax.plot(grid, np.asarray(fit.template), color=MS.CLEAN, lw=2.8, label="평균 박동")
     for a_, b_, t_ in zip(np.asarray(fit.alpha), np.asarray(fit.b), np.asarray(fit.theta)):
         ax.plot(grid, _kernel_sum(grid, np.array([a_]), np.array([b_]), np.array([t_])), color=MS.OUTK,
-                lw=0.8, alpha=0.6)
-    ax.plot(grid, np.asarray(fit.fitted), color=MS.C["M05"], lw=1.8, label="가우시안 합")
-    ax.set_xlabel("심장 위상 θ [rad]")
-    ax.set_yticks([]); ax.grid(False)
+                lw=0.7, alpha=0.6)
+    ax.plot(grid, np.asarray(fit.fitted), color=MS.C["M05"], lw=1.6, label="가우시안 합")
     ax.set_xticks([-np.pi, 0, np.pi]); ax.set_xticklabels(["-π", "0", "π"])
-    ax.legend(loc="upper left", frameon=False, fontsize=FS_S)
-    fig.subplots_adjust(left=0.04, right=0.98, top=0.97, bottom=0.2)
+    ax.set_xlabel("위상 θ"); ax.set_title("1주기 모델", fontsize=FS)
+    ax.legend(loc="upper left", frameon=False, fontsize=FS_S - 1, handlelength=1.2)
+    i0, i1 = MS._window(d, dur=3.2)
+    tt = np.arange(i0, i1) / fs
+    x_in = k.fe(d["y"], fs) if k.fe is not None else d["y"]
+    rp = np.asarray(detect_rpeaks(x_in, fs))
+    rp = rp[(rp >= i0) & (rp < i1)]
+    a1 = fig.add_subplot(gs[0, 1])
+    a1.plot(tt, np.asarray(info["theta"])[i0:i1], color=MS.C["M05"], lw=1.4)
+    a1.set_title("위상 θ(t), 점선: R파 검출", fontsize=FS_S)
+    a2 = fig.add_subplot(gs[1, 1], sharex=a1)
+    a2.plot(tt, d["x"][i0:i1], color=MS.CLEAN, lw=2.4)
+    a2.plot(tt, out[i0:i1], color=MS.C["M05"], lw=1.1)
+    a2.set_title("출력", fontsize=FS_S, pad=2)
+    a2.set_xlabel("시간 [s]")
+    for a_ in (a1, a2):
+        for r in rp:
+            a_.axvline(r / fs, color=MS.PHANTOM, lw=0.9, ls="--")
+    for a_ in fig.axes:
+        a_.set_yticks([]); a_.grid(False)
+    a1.tick_params(labelbottom=False)
     _save(fig, "T2", "T2_kalman")
+
+
+# ------------------------------------------------------------------ T3 잔차 학습 U-Net
+def t3_unet():
+    """상자 높이 = 신호 길이(1024 → 64), 겹친 상자 수 = 채널 수가 늘어나는 정도(단마다 한 겹씩).
+    점선 호 = 스킵 연결, 아래 경로 = 출력단 잔차 연결(출력 = 입력 - 추정 잡음).
+    채널 수 · 신호 길이는 체크포인트에서 읽는다."""
+    from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch, Rectangle
+
+    from ecgdn.methods.dl_wrapper import load_checkpoint
+    model, _ = load_checkpoint("results/d1/m06_l1/best.pt")
+    chs = [int(c) for c in model.chs]
+    L, k = 1024, len(chs) - 1
+    w, h = SIZES["T3"]
+    fig = plt.figure(figsize=(w * CM, h * CM))
+    ax = fig.add_axes([0, 0, 1, 1]); ax.set_xlim(0, w); ax.set_ylim(0, h); ax.axis("off")
+    yc, H0, sw, off = 5.0, 4.2, 0.42, 0.09            # 중심선, 최대 높이, 상자 폭, 겹 간격 [cm]
+    hgt = lambda i: H0 * (0.5 ** i) ** 0.6           # noqa: E731  — 길이가 반이 될 때마다 줄어든다
+    cols = [("E", i) for i in range(k)] + [("B", k)] + [("D", i) for i in reversed(range(k))]
+    x0, step = 1.55, 0.95
+    pos = {}
+
+    def stack(x, i, fc, ec):
+        hh = hgt(i)
+        for s_ in range(i + 1):                       # 단이 깊을수록(채널이 많을수록) 한 겹씩 더 쌓는다
+            ax.add_patch(Rectangle((x + s_ * off, yc - hh / 2 + s_ * off), sw, hh, fc=fc, ec=ec, lw=0.8,
+                                   zorder=10 - s_))
+        return x + i * off + sw, hh
+
+    for c, (kind, i) in enumerate(cols):
+        x = x0 + c * step
+        fc, ec = (("#c9d6e8", "#5b86bd") if kind != "D" else ("#cdeee1", "#3f9a77"))
+        xr, hh = stack(x, i, fc, ec)
+        pos[(kind, i)] = (x, xr, hh)
+        if kind != "D":                                # 디코더는 같은 단의 인코더와 크기가 같아 표지를 생략한다
+            ax.text((x + xr) / 2, yc - hh / 2 - 0.18, f"{chs[i]}ch\n{L >> i}", ha="center", va="top",
+                    fontsize=FS_S - 2, color=MS.INK2, linespacing=1.05)
+    for c in range(len(cols) - 1):                     # 흐름 화살표
+        a, b = pos[cols[c]], pos[cols[c + 1]]
+        ax.add_patch(FancyArrowPatch((a[1] + 0.03, yc), (b[0] - 0.03, yc), arrowstyle="-|>", mutation_scale=8,
+                                     color=MS.INK2, lw=0.8, zorder=12))
+    for i in range(k):                                 # 스킵 연결 — 같은 길이의 인코더 · 디코더를 잇는 점선 호
+        e, dd = pos[("E", i)], pos[("D", i)]
+        top = yc + hgt(i) / 2 + 0.15 + i * off
+        ya = yc + H0 / 2 + 0.3 + (k - 1 - i) * 0.25
+        xs = [(e[0] + e[1]) / 2, (e[0] + e[1]) / 2, (dd[0] + dd[1]) / 2, (dd[0] + dd[1]) / 2]
+        ax.plot(xs, [top, ya, ya, top], color="#8f8a80", lw=0.9, ls="--")
+    # 입력 · 추정 잡음 · 출력단 잔차
+    ax.add_patch(FancyBboxPatch((0.25, yc - 0.55), 1.05, 1.1, boxstyle="round,pad=0.02", fc="#ece9e1",
+                                ec="#8f8a80", lw=0.8))
+    ax.text(0.775, yc, "입력\ny", ha="center", va="center", fontsize=FS_S)
+    ax.add_patch(FancyArrowPatch((1.32, yc), (x0 - 0.04, yc), arrowstyle="-|>", mutation_scale=8, color=MS.INK2))
+    xl = pos[cols[-1]][1]
+    ax.add_patch(FancyBboxPatch((xl + 0.25, yc - 0.7), 1.6, 1.4, boxstyle="round,pad=0.02", fc="#f6c9c9",
+                                ec="#c25b5b", lw=0.8))
+    ax.text(xl + 1.05, yc + 0.3, "추정 잡음", ha="center", va="center", fontsize=FS_S - 2)
+    ax.text(xl + 1.05, yc - 0.28, r"$\hat{n}$", ha="center", va="center", fontsize=FS)
+    ax.add_patch(FancyArrowPatch((xl + 0.03, yc), (xl + 0.23, yc), arrowstyle="-|>", mutation_scale=8,
+                                 color=MS.INK2))
+    cx, cy = xl + 1.05, 1.5
+    ax.add_patch(Circle((cx, cy), 0.28, fc="white", ec=MS.INK2, lw=1.0))
+    ax.text(cx, cy, "-", ha="center", va="center", fontsize=FS, fontweight="bold")
+    ax.add_patch(FancyArrowPatch((cx, yc - 0.72), (cx, cy + 0.3), arrowstyle="-|>", mutation_scale=8,
+                                 color=MS.INK2))
+    ax.plot([0.775, 0.775, cx - 0.3], [yc - 0.57, cy, cy], color=MS.INK2, lw=1.0)
+    ax.add_patch(FancyArrowPatch((cx - 0.6, cy), (cx - 0.29, cy), arrowstyle="-|>", mutation_scale=8,
+                                 color=MS.INK2))
+    ax.text(6.2, cy + 0.12, "출력단 잔차 연결", ha="center", va="bottom", fontsize=FS_S - 1, color=MS.INK2)
+    ax.text(cx, cy - 0.42, r"출력 $\hat{x} = y - \hat{n}$", ha="center", va="top", fontsize=FS_S)
+    ax.text(0.25, 0.2, "높이: 신호 길이 · 겹: 채널 수 · 점선: 스킵 연결", ha="left", va="bottom",
+            fontsize=FS_S - 1, color=MS.INK2)
+    _save(fig, "T3", "T3_unet")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="판넬(A1) 전용 그림: 판넬 칸 크기 그대로, 그림 속 글자 14 pt 이상")
-    ap.add_argument("--only", nargs="*", default=None, help="F4 F5 F6 F7 T1 T2 중 일부만 생성")
+    ap.add_argument("--only", nargs="*", default=None, help="F4 F5 F6 F7 T1 T2 T3 중 일부만 생성")
     a = ap.parse_args()
-    want = set(a.only or ["F4", "F5", "F6", "F7", "T1", "T2"])
+    want = set(a.only or ["F4", "F5", "F6", "F7", "T1", "T2", "T3"])
     _ko_font()
     ensure_dir(OUT)
     need = set()
@@ -326,6 +454,8 @@ def main() -> int:
         t1_swt(cache)
     if "T2" in want:
         t2_kalman(cache)
+    if "T3" in want:
+        t3_unet()
     save_manifest(OUT, cfg={"panel_figs": sorted(want), "sizes_cm": SIZES},
                   sources=["scripts/make_panel_figs.py", "scripts/make_slides.py"])
     return 0

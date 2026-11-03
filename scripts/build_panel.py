@@ -258,23 +258,24 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     cards = [
         ("T1_swt.png", [
             H("① 정상 웨이블릿 변환(SWT) 적응 임계값 처리"),
-            [("가정 ", B), ("잡음은 크기가 작은 웨이블릿 계수에 분포한다.", {})],
+            "입력을 다섯 개 주파수 대역의 세부 계수로 분해하고, 대역마다 다른 임계값을 적용한 뒤 다시 합성한다.",
             EQ("eq_swt", r"\lambda_j = k_j\,\sigma\,\sqrt{2\ln N}\;\left(1-(1-\rho)\,g(t)\right)"),
-            "임계값 이하 계수를 제거한다. g(t): QRS 구간 완화.",
+            "k: 대역별 배율, σ: 잡음 표준편차, g(t): QRS 구간의 임계값 완화 함수.",
             [("장점 ", B), (f"무잡음 입력의 왜곡이 가장 작다(출력 SNR {n['clean_swt']:.1f} dB).", {})],
             [("한계 ", B), ("기저선 변동 · 임펄스 잡음은 제거하지 못한다.", {})],
         ]),
         ("T2_kalman.png", [
-            H("② 확장 칼만 평활기(Sameni 모델)"),
-            [("가정 ", B), ("ECG 한 주기는 위상 θ 위의 가우시안 합이다.", {})],
+            H("② 확장 칼만 평활기(McSharry 모델)"),
+            "ECG 한 주기를 심장 위상 θ 위 가우시안 함수(P · Q · R · S · T파)의 합으로 모델링한다.",
             EQ("eq_eks", r"\dot{\theta} = \omega,\quad \dot{z} = -\sum_i \frac{\alpha_i\,\omega}{b_i^2}\,"
                          r"\Delta\theta_i \exp\!\left(-\frac{\Delta\theta_i^2}{2\,b_i^2}\right)"),
+            "위상은 검출된 R파마다 0으로 재설정되고, 칼만 평활기가 상태 [θ, z]를 추정한다.",
             [("장점 ", B), ("모델과 맞는 합성 ECG에서 개선량이 크다(+16.2 dB).", {})],
             [("한계 ", B), ("R파 오검출 위치에 가성 QRS군을 만든다.", {})],
         ]),
-        ("D2_resunet.png", [
+        ("T3_unet.png", [
             H("③ 잔차 학습 1D U-Net"),
-            [("가정 ", B), ("신경망이 잡음을 추정하여 입력에서 뺀다.", {})],
+            "인코더가 신호 길이를 반씩 줄이며 채널을 늘리고, 디코더가 스킵 연결로 복원한 추정 잡음을 입력에서 뺀다.",
             EQ("eq_res", r"\hat{x} = y - f_\theta(y)"),
             EQ("eq_loss", r"\mathcal{L} = \mathcal{L}_{\mathrm{MSE}} + 0.5\,\mathcal{L}_{\mathrm{MAE}}"
                           r" + 0.3\,\mathcal{L}_{\mathrm{diff}} + \lambda\,\mathcal{L}_{\mathrm{clean}}"),
@@ -285,7 +286,7 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     ]
     y = 20.6
     for fig, paras in cards:
-        below = fig.startswith("D2")                 # 가로로 긴 그림(D2)은 글 아래에 칸 전체 폭으로 둔다
+        below = False                                # 세 카드 모두 그림을 글 오른쪽에 둔다(폭 통일)
         fw, fh = (0.0, 0.0) if below else PF.SIZES[fig.split("_")[0]]
         tw = 28.0 if below else 28.0 - fw - 0.4
         # 수식은 글상자 안에 두지 않고 한 줄을 통째로 쓰는 그림으로 놓는다(본문의 1.5 배).
