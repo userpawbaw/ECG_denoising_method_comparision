@@ -671,7 +671,7 @@ MAKE_SLIDES = ROOT / "scripts" / "make_slides.py"
 # 계열의 크기를 적은 세 문장. 목록이 늘면 여기도 같이 늘어야 한다.
 KO_COUNT = {6: "여섯", 7: "일곱", 8: "여덟", 9: "아홉", 10: "열", 11: "열한"}
 # 목록이 실린 두 자리 — 앞 조각에서 F 번호를 뽑는다.
-FAMILY_ANCHORS = ("은 성격이 같다", "는 전부 같은 모양이다")
+FAMILY_ANCHORS = ("은 성격이 같다", "는 모두 같은 유형이다")
 
 
 def _slides_const(name: str):
