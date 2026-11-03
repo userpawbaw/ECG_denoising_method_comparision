@@ -35,10 +35,10 @@ FS_S = 13          # 눈금 숫자
 
 # 판넬 칸 크기 [cm] — build_panel.py 가 이 크기로 놓는다
 SIZES = {
-    "F4": (18.2, 9.8),     # 결과: 입력 SNR 교차점
-    "F5": (18.2, 9.8),     # 결과: 칼만 가성 QRS군
-    "F6": (18.6, 9.8),     # 결과: 잡음 종류별 출력
-    "F7": (22.0, 11.0),    # 결과: 개선 시도 16종 (16 행)
+    "F4": (18.2, 10.4),    # 결과: 입력 SNR 교차점          ┐ 결과 구역은 2 × 2 (왼쪽 37 cm),
+    "F5": (18.2, 10.4),    # 결과: 칼만 가성 QRS군           │ 오른쪽 18 cm 는 고찰
+    "F6": (18.2, 10.4),    # 결과: 잡음 종류별 출력          │
+    "F7": (18.2, 10.4),    # 결과: 개선 시도 16종 (16 행)   ┘
     "T1": (13.4, 8.6),     # 이론 카드 ①: SWT 임계값 (입력 | D1~D5 | 출력)
     "T2": (13.4, 8.6),     # 이론 카드 ②: 칼만 모델 (1 주기 모델 | 위상 · 출력)
     "T3": (13.4, 8.6),     # 이론 카드 ③: 잔차 학습 U-Net (높이 = 신호 길이, 겹 = 채널 수)
@@ -107,7 +107,10 @@ def f4_crossover():
 
 # ------------------------------------------------------------------ F5 칼만 가성 QRS군
 def f5_phantom():
-    summ = json.loads(Path("results/d1/phantom/summary.json").read_text())
+    """발표용 S15 의 구성을 유지한다: 왼쪽 = 다섯 출력의 파형과 위양성 검출 위치(음영),
+    오른쪽 = 기법별 가성 QRS군 수(진한 막대 MIT-BIH, 옅은 막대 합성 ECG). 제목 · 설명문은 캡션 · 고찰로."""
+    summ = {t: json.loads(Path(f"results/{t}/phantom/summary.json").read_text()) for t in ("d1", "d0")
+            if Path(f"results/{t}/phantom/summary.json").exists()}
     ex = np.load("results/d1/phantom/example.npz", allow_pickle=True)
     fs = float(ex["fs"])
     t = (np.arange(len(ex["clean"])) - (int(ex["center"]) - int(ex["i0"]))) / fs
@@ -115,37 +118,44 @@ def f5_phantom():
     tol = int(round(0.075 * fs))
     w, h = SIZES["F5"]
     fig = plt.figure(figsize=(w * CM, h * CM))
-    gs = fig.add_gridspec(3, 2, width_ratios=[1.55, 1.0], wspace=0.55, hspace=0.25,
-                          left=0.17, right=0.97, top=0.96, bottom=0.17)
-    rows = [("noisy", "입력"), ("M05", "칼만\n평활기"), ("M06", "잔차\nU-Net")]
+    rows = [("noisy", "입력"), ("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 평활기"), ("M06", "잔차 U-Net")]
+    gs = fig.add_gridspec(len(rows), 2, width_ratios=[1.45, 1.0], wspace=0.62, hspace=0.12,
+                          left=0.19, right=0.985, top=0.97, bottom=0.15)
     lo, hi = np.percentile(np.r_[ex["clean"], ex["M06"]], [0.5, 99.5])
     pad = 0.35 * (hi - lo)
     for k, (key, lab) in enumerate(rows):
         ax = fig.add_subplot(gs[k, 0])
-        ax.plot(t, ex["clean"], color=MS.CLEAN, lw=2.6)
-        ax.plot(t, ex[key], color=MS.NOISY if key == "noisy" else MS.OUTK, lw=0.7 if key == "noisy" else 1.1)
+        ax.plot(t, ex["clean"], color=MS.CLEAN, lw=2.2)
+        ax.plot(t, ex[key], color=MS.NOISY if key == "noisy" else MS.OUTK, lw=0.6 if key == "noisy" else 0.9)
         if key != "noisy":
             for d in np.asarray(ex[f"det_{key}"]):
                 if ref.size == 0 or np.abs(ref - d).min() > tol:
                     ax.axvspan(t[d] - 0.2, t[d] + 0.2, color=MS.PHANTOM, alpha=0.22, lw=0)
             ax.set_ylim(lo - pad, hi + pad)
         ax.set_yticks([]); ax.grid(False)
-        ax.set_ylabel(lab, rotation=0, ha="right", va="center", fontsize=FS)
-        if k < 2:
+        ax.set_ylabel(lab, rotation=0, ha="right", va="center", fontsize=FS_S)
+        if k < len(rows) - 1:
             ax.set_xticklabels([])
     ax.set_xlabel("시간 [s]")
     ax = fig.add_subplot(gs[:, 1])
     ms = [("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 평활기"), ("M06", "잔차 U-Net")]
-    thr = str(summ["threshold"])
-    vals = [summ["methods"][m]["beatlike"][thr] for m, _ in ms]
-    cols = [MS.PHANTOM if m == "M05" else "#a8a59c" for m, _ in ms]
     yy = np.arange(len(ms))
-    ax.barh(yy, vals, color=cols, height=0.62)
-    for y, v in zip(yy, vals):
-        ax.text(v + max(vals) * 0.03, y, f"{v}", va="center", fontsize=FS)
-    ax.set_yticks(yy); ax.set_yticklabels([n for _, n in ms], fontsize=FS)
-    ax.invert_yaxis(); ax.set_xlim(0, max(vals) * 1.35)
+    top = 0
+    for tag, off, alpha in (("d1", -0.19, 1.0), ("d0", 0.19, 0.4)):
+        if tag not in summ:
+            continue
+        thr = str(summ[tag]["threshold"])
+        vals = [summ[tag]["methods"][m]["beatlike"][thr] for m, _ in ms]
+        top = max(top, max(vals))
+        ax.barh(yy + off, vals, height=0.36, alpha=alpha,
+                color=[MS.PHANTOM if m == "M05" else "#8f8a80" for m, _ in ms])
+        for y, v in zip(yy + off, vals):
+            ax.text(v + top * 0.03, y, f"{v}", va="center", fontsize=FS_S - 1)
+    ax.set_yticks(yy); ax.set_yticklabels([n for _, n in ms], fontsize=FS_S)
+    ax.invert_yaxis(); ax.set_xlim(0, top * 1.3)
     ax.set_xlabel("가성 QRS군 [건]")
+    ax.text(1.0, 0.02, "진한: MIT-BIH\n옅은: 합성 ECG", transform=ax.transAxes, ha="right", va="bottom",
+            fontsize=FS_S - 1, color=MS.INK2)
     ax.grid(axis="y", visible=False)
     _save(fig, "F5", "F5_phantom")
 
@@ -201,7 +211,7 @@ def f7_journey():
     keys = [("fixed_snr_imp_scaled", "전 구간"), ("band_15_20", "15~20 dB 구간")]
     w, h = SIZES["F7"]
     fig, axes = plt.subplots(1, 2, figsize=(w * CM, h * CM), sharey=True,
-                             gridspec_kw=dict(left=0.235, right=0.99, top=0.93, bottom=0.13, wspace=0.07))
+                             gridspec_kw=dict(left=0.3, right=0.99, top=0.93, bottom=0.13, wspace=0.08))
     ypos, y, last = [], 0.0, None
     for g, *_ in MS.JOURNEY:
         if last is not None and g != last:

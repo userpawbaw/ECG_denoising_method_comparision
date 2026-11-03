@@ -314,36 +314,37 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
         print(f"  경고: 이론적 배경 구역의 글이 구분선(51.0 cm)을 넘을 수 있다 (끝 {y:.1f} cm)")
 
     # ---- 결과 및 고찰 (하단 전폭) x 1.8 ~ 57.6, y 53.9 ~ 77.6
-    # 판넬 그림은 make_panel_figs.py 가 칸 크기 그대로 그린 것이다(축소 없음 — 그림 속 글자 14 pt 이상).
-    r1 = 53.9
-    row1 = [("F4_crossover.png", 1.8, f"그림 4. 공통 전처리 대비 딥러닝의 SNR 개선량. MIT-BIH는 약 {n['cross_db']:.0f} dB 이상에서 0 이하."),
-            ("F5_phantom.png", 20.4, f"그림 5. 칼만 평활기의 가성 QRS군(MIT-BIH). {n['ph_M05']}건, SWT의 약 {n['ph_x_swt']:.0f}배."),
-            ("F6_noise.png", 39.0, "그림 6. 잡음 종류별 출력(MIT-BIH, 입력 SNR −5 dB). 임펄스 잡음은 딥러닝만 제거.")]
-    yb = r1
-    for fig, x, capt in row1:
-        w, h = PF.SIZES[fig.split("_")[0]]
-        sh.image(PFIG / fig, x, r1, w, h)
-        hc = _text_h([capt], w, CAP_PT)
-        sh.text(x, r1 + h + 0.1, w, hc, capt, size=CAP_PT, color=INK2)
-        yb = max(yb, r1 + h + 0.1 + hc)
-    r2 = yb + 0.35
-    w7, h7 = PF.SIZES["F7"]
-    sh.image(PFIG / "F7_journey.png", 1.8, r2, w7, h7)
-    c7 = "그림 7. 잔차 U-Net 변경 16종의 효과(채운 점: p < 0.05)."
-    sh.text(1.8, r2 + h7 + 0.1, w7, _text_h([c7], w7, CAP_PT), c7, size=CAP_PT, color=INK2)
-    xg = 1.8 + w7 + 0.8
+    # 왼쪽 2 × 2 = 그림 4~7(make_panel_figs.py 가 칸 크기 그대로 그린 것, 그림 속 글자 13 pt 이상),
+    # 오른쪽 = 고찰. 캡션은 한 줄 제목만 두고 수치와 해석은 고찰 본문에 적는다.
+    figs = [("F4_crossover.png", "그림 4. 공통 전처리 대비 딥러닝의 SNR 개선량"),
+            ("F5_phantom.png", "그림 5. 기법별 가성 QRS군(음영: 위양성 검출 위치)"),
+            ("F6_noise.png", "그림 6. 잡음 종류별 출력(MIT-BIH, 입력 SNR −5 dB)"),
+            ("F7_journey.png", "그림 7. 잔차 U-Net 변경 16종의 효과(채운 점: p < 0.05)")]
+    gx, gy, r0 = 0.6, 0.35, 53.9
+    w, h = PF.SIZES["F4"]
+    hc = _text_h([figs[0][1]], w, CAP_PT)
+    for i, (fig, capt) in enumerate(figs):
+        x = 1.8 + (i % 2) * (w + gx)
+        yy = r0 + (i // 2) * (h + hc + 0.1 + gy)
+        sh.image(PFIG / fig, x, yy, w, h)
+        sh.text(x, yy + h + 0.1, w, hc, capt, size=CAP_PT, color=INK2)
+    yb = r0 + 2 * (h + hc + 0.1) + gy
+    xg = 1.8 + 2 * w + gx + 0.9
     disc = [
         H("고찰"),
-        "• 모든 조건에서 최적인 단일 기법은 없었다. 잡음 종류와 입력 SNR에 따라 기법을 선택해야 한다.",
-        "• 칼만 평활기는 모델 가정이 맞을 때 우수하나, 실측 기록에서는 실제 박동과 비슷한 가성 QRS군을 만들었다.",
-        f"• 잔차 학습 딥러닝은 가성 파형 생성이 가장 적었고, 무잡음 입력의 변형은 보존항으로 줄었다"
-        f"({n['clean_m06']:.1f} → {n['clean_l6']:.1f} dB).",
-        "• 구조 · 규모의 변경은 유의한 개선이 없었고, 유의한 개선은 손실 함수와 SNR 조건화에서만 관찰되었다(그림 7).",
+        f"• 딥러닝은 입력 SNR −5 dB에서 공통 전처리보다 {n['dl_gain_lo']:.1f} dB 높았으나, MIT-BIH에서는 약 "
+        f"{n['cross_db']:.0f} dB 이상에서 공통 전처리 단독이 더 높았다(그림 4). 모든 조건에서 최적인 단일 기법은 없었다.",
+        f"• 칼만 평활기는 위양성 검출 위치에 실제 박동과 비슷한 가성 QRS군을 만들었다(MIT-BIH {n['ph_M05']}건, "
+        f"SWT의 약 {n['ph_x_swt']:.0f}배, 그림 5). 잔차 학습 딥러닝의 가성 파형 생성이 가장 적었다.",
+        "• 기저선 변동은 공통 전처리만으로 제거되었고, 임펄스 잡음은 딥러닝만 제거하였다(그림 6).",
+        f"• 구조 · 규모의 변경은 유의한 개선이 없었고, 유의한 개선은 손실 함수와 SNR 조건화에서만 관찰되었다"
+        f"(보존항, 15~20 dB 구간 {n['l6_hi']:+.1f} dB, 그림 7).",
         [("한계 ", {"bold": True}), ("공개 데이터 두 종으로 평가하였고, 자체 장치 데이터 평가는 진행 중이다.", {})],
     ]
-    hd = _text_h(disc, 57.6 - xg, BODY_PT)
-    sh.text(xg, r2, 57.6 - xg, hd, disc, size=BODY_PT)
-    print(f"  결과 구역의 끝: 그림 7 {r2 + h7 + 0.8:.1f} cm, 고찰 {r2 + hd:.1f} cm (하단 77.6 cm)")
+    disc_pt = BODY_PT + 2                     # 고찰 칸은 세로 여유가 있어 본문보다 2 pt 크게 쓴다
+    hd = _text_h(disc, 57.6 - xg, disc_pt)
+    sh.text(xg, r0, 57.6 - xg, hd, disc, size=disc_pt)
+    print(f"  결과 구역의 끝: 그림 {yb:.1f} cm, 고찰 {r0 + hd:.1f} cm (하단 77.6 cm)")
     if not final:
         sh.text(40.0, 0.4, 18.0, 0.6, "시안: build_panel.py 자동 생성, 수치는 실험 산출물에서 읽음",
                 size=9, color=INK2)
