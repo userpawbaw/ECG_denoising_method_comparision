@@ -31,6 +31,8 @@ import _bootstrap  # noqa: F401
 import numpy as np
 from PIL import Image
 
+from panel_eq import render_eq
+
 OUT = Path("results/panel")
 SL = Path("results/slides")
 FONT = "맑은 고딕"
@@ -89,6 +91,33 @@ def numbers() -> dict:
     return n
 
 
+# ------------------------------------------------------------------ 수식
+BODY_PT = 14            # 이론 카드 본문 글자 크기
+EQ_PT = BODY_PT * 1.5   # 수식 글자 크기 — 본문의 1.5 배
+
+
+class EQ(tuple):
+    """카드 안의 수식 한 줄: (이름, LaTeX 원문)."""
+    def __new__(cls, name: str, tex: str):
+        return super().__new__(cls, (name, tex))
+
+
+def _text_h(paras, width_cm: float, size_pt: float) -> float:
+    """글상자 높이 추정(cm). 한글 1 em, 영문 · 숫자 0.55 em, 공백 0.3 em, 줄 간격 1.2 em."""
+    import math
+    em = size_pt * 0.03528
+    lines = 0
+    for para in paras:
+        runs = para if isinstance(para, list) else [(para, {})]
+        w = 0.0
+        for txt, st in runs:
+            k = st.get("size", size_pt) / size_pt
+            for ch in txt:
+                w += k * (1.0 if ord(ch) > 0x2E80 else 0.3 if ch == " " else 0.55)
+        lines += max(1, math.ceil(w * em / width_cm))
+    return lines * 1.2 * em + 0.1
+
+
 # ------------------------------------------------------------------ pptx 도우미
 class Sheet:
     """cm 단위로 놓고, 그림 면적을 센다."""
@@ -122,15 +151,26 @@ class Sheet:
                 f.color.rgb = RGBColor(*st.get("color", color))
         return tb
 
-    def image(self, path: Path, x, y, w, h):
+    def image(self, path: Path, x, y, w, h, valign="center"):
         """상자 (x, y, w, h) 안에 비율을 지켜 맞춘다. 실제로 놓인 크기를 돌려준다."""
         iw, ih = Image.open(path).size
         sc = min(w / iw, h / ih)
         ww, hh = iw * sc, ih * sc
-        xx, yy = x + (w - ww) / 2, y + (h - hh) / 2
+        xx, yy = x + (w - ww) / 2, (y if valign == "top" else y + (h - hh) / 2)
         self.s.shapes.add_picture(str(path), self.Cm(xx), self.Cm(yy), self.Cm(ww), self.Cm(hh))
         self.img_area += ww * hh
         return xx, yy, ww, hh
+
+    def equation(self, path: Path, x, y, max_w) -> float:
+        """수식 그림을 원래 크기(600 dpi)로 놓는다. 칸보다 넓으면 줄인다. 놓인 높이(cm)를 돌려준다.
+        수식은 글이므로 그림 면적 비율에 넣지 않는다."""
+        iw, ih = Image.open(path).size
+        w, h = iw / 600 * 2.54, ih / 600 * 2.54
+        if w > max_w:
+            print(f"  경고: 수식 {path.name} 이 칸보다 넓어 {max_w / w:.0%} 로 줄였다")
+            w, h = max_w, h * max_w / w
+        self.s.shapes.add_picture(str(path), self.Cm(x), self.Cm(y), self.Cm(w), self.Cm(h))
+        return h
 
     def frame(self, x, y, w, h, label):
         """사진이 들어갈 빈 틀 — 저장소에 없는 자료. 면적은 그림으로 센다(채울 자리다)."""
@@ -210,7 +250,7 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
         ("S19_swt.png", 9.4, [
             H("① 정상 웨이블릿 변환(SWT) 적응 임계값 처리"),
             [("가정 ", B), ("잡음은 크기가 작은 웨이블릿 계수에 분포한다.", {})],
-            "λ_j = k_j · σ · √(2 ln N) · (1 − (1−ρ)·g(t))",
+            EQ("eq_swt", r"\lambda_j = k_j\,\sigma\,\sqrt{2\ln N}\;\left(1-(1-\rho)\,g(t)\right)"),
             "임계값 이하 계수는 잡음으로 간주하여 제거하고, 초과 계수는 축소한다(garrote thresholding). "
             "g(t)는 QRS 구간에서 임계값을 낮추는 완화 함수이다.",
             [("장점 ", B), (f"실제 적용 가능한 기법 중 무잡음 입력의 왜곡이 가장 작다(MIT-BIH, 출력 SNR "
@@ -221,7 +261,8 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
         ("S20_kalman_model.png", 14.6, [
             H("② 확장 칼만 평활기(EKS, Sameni 모델)"),
             [("가정 ", B), ("ECG 한 주기는 심장 위상 θ 위의 가우시안 함수 합으로 표현된다.", {})],
-            "θ̇ = ω,   ż = −Σ (α_i ω / b_i²) Δθ_i exp(−Δθ_i² / 2b_i²)",
+            EQ("eq_eks", r"\dot{\theta} = \omega,\qquad \dot{z} = -\sum_i \frac{\alpha_i\,\omega}{b_i^2}\,"
+                         r"\Delta\theta_i \exp\!\left(-\frac{\Delta\theta_i^2}{2\,b_i^2}\right)"),
             "상태 [θ, z]를 확장 칼만 필터로 추정한 뒤 후방 평활(RTS)을 적용한다.",
             [("장점 ", B), ("박동 파형이 모델의 가정(가우시안 함수 합)과 일치하는 합성 ECG에서는 SNR 개선량이 크다(입력 5 dB에서 +16.2 dB).", {})],
             [("한계 ", B), ("위상 기준점을 입력의 R파 검출로 정하므로, 위양성 검출(실제 R파가 없는 위치를 R파로 판정) "
@@ -230,11 +271,12 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
         ("S21_resunet.png", 14.6, [
             H("③ 잔차 학습 1D U-Net(Residual U-Net)"),
             [("가정 ", B), ("신경망이 잡음 성분을 추정하고 이를 입력에서 감산한다(잔차 학습).", {})],
-            "x̂ = y − f_θ(y)",
-            "손실 함수 = 평균제곱오차(MSE) + 0.5 × 평균절대오차(MAE) + 0.3 × 미분 오차 + λ × 무잡음 입력 보존항",
+            EQ("eq_res", r"\hat{x} = y - f_\theta(y)"),
+            EQ("eq_loss", r"\mathcal{L} = \mathcal{L}_{\mathrm{MSE}} + 0.5\,\mathcal{L}_{\mathrm{MAE}}"
+                          r" + 0.3\,\mathcal{L}_{\mathrm{diff}} + \lambda\,\mathcal{L}_{\mathrm{clean}}"),
+            "각 항: 평균제곱오차, 평균절대오차, 미분 오차, 무잡음 입력 보존항.",
             [("장점 ", B), (f"입력 SNR {n['cross_db']:.0f} dB 미만 구간과 임펄스 잡음에서 SNR 개선량이 공통 전처리보다 높고, "
-                          f"가성 파형 생성 에너지가 고전 필터 · SWT · 칼만 평활기보다 낮다(MIT-BIH, 대역통과 필터 대비 "
-                          f"약 {n['he_x_bp']:.1f}배 낮음).", {})],
+                          f"가성 파형 생성 에너지가 대역통과 필터의 약 1/{n['he_x_bp']:.1f}이다(MIT-BIH).", {})],
             [("한계 ", B), (f"잡음이 없는 입력도 변형하였다(무잡음 입력의 출력 SNR {n['clean_m06']:.1f} dB). 손실 함수에 "
                           f"무잡음 입력 보존항을 추가하여 이를 {n['clean_l6']:.1f} dB로 높였다(MIT-BIH).", {})],
         ]),
@@ -242,9 +284,24 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     y = 22.2
     for fig, fw, paras in cards:
         tw = 28.0 - fw - 0.4
-        sh.text(29.5, y, tw, 9.0, paras, size=14)
-        sh.image(SL / fig, 29.5 + tw + 0.4, y, fw, 9.0)
-        y += 9.5
+        # 수식은 글상자 안에 두지 않고 한 줄을 통째로 쓰는 그림으로 놓는다(본문 14 pt 의 1.5 배).
+        # 글상자를 수식 앞 · 뒤로 나누고, 앞 글상자의 높이는 글자 폭으로 추정한다.
+        yy, block = y, []
+        for para in paras + [None]:
+            if para is None or isinstance(para, EQ):
+                if block:
+                    h = _text_h(block, tw, 14)
+                    sh.text(29.5, yy, tw, h, block, size=14)
+                    yy += h
+                    block = []
+                if para is not None:
+                    yy += sh.equation(render_eq(para, EQ_PT), 29.5, yy + 0.12, tw) + 0.3
+            else:
+                block.append(para)
+        _, _, _, ih = sh.image(SL / fig, 29.5 + tw + 0.4, y, fw, 9.0, valign="top")
+        y += max(yy - y, ih) + 0.45        # 다음 카드는 글과 그림 중 긴 쪽 아래에서 시작한다
+    if y > 51.0:
+        print(f"  경고: 이론적 배경 구역의 글이 구분선(51.0 cm)을 넘을 수 있다 (끝 {y:.1f} cm)")
 
     # ---- 결과 및 고찰 (하단 전폭) x 1.8 ~ 57.6, y 53.6 ~ 77.6
     r1, r2 = 54.0, 66.0
