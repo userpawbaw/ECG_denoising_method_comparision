@@ -446,7 +446,7 @@ def s5_crossover():
     ax.set_title("공통 전처리 대비 딥러닝(웨이블릿 부대역 U-Net)의 SNR 개선량\n"
                  "채운 표식: 통계적으로 유의 (대응 Wilcoxon 검정, Holm 보정, 기록 22개)",
                  fontsize=12)
-    ax.text(0.015, 0.03, "0 이하: 공통 전처리 단독이 우수",
+    ax.text(0.015, 0.03, "0 이하: 공통 전처리 단독의 SNR 개선량이 더 높음",
             transform=ax.transAxes, fontsize=10, color=INK2)
     # 표식의 채움 여부가 무엇을 뜻하는지는 직접 라벨로는 전할 수 없다.
     from matplotlib.lines import Line2D
@@ -1493,7 +1493,7 @@ def s15_kalman_phantom(TXT):
     ax.set_yticks(yy)
     ax.set_yticklabels(["공통 전처리", "SWT 임계값 처리", "확장 칼만 평활기", "잔차 학습 U-Net"], fontsize=10)
     ax.invert_yaxis()
-    ax.set_xlabel("가성 QRS군 수 (출력의 평균 박동과 상관계수 0.8 초과)")
+    ax.set_xlabel("가성 QRS군 수 (위양성 검출 위치의 출력 파형과 평균 박동의 상관계수 0.8 초과)")
     ax.set_title("진한 막대: MIT-BIH 실측 기록, 옅은 막대: 합성 ECG\n입력 SNR -5, 0 dB, 백색 및 혼합 잡음, 데이터별 88개 구간",
                  fontsize=10, color=INK2)
     ax.margins(x=0.62)
@@ -1501,7 +1501,7 @@ def s15_kalman_phantom(TXT):
     d1 = summ["d1"]["methods"]
     thr = str(summ["d1"]["threshold"])
     k5, k4, k6 = (d1[m]["beatlike"][thr] for m in ("M05", "M04", "M06"))
-    fig.suptitle("기법별 가성 QRS군 생성: 대표 사례(좌)와 발생 수(우)\n"
+    fig.suptitle("기법별 가성 QRS군 생성: 칼만 평활기의 발생이 가장 많은 구간(좌)과 기법별 발생 수(우)\n"
                  f"MIT-BIH 실측 기록: 확장 칼만 평활기 {k5}건, SWT 임계값 처리 {k4}건, 잔차 학습 U-Net {k6}건 "
                  f"(SWT 대비 {k5 / max(k4, 1):.0f}배, U-Net 대비 {k5 / max(k6, 1):.0f}배)",
                  fontsize=12.5, x=0.5, y=1.02)
@@ -1582,7 +1582,7 @@ def s16_wavelet_placement(TXT):
         ax0.scatter(d, [i] * len(d), s=26, color="#8a8a8a", zorder=3)
         ax0.scatter([m], [i], s=170, color=PHANTOM if sig and m < 0 else "#184f95" if sig else SURFACE,
                     edgecolor=PHANTOM if m < 0 else "#184f95", lw=2, zorder=4)
-        verdict = "유의한 성능 저하" if sig and m < 0 else "유의한 개선" if sig else "유의한 차이 없음"
+        verdict = "SNR 개선량의 유의한 감소" if sig and m < 0 else "유의한 개선" if sig else "유의한 차이 없음"
         ax0.annotate(f"{m:+.2f} dB  (p = {p:.3f}, n = {len(d)}): {verdict}", (m, i),
                      xytext=(0, 14), textcoords="offset points", ha="center", fontsize=10,
                      color=INK)
@@ -1607,7 +1607,7 @@ def s16_wavelet_placement(TXT):
     ax1.set_ylabel("무잡음 입력 시 출력 SNR [dB]")
     ax1.set_title("무잡음 신호 보존\n옅은 막대: 합성 ECG, 진한 막대: MIT-BIH", fontsize=10.5, color=INK2)
     ax1.grid(axis="x", visible=False)
-    fig.suptitle("웨이블릿 결합 위치에 따른 구조와 성능 비교\n"
+    fig.suptitle("웨이블릿 결합 위치에 따른 구조와 SNR 개선량 · 무잡음 입력 보존 비교\n"
                  "주황: 웨이블릿 변환(SWT), 파랑: 동일한 잔차 학습 U-Net", fontsize=13)
     fig.savefig(OUT / "S16_wavelet_placement.png", dpi=175, bbox_inches="tight"); plt.close(fig)
     print("  S16_wavelet_placement.png")
@@ -1695,7 +1695,7 @@ def s17_dl_journey(TXT):
     which = ", ".join(sorted(allg)) or "없음"
     ema = _paired("d41", "m06_l1_ema", "m06_l1", "fixed_snr_imp_scaled", "d40_ref")
     if ema is not None:
-        fig.text(0.01, -0.01, "※ 정규화 제거와 EMA의 기준 모델은 다른 소프트웨어 환경(torch 2.13)에서 학습되었다. "
+        fig.text(0.01, -0.01, "※ 정규화 제거와 EMA의 기준 모델은 다른 소프트웨어 버전에서 학습되었다. "
                  f"동일 환경 기준 EMA의 효과는 전 구간 {ema[0]:+.2f} dB로 유의하지 않으며, "
                  "동일 환경에서도 유지되는 효과만 채운 점으로 표시하였다.",
                  fontsize=9.2, color=INK2)
@@ -1713,7 +1713,7 @@ def s18_pipeline(TXT):
     fig, ax = plt.subplots(figsize=(14.0, 6.4))
     ax.set_xlim(0, 14); ax.set_ylim(-0.5, 6.4); ax.axis("off")
     _box(ax, 0.2, 3.6, 2.3, 1.9, "신호 취득\n전극 → AD8232\n→ Arduino Uno\n표본화 250 Hz", BOXC["acq"], bold=False)
-    _box(ax, 0.2, 0.9, 2.3, 2.2, "평가 데이터\n합성 ECG (McSharry 모델)\nMIT-BIH + NSTDB 잡음\n자체 장치 실측 (진행 중)", BOXC["acq"], fs=9.8)
+    _box(ax, 0.2, 0.9, 2.3, 2.2, "평가 데이터\n합성 ECG (McSharry 모델)\nMIT-BIH 기록과 NSTDB 실측 잡음\n자체 장치 실측 (진행 중)", BOXC["acq"], fs=9.8)
     _box(ax, 3.1, 2.6, 2.3, 2.2, "공통 전처리\n고역통과 0.5 Hz\n저역통과 100 Hz\n노치 필터 (조건부)", BOXC["fe"])
     _arrow(ax, 2.5, 4.5, 3.1, 4.0); _arrow(ax, 2.5, 2.0, 3.1, 3.1)
     fam = [("고전 필터\n대역통과 필터 · Savitzky-Golay", BOXC["cls"]),
@@ -1731,7 +1731,7 @@ def s18_pipeline(TXT):
     _box(ax, 10.1, 0.25, 3.7, 1.15, "시연 시스템\n녹음 신호 비교 · 실시간 처리", "#f3f1ea", fs=9.6)
     for i in range(5):
         _arrow(ax, 9.5, 5.81 - i * 1.12, 10.1, 4.6 if i < 3 else 2.4)
-    ax.text(7.0, -0.35, "잡음 7종 × 입력 SNR 7단계 (-5~25 dB), 기록 단위 대응 검정, 지표 분해능 사전 측정",
+    ax.text(7.0, -0.35, "잡음 7종, 입력 SNR 7단계(-5~25 dB), 기록 22개 단위 대응 검정, 지표별 최소 판별 차이(분해능) 사전 측정",
             ha="center", fontsize=9.8, color=INK2)
     fig.suptitle("비교 실험 구성: 동일 입력, 공통 전처리, 동일 평가 지표", fontsize=13)
     fig.savefig(OUT / "S18_pipeline.png", dpi=175, bbox_inches="tight"); plt.close(fig)
@@ -1896,7 +1896,7 @@ def s21_resunet(TXT):
     ax.annotate("", (9.0, 0.88), (0.45, 3.08),
                 arrowprops=dict(arrowstyle="-|>", color=INK2, lw=1.3, connectionstyle="angle,angleA=-90,angleB=180"))
     ax.text(6.0, 5.35, f"잔차 학습 1D U-Net: 해상도 {len(chs)}단계, 단계별 잔차 블록 1개"
-            f"(합성곱 k=9, 그룹 정규화, SiLU 2회와 항등 연결), 파라미터 {npar / 1e3:.0f}K",
+            f"(합성곱 k=9, 그룹 정규화, SiLU 활성화 함수 2회와 항등 연결), 파라미터 {npar / 1e3:.0f}K",
             ha="center", fontsize=10.5, color=INK)
     ax.text(4.4, 1.55, "손실 함수 = MSE + 0.5 MAE + 0.3 미분 오차 + λ · 무잡음 입력 보존항\n"
             "보존항: 무잡음 입력에 대한 출력 변화를 억제", ha="center", fontsize=10, color="#184f95")

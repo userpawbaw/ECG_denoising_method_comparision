@@ -122,7 +122,10 @@ def test_examples_point_at_real_candidates():
         texts = {r["text"] for r in csv.DictReader(f)}
     origs = re.findall(r"^- \*\*원문\*\* — (.*)$", md, re.M)
     assert len(origs) >= 20
-    assert all(o in texts for o in origs)
+    # 예시는 그 시점의 후보에서 골랐다. 이후 교정으로 원문에서 사라진 것은 반영된 것이고,
+    # 아직 원문에 남아 있다면 지금도 후보로 잡혀야 한다(규칙이 예시를 놓치면 안 된다).
+    corpus = {u.text for u in sr.corpus()}
+    assert all(o in texts for o in origs if o in corpus)
 
 
 def test_f2_reflects_user_verdicts():

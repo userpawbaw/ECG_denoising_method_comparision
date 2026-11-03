@@ -1,8 +1,8 @@
 {
   "env": {
     "python": "3.13.18",
-    "platform": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39",
-    "git": "0888743",
+    "platform": "Linux-6.18.44-fc-v230-x86_64-with-glibc2.39",
+    "git": "b897cdd",
     "numpy": "2.5.3",
     "scipy": "1.18.1",
     "pywt": "1.8.0",
@@ -15,7 +15,7 @@
     "snr": -5.0
   },
   "sources": {
-    "scripts/make_slides.py": "5f6ab199dc2d77e2",
+    "scripts/make_slides.py": "789b27aac6c82e1f",
     "scripts/run_exp.py": "4b5eeb596c0d7ccd",
     "ecgdn/data/dataset.py": "096a0be31d976980",
     "ecgdn/methods/frontend.py": "f1806de8d2667faf",

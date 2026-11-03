@@ -714,7 +714,7 @@ def test_measurement_trap_count_words_match_the_list():
     n = len(_family_lists()[0])
     word = KO_COUNT[n]
     text = REPORT.read_text(encoding="utf-8")
-    for phrase in (f"{word} 다 ", f"{word} 건 모두", f"앞의 {word} 건은"):
+    for phrase in (f"{word} 건은 모두", f"{word} 건 모두", f"앞의 {word} 건은"):
         assert phrase in text, f"보고서에 '{phrase}' 가 없다 (계열은 {n} 건)"
 
 
