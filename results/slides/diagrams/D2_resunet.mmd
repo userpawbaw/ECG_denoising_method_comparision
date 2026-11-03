@@ -1,0 +1,37 @@
+flowchart LR
+Y["<div style='height:65px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>입력<br/>y</div>"]:::data
+E0["<div style='height:130px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>24ch<br/>1024</div>"]:::enc
+E1["<div style='height:65px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>32ch<br/>512</div>"]:::enc
+E2["<div style='height:44px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>48ch<br/>256</div>"]:::enc
+E3["<div style='height:44px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>64ch<br/>128</div>"]:::enc
+B["<div style='height:44px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>96ch<br/>64</div>"]:::enc
+D3["<div style='height:44px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>64ch<br/>128</div>"]:::dec
+D2["<div style='height:44px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>48ch<br/>256</div>"]:::dec
+D1["<div style='height:65px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>32ch<br/>512</div>"]:::dec
+D0["<div style='height:130px;width:58px;display:flex;align-items:center;justify-content:center;line-height:1.2'>24ch<br/>1024</div>"]:::dec
+NH["추정<br/>잡음 n̂"]:::est
+SUB(("<span style='font-size:26px'>-</span>")):::op
+X["출력<br/>x̂ = y - n̂"]:::out
+Y --> E0 --> E1 --> E2 --> E3 --> B --> D3 --> D2 --> D1 --> D0 --> NH --> SUB --> X
+E0 -.- D0
+E1 -.- D1
+E2 -.- D2
+E3 -.- D3
+Y -- 출력단 잔차 연결 --> SUB
+
+classDef data fill:#ece9e1,stroke:#8f8a80,color:#1a1613
+classDef noise fill:#f3e6cf,stroke:#b39257,color:#1a1613
+classDef fe fill:#f6d6e3,stroke:#b5718d,color:#1a1613
+classDef cls fill:#d5e4f7,stroke:#5b86bd,color:#1a1613
+classDef tf fill:#fbdccc,stroke:#c77c55,color:#1a1613
+classDef mb fill:#fbecc2,stroke:#b8962e,color:#1a1613
+classDef dl fill:#cdeee1,stroke:#3f9a77,color:#1a1613
+classDef ub fill:#e4e2dc,stroke:#8f8a80,color:#1a1613,stroke-dasharray:4 3
+classDef ev fill:#e6e5f4,stroke:#6f6aa8,color:#1a1613
+classDef enc fill:#c9d6e8,stroke:#5b86bd,color:#1a1613
+classDef dec fill:#cdeee1,stroke:#3f9a77,color:#1a1613
+classDef op fill:#ffffff,stroke:#52514e,color:#1a1613
+classDef out fill:#fbecc2,stroke:#b8962e,color:#1a1613
+classDef est fill:#f6c9c9,stroke:#c25b5b,color:#1a1613
+
+linkStyle default stroke:#52514e,stroke-width:1.6px

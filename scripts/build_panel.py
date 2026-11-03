@@ -35,6 +35,7 @@ from panel_eq import render_eq
 
 OUT = Path("results/panel")
 SL = Path("results/slides")
+DG = SL / "diagrams"     # mermaid 블록선도 (scripts/make_diagrams.py)
 FONT = "맑은 고딕"
 INK = (0x1a, 0x16, 0x13)
 INK2 = (0x5a, 0x55, 0x50)
@@ -113,9 +114,9 @@ def _text_h(paras, width_cm: float, size_pt: float) -> float:
         for txt, st in runs:
             k = st.get("size", size_pt) / size_pt
             for ch in txt:
-                w += k * (1.0 if ord(ch) > 0x2E80 else 0.3 if ch == " " else 0.55)
-        lines += max(1, math.ceil(w * em / width_cm))
-    return lines * 1.2 * em + 0.1
+                w += k * (1.0 if ord(ch) > 0x2E80 else 0.3 if ch == " " else 0.58)
+        lines += max(1, math.ceil(w * em * 1.06 / width_cm))   # 1.06: 줄바꿈이 낱말 단위라 생기는 빈칸
+    return lines * 1.25 * em + 0.1
 
 
 # ------------------------------------------------------------------ pptx 도우미
@@ -234,56 +235,59 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     sh.text(1.9, 20.4, 25.7, 2.2, "단일 조건에서 기법의 우열을 판정하는 대신, 잡음 종류와 입력 SNR에 따라 적합한 "
             "기법이 달라지는지를 분석하였다. 비교의 공정성을 위해 평가 체계를 기법 구현보다 먼저 확정하였다.",
             size=16)
-    sh.image(SL / "S18_pipeline.png", 1.9, 22.9, 25.7, 13.5)
-    sh.text(1.9, 36.5, 25.7, 1.0, "그림 1. 비교 실험 구성. 신호 취득, 공통 전처리, 네 계열의 잡음 제거 기법, "
-            "이상적 상한(기준 신호를 아는 최적 필터), 4개 범주의 평가 지표.", size=13, color=INK2)
-    sh.frame(1.9, 37.9, 12.5, 11.0, "사진: 신호 취득 장치\n(전극, AD8232, Arduino Uno)\n[사진 삽입 예정]")
-    sh.image(OUT / "demo_mode_b.png", 15.1, 37.9, 12.5, 11.0)
-    sh.text(1.9, 49.1, 12.5, 1.0, "그림 2. 신호 취득 장치.", size=13, color=INK2)
-    sh.text(15.1, 49.1, 12.5, 1.6, "그림 3. 시연 화면(녹음 신호 비교 모드, 임펄스 잡음, 입력 SNR 0 dB).",
+    # 블록선도는 mermaid 판(scripts/make_diagrams.py). 상자에는 핵심어만 두고 세부는 캡션으로 옮겼다.
+    sh.image(DG / "D1_pipeline.png", 1.9, 22.9, 25.7, 13.4)
+    sh.text(1.9, 36.4, 25.7, 1.4, "그림 1. 비교 실험 구성. 지표 4범주: 재구성 오차 · 파형 보존 · R파 검출 · 주파수 특성. "
+            "가성 파형 생성 검증: 박동 삭제 · 무수축 · 심실조기수축. 이상적 상한: 기준 신호를 아는 최적 필터.",
+            size=13, color=INK2)
+    sh.frame(1.9, 38.1, 12.5, 11.6, "사진: 신호 취득 장치\n(전극, AD8232, Arduino Uno)\n[사진 삽입 예정]")
+    sh.image(OUT / "demo_mode_b.png", 15.1, 38.1, 12.5, 11.6)
+    sh.text(1.9, 49.9, 12.5, 1.0, "그림 2. 신호 취득 장치.", size=13, color=INK2)
+    sh.text(15.1, 49.9, 12.5, 1.6, "그림 3. 시연 화면(녹음 신호 비교 모드, 임펄스 잡음, 입력 SNR 0 dB).",
             size=13, color=INK2)
 
     # ---- 이론적 배경 (우) x 29.5 ~ 57.5
     sh.text(29.5, 20.4, 28.0, 1.4, "대표 기법 세 가지의 기본 가정과 그에 따른 장점 및 한계", size=16)
     B = {"bold": True}
     cards = [
-        ("S19_swt.png", 9.4, [
+        ("S19_swt.png", (9.4, 7.8), [
             H("① 정상 웨이블릿 변환(SWT) 적응 임계값 처리"),
             [("가정 ", B), ("잡음은 크기가 작은 웨이블릿 계수에 분포한다.", {})],
             EQ("eq_swt", r"\lambda_j = k_j\,\sigma\,\sqrt{2\ln N}\;\left(1-(1-\rho)\,g(t)\right)"),
-            "임계값 이하 계수는 잡음으로 간주하여 제거하고, 초과 계수는 축소한다(garrote thresholding). "
-            "g(t)는 QRS 구간에서 임계값을 낮추는 완화 함수이다.",
+            "임계값 이하 계수를 제거하고 초과 계수는 축소한다(garrote thresholding). g(t)는 QRS 구간의 임계값 완화 함수이다.",
             [("장점 ", B), (f"실제 적용 가능한 기법 중 무잡음 입력의 왜곡이 가장 작다(MIT-BIH, 출력 SNR "
                           f"{n['clean_swt']:.1f} dB).", {})],
             [("한계 ", B), ("기저선 변동과 임펄스 잡음은 계수 크기로 구분되지 않아 제거되지 않는다.", {})],
-            [("비고 ", B), ("MIT-BIH 실측 기록에서는 hard thresholding(임계값 이하 계수 제거, 초과 계수 유지)이 최적이었다.", {})],
+            [("비고 ", B), ("MIT-BIH 실측 기록에서는 hard thresholding(초과 계수 유지)이 최적이었다.", {})],
         ]),
-        ("S20_kalman_model.png", 14.6, [
+        ("S20_kalman_model.png", (13.5, 7.8), [
             H("② 확장 칼만 평활기(EKS, Sameni 모델)"),
-            [("가정 ", B), ("ECG 한 주기는 심장 위상 θ 위의 가우시안 함수 합으로 표현된다.", {})],
+            [("가정 ", B), ("ECG 한 주기는 심장 위상 θ 위의 가우시안 함수 합이다.", {})],
             EQ("eq_eks", r"\dot{\theta} = \omega,\qquad \dot{z} = -\sum_i \frac{\alpha_i\,\omega}{b_i^2}\,"
                          r"\Delta\theta_i \exp\!\left(-\frac{\Delta\theta_i^2}{2\,b_i^2}\right)"),
-            "상태 [θ, z]를 확장 칼만 필터로 추정한 뒤 후방 평활(RTS)을 적용한다.",
-            [("장점 ", B), ("박동 파형이 모델의 가정(가우시안 함수 합)과 일치하는 합성 ECG에서는 SNR 개선량이 크다(입력 5 dB에서 +16.2 dB).", {})],
-            [("한계 ", B), ("위상 기준점을 입력의 R파 검출로 정하므로, 위양성 검출(실제 R파가 없는 위치를 R파로 판정) "
-                          "위치에서 QRS 파형이 생성된다.", {})],
+            "상태 [θ, z]를 확장 칼만 필터로 추정한 뒤 후방 평활(RTS)한다.",
+            [("장점 ", B), ("박동 파형이 모델 가정과 일치하는 합성 ECG에서 SNR 개선량이 크다(입력 5 dB, +16.2 dB).", {})],
+            [("한계 ", B), ("위상 기준을 입력의 R파 검출로 정하므로, 위양성 검출(R파가 없는 위치를 R파로 판정) "
+                          "위치에 QRS 파형을 생성한다.", {})],
         ]),
-        ("S21_resunet.png", 14.6, [
+        ("D2_resunet.png", "below", [
             H("③ 잔차 학습 1D U-Net(Residual U-Net)"),
-            [("가정 ", B), ("신경망이 잡음 성분을 추정하고 이를 입력에서 감산한다(잔차 학습).", {})],
+            [("가정 ", B), ("신경망이 잡음을 추정하여 입력에서 뺀다(잔차 학습).", {})],
             EQ("eq_res", r"\hat{x} = y - f_\theta(y)"),
             EQ("eq_loss", r"\mathcal{L} = \mathcal{L}_{\mathrm{MSE}} + 0.5\,\mathcal{L}_{\mathrm{MAE}}"
                           r" + 0.3\,\mathcal{L}_{\mathrm{diff}} + \lambda\,\mathcal{L}_{\mathrm{clean}}"),
             "각 항: 평균제곱오차, 평균절대오차, 미분 오차, 무잡음 입력 보존항.",
             [("장점 ", B), (f"입력 SNR {n['cross_db']:.0f} dB 미만 구간과 임펄스 잡음에서 SNR 개선량이 공통 전처리보다 높고, "
                           f"가성 파형 생성 에너지가 대역통과 필터의 약 1/{n['he_x_bp']:.1f}이다(MIT-BIH).", {})],
-            [("한계 ", B), (f"잡음이 없는 입력도 변형하였다(무잡음 입력의 출력 SNR {n['clean_m06']:.1f} dB). 손실 함수에 "
-                          f"무잡음 입력 보존항을 추가하여 이를 {n['clean_l6']:.1f} dB로 높였다(MIT-BIH).", {})],
+            [("한계 ", B), (f"무잡음 입력도 변형하였으나(출력 SNR {n['clean_m06']:.1f} dB), 무잡음 입력 보존항을 "
+                          f"추가하여 {n['clean_l6']:.1f} dB로 높였다(MIT-BIH).", {})],
         ]),
     ]
     y = 22.2
-    for fig, fw, paras in cards:
-        tw = 28.0 - fw - 0.4
+    for fig, box, paras in cards:
+        below = box == "below"              # 가로로 긴 그림(D2)은 글 아래에 칸 전체 폭으로 둔다
+        fw, fh = (0.0, 0.0) if below else box
+        tw = 28.0 if below else 28.0 - fw - 0.4
         # 수식은 글상자 안에 두지 않고 한 줄을 통째로 쓰는 그림으로 놓는다(본문 14 pt 의 1.5 배).
         # 글상자를 수식 앞 · 뒤로 나누고, 앞 글상자의 높이는 글자 폭으로 추정한다.
         yy, block = y, []
@@ -298,8 +302,14 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
                     yy += sh.equation(render_eq(para, EQ_PT), 29.5, yy + 0.12, tw) + 0.3
             else:
                 block.append(para)
-        _, _, _, ih = sh.image(SL / fig, 29.5 + tw + 0.4, y, fw, 9.0, valign="top")
-        y += max(yy - y, ih) + 0.45        # 다음 카드는 글과 그림 중 긴 쪽 아래에서 시작한다
+        if below:
+            _, _, _, ih = sh.image(DG / fig, 29.5, yy + 0.1, 28.0, 6.0, valign="top")
+            y = yy + 0.1 + ih + 0.45
+        else:
+            _, _, _, ih = sh.image(SL / fig, 29.5 + tw + 0.4, y, fw, fh, valign="top")
+            print(f"  이론 카드 {fig}: 글 {yy - y:.1f} cm, 그림 {ih:.1f} cm")
+            y += max(yy - y, ih) + 0.45    # 다음 카드는 글과 그림 중 긴 쪽 아래에서 시작한다
+    print(f"  이론적 배경 구역의 끝: {y:.1f} cm (구분선 51.0 cm)")
     if y > 51.0:
         print(f"  경고: 이론적 배경 구역의 글이 구분선(51.0 cm)을 넘을 수 있다 (끝 {y:.1f} cm)")
 
@@ -346,7 +356,7 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     if not final:
         sh.text(40.0, 0.4, 18.0, 0.6, "시안: build_panel.py 자동 생성, 수치는 실험 산출물에서 읽음",
                 size=9, color=INK2)
-    print(f"  panel 그림 면적 비율 (본문 구역 대비): {sh.ratio():.0%}")
+    print(f"  panel 그림 면적 비율 (본문 구역 대비): {sh.ratio():.1%}")
     p = OUT / ("panel.pptx" if final else "panel_draft.pptx")
     prs.save(str(p))
     return p
@@ -371,7 +381,7 @@ def build_brochure(n: dict, final: bool = False) -> Path:
             "후처리 기법을 규명하는 것을 목표로 한다. 고전 필터, 웨이블릿 임계값 처리, 칼만 필터, 딥러닝의 네 계열을 "
             "동일한 입력 · 전처리 · 평가 지표로 비교하여, 잡음 종류와 입력 SNR에 따른 적합 기법을 제시한다.", size=10)
     sh.text(1.6, 7.2, 17.8, 0.7, [H("2. 작품 개요")])
-    sh.image(SL / "S18_pipeline.png", 1.6, 8.0, 17.8, 8.0)
+    sh.image(DG / "D1_pipeline.png", 1.6, 8.0, 17.8, 8.0)
     sh.text(1.6, 16.2, 17.8, 3.8, [
         "- 공통 전처리(0.5~100 Hz bandpass, 전원선 잡음 검출 시 notch) 후 네 계열의 기법과 이상적 상한(기준 "
         "신호를 아는 최적 필터)을 잡음 7종, 입력 SNR 7단계에서 비교",

@@ -1,0 +1,55 @@
+flowchart TB
+subgraph PREP[" "]
+  subgraph PREP_r[" "]
+    direction LR
+    subgraph IN["입력 신호"]
+      A1["합성 ECG"]:::data
+      A2["MIT-BIH 실측 기록"]:::data
+      A3["자체 장치 · AD8232"]:::data
+    end
+    N["잡음 7종 × 입력 SNR 7단계<br/>(-5~25 dB)"]:::noise
+    FE["공통 전처리<br/>0.5~100 Hz 대역 제한<br/>전원선 notch"]:::fe
+    IN --> N --> FE
+  end
+end
+subgraph M["잡음 제거 기법 (동일 입력)"]
+  subgraph M_r[" "]
+    direction TB
+    M1["고전 필터"]:::cls
+    M2["웨이블릿<br/>임계값 처리"]:::tf
+    M3["칼만 평활기"]:::mb
+    M4["딥러닝"]:::dl
+    UB["이상적 상한"]:::ub
+  end
+end
+subgraph EV["평가 (동일 지표)"]
+  subgraph EV_r[" "]
+    direction TB
+    E1["지표 4범주"]:::ev
+    E2["가성 파형 생성 검증"]:::ev
+  end
+end
+PREP --> M --> EV
+
+classDef data fill:#ece9e1,stroke:#8f8a80,color:#1a1613
+classDef noise fill:#f3e6cf,stroke:#b39257,color:#1a1613
+classDef fe fill:#f6d6e3,stroke:#b5718d,color:#1a1613
+classDef cls fill:#d5e4f7,stroke:#5b86bd,color:#1a1613
+classDef tf fill:#fbdccc,stroke:#c77c55,color:#1a1613
+classDef mb fill:#fbecc2,stroke:#b8962e,color:#1a1613
+classDef dl fill:#cdeee1,stroke:#3f9a77,color:#1a1613
+classDef ub fill:#e4e2dc,stroke:#8f8a80,color:#1a1613,stroke-dasharray:4 3
+classDef ev fill:#e6e5f4,stroke:#6f6aa8,color:#1a1613
+classDef enc fill:#c9d6e8,stroke:#5b86bd,color:#1a1613
+classDef dec fill:#cdeee1,stroke:#3f9a77,color:#1a1613
+classDef op fill:#ffffff,stroke:#52514e,color:#1a1613
+classDef out fill:#fbecc2,stroke:#b8962e,color:#1a1613
+classDef est fill:#f6c9c9,stroke:#c25b5b,color:#1a1613
+
+style PREP fill:none,stroke:none
+style PREP_r fill:none,stroke:none
+style IN fill:#faf9f6,stroke:#c9c5bb
+style M fill:#faf9f6,stroke:#c9c5bb
+style EV fill:#faf9f6,stroke:#c9c5bb
+style M_r fill:none,stroke:none
+style EV_r fill:none,stroke:none
