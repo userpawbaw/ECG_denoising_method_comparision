@@ -23,5 +23,9 @@ def render_eq(eq, pt: float, out_dir: Path = OUT) -> Path:
         fig = plt.figure(figsize=(0.01, 0.01))
         fig.text(0, 0, f"${tex}$", fontsize=pt, color="#1a1613")
         fig.savefig(out, dpi=600, transparent=True, bbox_inches="tight", pad_inches=0.02)
+        # 편집용 SVG: 글리프는 도형으로 저장한다(TeX 글꼴이 없는 PC 에서도 같은 모양). PowerPoint 에서
+        # 「도형으로 변환」하면 기호 하나하나를 고칠 수 있다.
+        with plt.rc_context({"svg.fonttype": "path"}):
+            fig.savefig(out.with_suffix(".svg"), transparent=True, bbox_inches="tight", pad_inches=0.02)
         plt.close(fig)
     return out

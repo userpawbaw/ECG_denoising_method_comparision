@@ -94,6 +94,114 @@ def numbers() -> dict:
     return n
 
 
+# ------------------------------------------------------------------ 편집 가능한 그림(SVG)
+SVG_EXT_URI = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"
+
+
+def add_picture(slide, png: Path, x, y, w, h):
+    """그림을 넣는다. 같은 이름의 SVG 가 있으면 SVG 를 본 그림으로, PNG 를 대체 그림으로 함께 넣는다.
+
+    PowerPoint(2016 이후)는 SVG 를 표시하고 「도형으로 변환」으로 편집할 수 있다. SVG 를 지원하지 않는
+    뷰어(LibreOffice 미리보기 등)는 PNG 를 표시한다. 저장 방식은 PowerPoint 가 SVG 를 넣을 때와 같다
+    (a:blip 의 확장 asvg:svgBlip).
+    """
+    from lxml import etree
+    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+    from pptx.opc.package import Part
+    from pptx.opc.packuri import PackURI
+    from pptx.util import Cm
+    pic = slide.shapes.add_picture(str(png), Cm(x), Cm(y), Cm(w), Cm(h))
+    svg = Path(png).with_suffix(".svg")
+    if not svg.exists():
+        return pic
+    pkg = slide.part.package
+    idx = 1 + sum(1 for p in pkg.iter_parts() if str(p.partname).startswith("/ppt/media/svg"))
+    part = Part(PackURI(f"/ppt/media/svg{idx}.svg"), "image/svg+xml", pkg, svg.read_bytes())
+    rid = slide.part.relate_to(part, RT.IMAGE)
+    blip = pic._element.blipFill.find("{http://schemas.openxmlformats.org/drawingml/2006/main}blip")
+    A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    ext_lst = etree.SubElement(blip, f"{{{A}}}extLst")
+    ext = etree.SubElement(ext_lst, f"{{{A}}}ext", uri=SVG_EXT_URI)
+    sb = etree.SubElement(ext, "{http://schemas.microsoft.com/office/drawing/2016/SVG/main}svgBlip",
+                          nsmap={"asvg": "http://schemas.microsoft.com/office/drawing/2016/SVG/main"})
+    sb.set("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed", rid)
+    return pic
+
+
+# ------------------------------------------------------------------ 실험 구성도(PowerPoint 도형)
+# make_diagrams.py 의 D1 과 같은 구성을 PowerPoint 도형으로 그린다 — 상자 · 글 · 화살표를 판넬에서 바로 고칠 수 있다.
+# 좌표는 25.7 × 13.2 cm 설계 공간 기준이고 s 배로 늘이거나 줄인다.
+_D1_FILL = {"data": ("ece9e1", "8f8a80"), "noise": ("f3e6cf", "b39257"), "fe": ("f6d6e3", "b5718d"),
+            "cls": ("d5e4f7", "5b86bd"), "tf": ("fbdccc", "c77c55"), "mb": ("fbecc2", "b8962e"),
+            "dl": ("cdeee1", "3f9a77"), "ub": ("e4e2dc", "8f8a80"), "ev": ("e6e5f4", "6f6aa8"),
+            "grp": ("faf9f6", "c9c5bb")}
+D1_W, D1_H = 25.7, 13.2
+
+
+def draw_pipeline(sheet, x0, y0, s=1.0, fpt=16):
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
+    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+    from pptx.oxml.ns import qn
+    from pptx.util import Cm, Pt
+    sh = sheet.s.shapes
+
+    def box(x, y, w, h, text, kind, size=fpt, dash=False, top=False):
+        b = sh.add_shape(MSO_SHAPE.RECTANGLE, Cm(x0 + x * s), Cm(y0 + y * s), Cm(w * s), Cm(h * s))
+        fc, lc = _D1_FILL[kind]
+        b.fill.solid(); b.fill.fore_color.rgb = RGBColor.from_string(fc)
+        b.line.color.rgb = RGBColor.from_string(lc); b.line.width = Pt(1.0)
+        if dash:
+            b.line.dash_style = 4                    # 점선 — 이상적 상한(실제로 적용할 수 없는 기준)
+        b.shadow.inherit = False
+        st = b._element.find(qn("p:style"))          # 양식 테마의 그림자 · 효과를 끊는다
+        if st is not None:
+            b._element.remove(st)
+        tf = b.text_frame
+        tf.word_wrap = True
+        tf.vertical_anchor = MSO_ANCHOR.TOP if top else MSO_ANCHOR.MIDDLE
+        for m in ("margin_left", "margin_right", "margin_top", "margin_bottom"):
+            setattr(tf, m, Cm(0.08))
+        for i, line in enumerate(text.split("\n")):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.alignment = PP_ALIGN.CENTER
+            r = p.add_run(); r.text = line
+            r.font.name, r.font.size, r.font.color.rgb = FONT, Pt(size), RGBColor(*INK)
+        return b
+
+    def arrow(xa, ya, xb, yb):
+        c = sh.add_connector(MSO_CONNECTOR.STRAIGHT, Cm(x0 + xa * s), Cm(y0 + ya * s), Cm(x0 + xb * s),
+                             Cm(y0 + yb * s))
+        c.line.color.rgb = RGBColor(0x52, 0x51, 0x4e); c.line.width = Pt(1.4)
+        st = c._element.find(qn("p:style"))
+        if st is not None:
+            c._element.remove(st)
+        ln = c.line._get_or_add_ln()
+        ln.append(ln.makeelement(qn("a:tailEnd"), {"type": "triangle", "w": "med", "len": "med"}))
+
+    g = fpt - 1
+    # 1 줄: 입력 신호 → 잡음 → 공통 전처리
+    box(0.0, 0.0, 12.0, 3.3, "입력 신호", "grp", size=g, top=True)
+    for i, t in enumerate(["합성 ECG", "MIT-BIH\n실측 기록", "자체 장치\nAD8232"]):
+        box(0.35 + i * 3.85, 1.05, 3.55, 1.8, t, "data")
+    box(12.9, 0.3, 6.1, 2.7, "잡음 7종\n입력 SNR 7단계\n(-5~25 dB)", "noise")
+    box(19.9, 0.3, 5.8, 2.7, "공통 전처리\n0.5~100 Hz 대역 제한\n전원선 notch", "fe")
+    arrow(12.0, 1.65, 12.9, 1.65); arrow(19.0, 1.65, 19.9, 1.65)
+    # 2 줄: 잡음 제거 기법 다섯
+    box(0.9, 4.3, 24.0, 4.0, "잡음 제거 기법(동일 입력)", "grp", size=g, top=True)
+    for i, (t, k) in enumerate([("고전 필터", "cls"), ("웨이블릿\n임계값 처리", "tf"), ("칼만 평활기", "mb"),
+                                ("딥러닝", "dl"), ("이상적 상한", "ub")]):
+        box(1.4 + i * 4.7, 5.35, 4.3, 2.4, t, k, dash=(k == "ub"))
+    arrow(22.8, 3.0, 22.8, 4.3)
+    # 3 줄: 평가
+    box(5.6, 9.3, 14.6, 3.9, "평가(동일 지표)", "grp", size=g, top=True)
+    box(6.2, 10.4, 6.3, 2.2, "지표 4범주", "ev")
+    box(13.3, 10.4, 6.3, 2.2, "가성 파형\n생성 검증", "ev")
+    arrow(12.9, 8.3, 12.9, 9.3)
+    sheet.img_area += D1_W * s * D1_H * s
+    return D1_H * s
+
+
 # ------------------------------------------------------------------ 수식
 BODY_PT = 18            # 본문 글자 크기 (A1 판넬, 1~2 m 거리에서 읽는 기준 18~24 pt)
 CAP_PT = 15             # 그림 캡션
@@ -162,7 +270,7 @@ class Sheet:
         sc = min(w / iw, h / ih)
         ww, hh = iw * sc, ih * sc
         xx, yy = x + (w - ww) / 2, (y if valign == "top" else y + (h - hh) / 2)
-        self.s.shapes.add_picture(str(path), self.Cm(xx), self.Cm(yy), self.Cm(ww), self.Cm(hh))
+        add_picture(self.s, path, xx, yy, ww, hh)
         self.img_area += ww * hh
         return xx, yy, ww, hh
 
@@ -174,7 +282,7 @@ class Sheet:
         if w > max_w:
             print(f"  경고: 수식 {path.name} 이 칸보다 넓어 {max_w / w:.0%} 로 줄였다")
             w, h = max_w, h * max_w / w
-        self.s.shapes.add_picture(str(path), self.Cm(x), self.Cm(y), self.Cm(w), self.Cm(h))
+        add_picture(self.s, path, x, y, w, h)
         return h
 
     def frame(self, x, y, w, h, label):
@@ -241,8 +349,7 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     sh.text(1.9, 20.4, 25.7, hi, intro, size=BODY_PT)
     y = 20.4 + hi + 0.2
     # 블록선도는 mermaid 판(scripts/make_diagrams.py). 상자에는 핵심어만 두고 세부는 캡션으로 옮겼다.
-    _, _, _, ih = sh.image(DG / "D1_pipeline.png", 1.9, y, 25.7, 13.4, valign="top")
-    y += ih + 0.15
+    y += draw_pipeline(sh, 1.9, y, s=1.0, fpt=15) + 0.2       # PowerPoint 도형 — 판넬에서 바로 고칠 수 있다
     c1 = "그림 1. 비교 실험 구성. 지표 4범주: 재구성 오차 · 파형 보존 · R파 검출 · 주파수 특성."
     hc = _text_h([c1], 25.7, CAP_PT)
     sh.text(1.9, y, 25.7, hc, c1, size=CAP_PT, color=INK2)
@@ -373,7 +480,7 @@ def build_brochure(n: dict, final: bool = False) -> Path:
             "후처리 기법을 규명하는 것을 목표로 한다. 고전 필터, 웨이블릿 임계값 처리, 칼만 필터, 딥러닝의 네 계열을 "
             "동일한 입력 · 전처리 · 평가 지표로 비교하여, 잡음 종류와 입력 SNR에 따른 적합 기법을 제시한다.", size=10)
     sh.text(1.6, 7.2, 17.8, 0.7, [H("2. 작품 개요")])
-    sh.image(DG / "D1_pipeline.png", 1.6, 8.0, 17.8, 8.0)
+    draw_pipeline(sh, 1.6 + (17.8 - D1_W * 0.6) / 2, 8.0, s=0.6, fpt=9)
     sh.text(1.6, 16.2, 17.8, 3.8, [
         "- 공통 전처리(0.5~100 Hz bandpass, 전원선 잡음 검출 시 notch) 후 네 계열의 기법과 이상적 상한(기준 "
         "신호를 아는 최적 필터)을 잡음 7종, 입력 SNR 7단계에서 비교",

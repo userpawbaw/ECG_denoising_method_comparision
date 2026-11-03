@@ -59,11 +59,28 @@ def _fig(key, **kw):
 
 
 def _save(fig, key, name):
+    """PNG(300 dpi)와 편집용 SVG 를 같은 크기로 저장한다.
+
+    SVG 는 글자를 글자로 남긴다(`svg.fonttype: none`). PowerPoint 에서 「도형으로 변환」하면 선 · 글자 · 색을
+    하나씩 고칠 수 있다. 글꼴 이름은 판넬을 여는 Windows 에 있는 맑은 고딕을 먼저 쓰도록 바꾼다.
+    """
     w, h = SIZES[key]
     fig.set_size_inches(w * CM, h * CM)
     fig.savefig(OUT / f"{name}.png", dpi=300)       # bbox 를 자르지 않는다 — 크기가 곧 판넬 칸이다
+    with plt.rc_context({"svg.fonttype": "none"}):
+        fig.savefig(OUT / f"{name}.svg")
+    _svg_font(OUT / f"{name}.svg")
     plt.close(fig)
-    print(f"  {OUT / name}.png  ({w} x {h} cm)")
+    print(f"  {OUT / name}.png · .svg  ({w} x {h} cm)")
+
+
+def _svg_font(path: Path) -> None:
+    """SVG 의 한글 글꼴 지정을 「맑은 고딕 → 나눔고딕」 순서로 바꾼다."""
+    import re
+    src = path.read_text(encoding="utf-8")
+    src = re.sub(r"font-family:\s*([^;\"]*)", lambda m: "font-family: 'Malgun Gothic', " + m.group(1)
+                 if "NanumGothic" in m.group(1) else m.group(0), src)
+    path.write_text(src, encoding="utf-8")
 
 
 # ------------------------------------------------------------------ F4 교차점
