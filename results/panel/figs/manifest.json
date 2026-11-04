@@ -2,7 +2,7 @@
   "env": {
     "python": "3.13.18",
     "platform": "Linux-6.18.44-fc-v233-x86_64-with-glibc2.39",
-    "git": "a56da9c",
+    "git": "45f52c6",
     "numpy": "2.5.3",
     "scipy": "1.18.1",
     "pywt": "1.8.0",
@@ -12,25 +12,24 @@
   },
   "config": {
     "panel_figs": [
-      "F4",
-      "F5"
+      "F7"
     ],
     "sizes_cm": {
       "F4": [
         12.0,
-        9.0
+        7.8
       ],
       "F6": [
         12.0,
-        9.0
+        7.8
       ],
       "F5": [
         12.0,
-        9.0
+        7.8
       ],
       "F7": [
         37.0,
-        12.0
+        13.2
       ],
       "T1": [
         13.4,
@@ -47,7 +46,7 @@
     }
   },
   "sources": {
-    "scripts/make_panel_figs.py": "10f6c6528741a5b1",
-    "scripts/make_slides.py": "67b2e7e94060f250"
+    "scripts/make_panel_figs.py": "a34554d84fc66050",
+    "scripts/make_slides.py": "2bbd9eecb8c93cd6"
   }
 }

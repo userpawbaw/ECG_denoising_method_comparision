@@ -59,6 +59,14 @@ LEXICON: list[tuple[str, str, str, str]] = [
     (r"못 ?(?:잼|잰|가림|가린|가려)", "B2", "구어 판정", "통계적으로 유의한 차이가 관찰되지 않았다(p 값 · n 병기)"),
     (r"(?<![가-힣])값을 (?:한다|못)", "B2", "구어", "효과가 있다 · 없다"),
     (r"우리(?:는|가|의|를)?(?![가-힣])", "D2", "1 인칭", "본 연구"),
+    # ---- A6. 출처 없이 직역한 용어 · 일상어 (2026-11-04 사용자 지적, docs/95 §3.1)
+    (r"특징 ?지도", "A6", "직역 조어(feature map) — 사용 사례 없음", "특징 맵(feature map) · 채널 수"),
+    (r"읽는 ?법", "A6", "일상어", "범례"),
+    (r"처방", "A6", "의학 은유 — 선행 연구의 목적이 드러나지 않는다", "기법의 목적 서술(예: 일반화 개선 목적)"),
+    (r"알린다|알려 ?준다|알려 ?주", "A6", "일상어 — 조건 입력의 방식이 드러나지 않는다",
+     "조건 입력한다(FiLM) · 조건 정보로 사용한다"),
+    (r"녹음", "A6", "소리에 쓰는 말 — 심전도는 녹음하지 않는다", "기록 · 저장 신호"),
+
     (r"했다", "D1", "구어체 과거형", "하였다"),
     (r"「|」|«|»", "B3", "강조용 인용부호", "삭제 — 용어 정의 시에만 작은따옴표"),
     (r"—", "B3", "줄표로 잇는 구어 연결", "쌍점 · 쉼표 · 괄호 · 문장 분리"),
@@ -71,6 +79,11 @@ _COMPILED = [(re.compile(p), r, why, alt) for p, r, why, alt in LEXICON]
 PANEL_SCRIPT = ROOT / "scripts" / "build_panel.py"
 PANEL_FUNCS = {"build_panel", "build_brochure"}
 SLIDES_SCRIPT = ROOT / "scripts" / "make_slides.py"
+# 판넬 전용 그림 — 판넬에 실리는 그림의 글은 여기서 나온다. 처음에는 대상에서 빠져 있어서
+# 그림 7 의 「특징 지도」가 검사 없이 판넬에 실렸다(2026-11-04).
+PANEL_FIGS_SCRIPT = ROOT / "scripts" / "make_panel_figs.py"
+PANEL_FIG_FUNCS = {"f4_crossover", "f5_phantom", "f6_noise", "f7_flow", "t1_swt", "t2_kalman", "t3_unet"}
+PANEL_FIG_CONSTS = {"FLOW"}
 # 판넬에 실리는 그림 — `docs/94_panel_plan.md` §4 의 배치와 같아야 한다
 PANEL_FIGS = {"s4_noise", "s5_crossover", "s15_kalman_phantom", "s16_wavelet_placement",
               "s17_dl_journey", "s18_pipeline", "s19_swt", "s20_kalman_model", "s21_resunet"}
@@ -110,7 +123,8 @@ def _strings(node: ast.AST) -> list[tuple[int, str]]:
 def targets() -> list[tuple[str, int, str]]:
     """(파일, 줄, 문자열) — 판넬 · 브로셔 · 판넬 그림에 실리는 글."""
     out = []
-    for path, funcs, consts in ((PANEL_SCRIPT, PANEL_FUNCS, set()),
+    for path, funcs, consts in ((PANEL_SCRIPT, PANEL_FUNCS, {"STEPS"}),
+                                (PANEL_FIGS_SCRIPT, PANEL_FIG_FUNCS, PANEL_FIG_CONSTS),
                                 (SLIDES_SCRIPT, PANEL_FIGS, PANEL_CONSTS)):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in tree.body:

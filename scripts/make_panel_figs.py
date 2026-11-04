@@ -35,10 +35,10 @@ FS_S = 13          # 눈금 숫자
 
 # 판넬 칸 크기 [cm] — build_panel.py 가 이 크기로 놓는다
 SIZES = {
-    "F4": (12.0, 9.0),     # 결과: 입력 SNR 교차점          ┐ 결과 구역 위 줄 = 그림 4 · 5 · 6(왼쪽 37 cm),
-    "F6": (12.0, 9.0),     # 결과: 잡음 종류별 출력(그림 5)  │ 아래 줄 = 그림 7(전폭), 오른쪽 18 cm 는 고찰
-    "F5": (12.0, 9.0),     # 결과: 칼만 가성 QRS군(그림 6)   ┘
-    "F7": (37.0, 12.0),    # 결과: 딥러닝 개선 과정의 단계 흐름(결과 구역 아래 줄 전폭)
+    "F4": (12.0, 7.8),     # 결과: 입력 SNR 교차점          ┐ 결과 구역 위 줄 = 그림 4 · 5 · 6(왼쪽 37 cm),
+    "F6": (12.0, 7.8),     # 결과: 잡음 종류별 출력(그림 5)  │ 아래 줄 = 그림 7(전폭), 오른쪽 18 cm 는 고찰
+    "F5": (12.0, 7.8),     # 결과: 칼만 가성 QRS군(그림 6)   ┘
+    "F7": (37.0, 13.2),    # 결과: 딥러닝 개선 과정의 단계 흐름(결과 구역 아래 줄 전폭)
     "T1": (13.4, 8.6),     # 이론 카드 ①: SWT 임계값 (입력 | D1~D5 | 출력)
     "T2": (13.4, 8.6),     # 이론 카드 ②: 칼만 모델 (1 주기 모델 | 위상 · 출력)
     "T3": (13.4, 8.6),     # 이론 카드 ③: 잔차 학습 U-Net (높이 = 신호 길이, 겹 = 채널 수)
@@ -138,7 +138,7 @@ def f5_phantom():
     rows = [("noisy", "입력"), ("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 평활기"), ("M06", "잔차 U-Net")]
     # 오른쪽 막대는 왼쪽 파형의 2~5 행과 같은 높이에 둔다 — 기법 이름은 왼쪽 행 이름 하나로 읽는다
     gs = fig.add_gridspec(len(rows), 2, width_ratios=[1.6, 1.0], wspace=0.06, hspace=0.12,
-                          left=0.22, right=0.985, top=0.97, bottom=0.16)
+                          left=0.22, right=0.985, top=0.97, bottom=0.2)
     lo, hi = np.percentile(np.r_[ex["clean"], ex["M06"]], [0.5, 99.5])
     pad = 0.35 * (hi - lo)
     for k, (key, lab) in enumerate(rows):
@@ -215,46 +215,75 @@ def f6_noise(cache):
 
 
 # ------------------------------------------------------------------ F7 개선 시도 16종
-SHORT = {"SWT 전처리 직렬 결합": "SWT 직렬 결합", "웨이블릿 특징 공간 결합": "웨이블릿 특징 공간",
-         "CNN + Transformer": "CNN-Transformer", "해상도 유지 (팽창 합성곱)": "시간 해상도 유지",
-         "깊이 2배 (파라미터 수 동일)": "깊이 2배", "깊이 4배 (파라미터 수 동일)": "깊이 4배",
-         "잔차 블록 4배 (파라미터 1.9배)": "잔차 블록 4배", "정규화 제거 (EDSR 방식)": "정규화 제거",
-         "가중치 지수이동평균 (EMA) ※": "가중치 EMA", "손실: MAE와 미분 오차 추가": "손실: MAE · 미분",
-         "손실: 무잡음 입력 보존항 추가": "손실: 보존항", "SNR 조건부 특징 변조 (FiLM)": "SNR 조건화",
-         "보존항 손실에 SNR 조건화 추가": "보존항 + 조건화",
-         "입력 SNR 15~20 dB 전용 학습 모델\n(회수 가능한 개선량의 상한 추정)": "15~20 dB 전용 모델"}
-
 
 # 단계: (번호, 질문, 목적, 시도 목록, 판정, 배경색). 시도 = (이름, 설명, [(sweep, arm, 기준 arm, 기준 sweep, 점 표지)])
 # 설명은 「무엇을 바꾸었나」를 한 문장으로 적는다. 판넬을 보는 사람은 M07 · L6 같은 기호를 모른다(사용자 피드백 2026-11-04).
+# 판정 문장의 {키} 는 그림을 그릴 때 Holm 보정 p 값으로 채운다. 키 = 「arm__all」(전 구간) · 「arm__hi」(15~20 dB).
+# 문안은 개조식 · 말머리 기호 두 개(사용자 지시 2026-11-04). 시도 설명은 「무엇을 바꾸었나」를 명사형으로 적는다.
 FLOW = [
-    ("②", "구조를 바꾸면?", "웨이블릿 · 해상도 · 문맥을 반영한다", [
-        ("SWT 직렬 결합", "SWT 출력을 U-Net에 넣는다", [("structure", "m07_l1", "m06_l1", None)]),
-        ("웨이블릿 부대역", "U-Net이 대역별 계수를 처리한다", [("structure", "m08_l1", "m06_l1", None)]),
-        ("시간 해상도 유지", "길이를 줄이지 않는 팽창 합성곱", [("structure", "m10_l1", "m06_l1", None)]),
-        ("CNN-Transformer", "어텐션으로 먼 구간을 함께 본다", [("structure", "m09_l1", "m06_l1", None)]),
-    ], "개선된 구조 없음\nSWT 직렬은 유의하게 낮다", "#f1f0ec"),
-    ("③", "모델을 키우면?", "용량이 부족한지 확인한다", [
-        ("채널 폭 1/2 · 1/4", "층마다 특징 지도 수를 줄인다", [("structure", "m06_l1_half", "m06_l1", None),
-                                                    ("structure", "m06_l1_quarter", "m06_l1", None)]),
-        ("깊이 2배 · 4배", "파라미터 수는 같게 층을 늘린다", [("depth", "m06_l1_deep2", "m06_l1", None),
-                                               ("depth", "m06_l1_deep4", "m06_l1", None)]),
-        ("잔차 블록 4배", "단계마다 블록 1개를 4개로 늘린다", [("blocks", "m06_l1_nb4", "m06_l1", None)]),
-    ], "줄여도 키워도 판정 불가\n용량은 병목이 아니다", "#f1f0ec"),
-    ("④", "학습법을 바꾸면?", "선행 연구의 처방", [
-        ("정규화 제거", "정규화 층을 뺀다(EDSR 방식)", [("d41", "m06_l1_nonorm", "m06_l1", "l6cond")]),
-        ("가중치 EMA", "가중치 이동평균으로 평가한다", [("d41", "m06_l1_ema", "m06_l1", "l6cond")]),
-    ], "개선 없음 · 정규화\n제거는 유의하게 낮다", "#f1f0ec"),
-    ("⑤", "원인 진단", "고 SNR만 학습하면?", [
-        ("15~20 dB 전용 모델", "되찾을 수 있는 개선량의 상한", [("band", "m06_l1_band_hi", "m06_l1", None)]),
-    ], "한 모델이 전 대역을\n학습하며 절충한다", "#faefd6"),
-    ("⑥", "학습 목표를 바꾸면?", "무엇을 맞추게 할지 바꾼다", [
-        ("손실: MAE · 미분", "절댓값 · 기울기 오차도 줄인다", [("structure", "m06_l3", "m06_l1", None)]),
-        ("손실: 보존항", "무잡음 입력은 그대로 내보낸다", [("l6cond", "m06_l6", "m06_l1", None)]),
-        ("SNR 조건화", "입력 SNR을 모델에 알린다(FiLM)", [("cond", "m06_cond", "m06_l1", None)]),
-        ("보존항 + 조건화", "보존항 모델 대비 변화량", [("l6cond", "m06_cond_l6", "m06_l6", None)]),
-    ], "유의한 개선\n두 방법은 같은 문제의 두 해법", "#e4ecf7"),
+    ("②", "구조 변경", "웨이블릿 · 해상도 · 문맥 길이", [
+        ("SWT 직렬 결합", "SWT 필터 출력을 U-Net에 바로 연결", [("structure", "m07_l1", "m06_l1", None)]),
+        ("웨이블릿 부대역 입력", "SWT로 분해한 대역 계수 6개를 6채널 입력으로 사용",
+         [("structure", "m08_l1", "m06_l1", None)]),
+        ("다운샘플링 제거", "dilated convolution으로 해상도 유지",
+         [("structure", "m10_l1", "m06_l1", None)]),
+        ("CNN-Transformer", "어텐션으로 장거리 의존성 학습", [("structure", "m09_l1", "m06_l1", None)]),
+    ], "• 성능 향상 구조 없음\n• SWT 직렬 결합: 성능 저하\n   (p_Holm = {m07_l1__all:.2f})", "#f1f0ec"),
+    ("③", "모델 규모 변경", "모델 용량 부족 여부 확인", [
+        ("채널 수 1/2 · 1/4", "각 층의 채널 수 축소", [("structure", "m06_l1_half", "m06_l1", None),
+                                              ("structure", "m06_l1_quarter", "m06_l1", None)]),
+        ("깊이 2배 · 4배", "파라미터 수 유지, 잔차 블록 수 증가", [("depth", "m06_l1_deep2", "m06_l1", None),
+                                                     ("depth", "m06_l1_deep4", "m06_l1", None)]),
+        ("잔차 블록 4배", "단계당 잔차 블록 1개 → 4개(파라미터 1.9배)", [("blocks", "m06_l1_nb4", "m06_l1", None)]),
+    ], "• 유의한 차이 없음\n   (p_Holm ≥ 0.05)\n• 용량 부족은 원인이 아님", "#f1f0ec"),
+    ("④", "학습 기법 변경", "영상 복원 분야 기법", [
+        ("정규화 계층 제거", "특징 값 범위의 유연성 확보 목적(EDSR)", [("d41", "m06_l1_nonorm", "m06_l1", "l6cond")]),
+        ("가중치 EMA", "학습 잡음 감소 · 일반화 개선 목적", [("d41", "m06_l1_ema", "m06_l1", "l6cond")]),
+    ], "• 성능 향상 없음\n• 정규화 제거: 저하\n   경향(p_Holm = {m06_l1_nonorm__all:.2f})", "#f1f0ec"),
+    ("⑤", "원인 분석", "고 SNR 대역 전용 학습", [
+        ("15~20 dB 전용 모델", "회수 가능한 개선량의 상한 추정", [("band", "m06_l1_band_hi", "m06_l1", None)]),
+    ], "• 15~20 dB: {m06_l1_band_hi__hi_d:+.1f} dB\n   n = 3, p_Holm = {m06_l1_band_hi__hi:.2f}\n"
+       "• 전 대역 절충 시사", "#faefd6"),
+    ("⑥", "학습 목표 변경", "손실 함수 · 조건 정보 재설정", [
+        ("손실: MAE · 차분", "MSE에 MAE · 1차 차분 오차 추가", [("structure", "m06_l3", "m06_l1", None)]),
+        ("손실: 무잡음 입력 보존항", "무잡음 입력을 그대로 출력하도록 하는 손실 항", [("l6cond", "m06_l6", "m06_l1", None)]),
+        ("SNR 조건화(FiLM)", "실제 입력 SNR을 FiLM으로 잔차 블록에 조건 입력", [("cond", "m06_cond", "m06_l1", None)]),
+        ("보존항 + SNR 조건화", "보존항 모델 대비", [("l6cond", "m06_cond_l6", "m06_l6", None)]),
+    ], "• 보존항 · SNR 조건화: 성능\n   향상(p_Holm < 0.05)\n• 두 효과는 가산되지 않음", "#e4ecf7"),
 ]
+KEYS = (("fixed_snr_imp_scaled", "all"), ("band_15_20", "hi"))
+PH = r"$p_{\mathrm{Holm}}$"                     # 그림 속 p_Holm 은 아래 첨자로
+
+
+def flow_stats() -> dict:
+    """그림 7 의 비교 전체(시도 × 지표)를 한 계열로 Holm 보정한다 (D-44 — 계열을 결과를 본 뒤 좁히지 않는다).
+
+    돌려주는 값: {(arm, base, "all"|"hi"): (평균 Δ, 시드별 Δ, p, p_Holm, 유의)}. 유의 = p_Holm < 0.05.
+    정규화 제거 · 가중치 EMA 는 다른 환경의 기준과 짝지었으므로 같은 환경 기준에서도 부호 · 크기가 유지될 때만
+    유의로 본다(F-57).
+    """
+    rows = []
+    for _, _, _, tries, _, _ in FLOW:
+        for _, _, arms in tries:
+            for sw, arm, base, bsw in arms:
+                for key, short in KEYS:
+                    r = MS._paired(sw, arm, base, key, bsw)
+                    if r is not None:
+                        rows.append(((arm, base, short), sw, bsw, key, r))
+    p = np.array([r[4][2] for r in rows])
+    order, m = np.argsort(p), len(p)
+    ph, run = np.empty(m), 0.0
+    for i, k in enumerate(order):
+        run = max(run, (m - i) * p[k]); ph[k] = min(1.0, run)
+    out = {}
+    for (k, sw, bsw, key, (mean, d, pv)), h in zip(rows, ph):
+        sig = bool(h < 0.05)
+        if sw == "d41" and bsw == "l6cond":
+            same = MS._paired(sw, k[0], k[1], key, "d40_ref")
+            if same is None or abs(same[0]) < 0.1 or np.sign(same[0]) != np.sign(mean):
+                sig = False
+        out[k] = (mean, d, pv, float(h), sig)
+    return out
 
 def _wrap(s: str, cm: float, pt: float) -> str:
     """글자 폭(한글 0.92 em, 그 밖 0.56 em — 나눔고딕 실측)으로 줄을 나눈다. 띄어쓰기 단위로만 끊는다."""
@@ -269,19 +298,6 @@ def _wrap(s: str, cm: float, pt: float) -> str:
             line, wl = (line + " " + word if line else word), wl + sp + ww
     out.append(line)
     return "\n".join(out)
-
-
-def _flow_sig(sw, arm, base, key, bsw):
-    r = MS._paired(sw, arm, base, key, bsw)
-    if r is None:
-        return None
-    m, d, p = r
-    sig = bool(p < 0.05)
-    if sw == "d41" and bsw == "l6cond":          # 다른 환경 기준 — 같은 환경에서도 버틸 때만 유의(F-57)
-        same = MS._paired(sw, arm, base, key, "d40_ref")
-        if same is None or abs(same[0]) < 0.1 or np.sign(same[0]) != np.sign(m):
-            sig = False
-    return m, d, sig
 
 
 def f7_flow():
@@ -300,10 +316,15 @@ def f7_flow():
     ln = FS_S / 72 * 2.54 * 1.22                    # 한 줄 높이 [cm]
     blue, amber, bad = MS.GROUP_C["학습 목표"], "#9a6b12", "#9b3b32"
     gap, w0 = 0.45, 4.4
-    widths = [7.2, 6.4, 5.1, 4.75, 6.9]          # w0 + 합 + 간격 5 개 = 37.0 cm
+    widths = [7.0, 6.2, 5.1, 5.25, 6.8]          # w0 + 합 + 간격 5 개 = 37.0 cm
     assert abs(w0 + sum(widths) + 5 * gap - W) < 1e-6
     top, bot = H - 0.1, 0.1
-    c_top, c_bot = top - 1.5, top - 5.2             # 그래프 칸 [cm]
+    c_top, c_bot = top - 1.5, top - 4.75            # 그래프 칸 [cm]
+    st = flow_stats()
+    pv = {f"{a}__{k}": v[3] for (a, _, k), v in st.items()}
+    pv.update({f"{a}__{k}_d": v[0] for (a, _, k), v in st.items()})
+    v_lines = max(v[4].count("\n") + 1 for v in FLOW)
+    v_top = bot + 0.2 + v_lines * ln * 1.0         # 판정 문장(개조식) 칸의 위쪽
     YR = (-2.9, 6.0)
     a = MS._sweep("l6cond")
     v = [a[k]["band_15_20"] for k in a if k[0] == "m06_l1" and "band_15_20" in a[k]]
@@ -328,25 +349,26 @@ def f7_flow():
         ax.plot([w0 + gap, W], [t, t], color="#d9d6ce", lw=0.7, zorder=0)
     ax.plot([w0 + gap, W], [0, 0], color=MS.INK2, lw=1.1, zorder=1)
 
-    # ① 출발점 + 읽는 법
+    # ① 기준 모델 + 범례. 세로축 이름은 축 왼쪽에 가로로 쓴다(세로로 돌리면 칸 높이에 들어가지 않는다).
     panel(0.0, w0, "#f1f0ec")
-    fig.text(fx(0.2), fy(top - 0.5), "① 출발점", fontsize=FS, fontweight="bold", va="center")
+    fig.text(fx(0.2), fy(top - 0.5), "① 기준 모델", fontsize=FS, fontweight="bold", va="center")
     fig.text(fx(0.2), fy(top - 1.08), "잔차 U-Net · MSE 손실", fontsize=FS_S, va="center", color=MS.INK2)
-    ax.set_ylabel("기준 모델 대비 [dB]", fontsize=FS_S, color=MS.INK2, labelpad=2)
-    t0 = _wrap("입력 SNR 15~20 dB에서 출력이 입력보다 나빠진다", w0 - 0.4, FS_S)
+    fig.text(fx(0.2), fy(c_top - 0.05), "기준 모델\n대비 SNR\n개선량\n변화 [dB]", fontsize=FS_S, va="top",
+             color=MS.INK2, linespacing=1.1)
+    t0 = "• 15~20 dB 입력:\n   SNR 개선량 음수"
     fig.text(fx(0.2), fy(c_bot - 0.28), t0, fontsize=FS_S, va="top", linespacing=1.1, color=MS.INK2)
     nl = t0.count("\n") + 1
-    fig.text(fx(0.2), fy(c_bot - 0.28 - (nl * 0.95 + 0.1) * ln), f"{base_band:+.1f} dB", fontsize=FS + 4, fontweight="bold",
-             color=bad, va="top")
+    fig.text(fx(0.55), fy(c_bot - 0.28 - (nl * 0.95 + 0.1) * ln), f"{base_band:+.1f} dB", fontsize=FS + 4,
+             fontweight="bold", color=bad, va="top")
     ly = c_bot - 0.28 - (nl * 0.95 + 2.1) * ln
-    fig.text(fx(0.2), fy(ly), "읽는 법", fontsize=FS_S, fontweight="bold", va="center")
-    items = [("o", True, "전 구간"), ("D", True, "15~20 dB 구간"), ("o", False, "빈 표식: p ≥ 0.05"),
-             ("|", True, "세로선: 시드 범위")]
+    fig.text(fx(0.2), fy(ly), "범례", fontsize=FS_S, fontweight="bold", va="center")
+    items = [("o", True, "전 구간 평균"), ("D", True, "15~20 dB 구간"), ("o", False, "p_Holm ≥ 0.05"),
+             ("|", True, "세로선: 시드별 범위")]
     for i, (mk, fill, lab) in enumerate(items):
         yy = ly - (i + 1) * ln
         fig.add_artist(Line2D([fx(0.38)], [fy(yy)], marker=mk, ms=7 if mk == "o" else 6, ls="none",
                               mfc=MS.INK2 if fill else MS.SURFACE, mec=MS.INK2, mew=1.3, transform=fig.transFigure))
-        fig.text(fx(0.7), fy(yy), lab, fontsize=FS_S, va="center", color=MS.INK2)
+        fig.text(fx(0.7), fy(yy), lab.replace("p_Holm", PH), fontsize=FS_S, va="center", color=MS.INK2)
 
     letters = iter("abcdefghijklmnopqrstuvwxyz")
     x = w0 + gap
@@ -371,10 +393,10 @@ def f7_flow():
                 sw, arm, base, bsw = arm_
                 xc, hi = xs[k], -9.0
                 for key, mk, ms, dx in (("fixed_snr_imp_scaled", "o", 46, -0.13), ("band_15_20", "D", 36, 0.13)):
-                    r = _flow_sig(sw, arm, base, key, bsw)
+                    r = st.get((arm, base, "all" if key == "fixed_snr_imp_scaled" else "hi"))
                     if r is None:
                         continue
-                    m, d, sig = r
+                    m, d, _, _, sig = r
                     ax.plot([xc + dx, xc + dx], [d.min(), d.max()], color=dc, lw=1.6, alpha=0.45,
                             solid_capstyle="round", zorder=2)
                     ax.scatter([xc + dx], [m], s=ms, marker=mk, color=dc if sig else MS.SURFACE, edgecolor=dc,
@@ -390,10 +412,10 @@ def f7_flow():
                      color=hc if no in "⑤⑥" else MS.INK)
             dtxt = _wrap(desc, w - 0.75, FS_S)
             fig.text(fx(x + 0.55), fy(y - ln * 0.95), dtxt, fontsize=FS_S, va="top", color=MS.INK2, linespacing=1.1)
-            y -= ln * (0.95 + 0.92 * (dtxt.count("\n") + 1)) + 0.07
-            assert y > bot + 1.2, f"{no} 칸의 글이 판정 문장과 겹친다 (y = {y:.2f} cm)"
-        fig.text(fx(x + 0.2), fy(bot + 0.2), verdict, fontsize=FS_S, fontweight="bold", va="bottom", linespacing=1.2,
-                 color=hc if no in "⑤⑥" else MS.INK)
+            y -= ln * (0.95 + 0.92 * (dtxt.count("\n") + 1)) + 0.04
+            assert y > v_top + 0.1, f"{no} 칸의 글이 판정 문장과 겹친다 (y = {y:.2f} cm)"
+        fig.text(fx(x + 0.2), fy(bot + 0.2), verdict.format(**pv).replace("p_Holm", PH), fontsize=FS_S, fontweight="bold", va="bottom",
+                 linespacing=1.0, color=hc if no in "⑤⑥" else MS.INK)
         x += w + gap
     _save(fig, "F7", "F7_flow")
 
@@ -464,7 +486,7 @@ def t1_swt(cache):
     for x0, x1 in ((pi.x1 + 0.008, pi.x1 + 0.045), (pm.x1 + 0.012, po.x0 - 0.012)):   # 분해 → 재구성 흐름
         fig.add_artist(FancyArrowPatch((x0, 0.51), (x1, 0.51), transform=fig.transFigure,
                                        arrowstyle="-|>", mutation_scale=14, color=MS.INK2))
-    fig.legend(handles=[Patch(color=MS.C["M04"], alpha=0.35, label="임계값(이하는 제거)"),
+    fig.legend(handles=[Patch(color=MS.C["M04"], alpha=0.35, label="임계값(이하 계수 제거)"),
                         Patch(color="#ddd8f0", label="QRS 구간(임계값 완화)")],
                loc="lower center", ncol=2, frameon=False, fontsize=FS_S - 1, bbox_to_anchor=(0.5, -0.01))
     _save(fig, "T1", "T1_swt")
@@ -584,7 +606,8 @@ def t3_unet():
                                  color=MS.INK2))
     ax.text(6.2, cy + 0.12, "출력단 잔차 연결", ha="center", va="bottom", fontsize=FS_S - 1, color=MS.INK2)
     ax.text(cx, cy - 0.42, r"출력 $\hat{x} = y - \hat{n}$", ha="center", va="top", fontsize=FS_S)
-    ax.text(0.25, 0.2, "높이: 신호 길이 · 겹: 채널 수 · 점선: 스킵 연결", ha="left", va="bottom",
+    ax.text(0.25, 0.2, "상자 높이: 신호 길이 · 겹친 상자 수: 채널 수\n점선: 스킵 연결", ha="left", va="bottom",
+            linespacing=1.15,
             fontsize=FS_S - 1, color=MS.INK2)
     _save(fig, "T3", "T3_unet")
 

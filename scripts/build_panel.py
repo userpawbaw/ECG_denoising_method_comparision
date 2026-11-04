@@ -98,6 +98,16 @@ def numbers() -> dict:
     pert = [(j["pert_m8"] - j["fixed_snr_imp_scaled"], j["pert_p8"] - j["fixed_snr_imp_scaled"])
             for j in _sweep("condpert8").values()]
     n["pert_m8"], n["pert_p8"] = (float(np.mean(v)) for v in zip(*pert))
+    # 그림 7 과 같은 Holm 보정(비교 전체 한 계열, D-44). 판넬 · 브로셔 문장이 이 판정에 기대므로 판정이 바뀌면 멈춘다.
+    st = PF.flow_stats()
+    n["n_tests"] = len(st)
+    ns = [len(v[1]) for v in st.values()]
+    n["seed_lo"], n["seed_hi"] = min(ns), max(ns)
+    n["band_hi_ph"] = st[("m06_l1_band_hi", "m06_l1", "hi")][3]
+    up = sorted({a for (a, _, _), v in st.items() if v[4] and v[0] > 0})
+    down = sorted({a for (a, _, _), v in st.items() if v[4] and v[0] < 0})
+    assert up == ["m06_cond", "m06_l6"] and down == ["m07_l1"], (
+        f"그림 7 의 Holm 판정이 바뀌었다(향상 {up}, 저하 {down}) — 판넬 고찰 · 브로셔 문장과 그림 7 판정 문구를 고칠 것")
     return n
 
 
@@ -192,7 +202,7 @@ def draw_pipeline(sheet, x0, y0, s=1.0, fpt=16):
     for i, t in enumerate(["합성 ECG", "MIT-BIH\n실측 기록", "자체 장치\nAD8232"]):
         box(0.35 + i * 3.85, 1.05, 3.55, 1.8, t, "data")
     box(12.9, 0.3, 6.1, 2.7, "잡음 7종\n입력 SNR 7단계\n(-5~25 dB)", "noise")
-    box(19.9, 0.3, 5.8, 2.7, "공통 전처리\n0.5~100 Hz 대역 제한\n전원선 notch", "fe")
+    box(19.9, 0.3, 5.8, 2.7, "공통 전처리\n0.5~100 Hz 대역 제한\n전원선 노치 필터", "fe")
     arrow(12.0, 1.65, 12.9, 1.65); arrow(19.0, 1.65, 19.9, 1.65)
     # 2 줄: 잡음 제거 기법 다섯
     box(0.9, 4.3, 24.0, 4.0, "잡음 제거 기법(동일 입력)", "grp", size=g, top=True)
@@ -212,8 +222,8 @@ def draw_pipeline(sheet, x0, y0, s=1.0, fpt=16):
 # 연구 단계(작품 내용의 목차). 각 단계가 결과 및 고찰의 어느 그림에서 다뤄지는지를 적어 두 구역을 잇는다.
 STEPS = [("① 비교 체계", "동일 입력 · 지표", "그림 1"),
          ("② 조건별 비교", "입력 SNR · 잡음", "그림 4 · 5"),
-         ("③ 안전성 검증", "가성 박동 생성", "그림 6"),
-         ("④ 딥러닝 개선", "원인 진단 · 목표", "그림 7"),
+         ("③ 안전성 검증", "가성 QRS군 생성", "그림 6"),
+         ("④ 딥러닝 개선", "학습 목표 재설정", "그림 7"),
          ("⑤ 실시간 시연", "장치 · 시연 화면", "그림 2 · 3")]
 
 
@@ -313,13 +323,26 @@ class Sheet:
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.alignment = {"l": PP_ALIGN.LEFT, "c": PP_ALIGN.CENTER}[align]
             runs = para if isinstance(para, list) else [(para, {})]
-            for txt, st in runs:
-                r = p.add_run()
-                r.text = txt
-                f = r.font
-                f.name, f.size = FONT, self.Pt(st.get("size", size))
-                f.bold = st.get("bold", bold)
-                f.color.rgb = RGBColor(*st.get("color", color))
+            for txt0, st in runs:
+                # 「p_Holm」은 p 와 아래 첨자 Holm 으로 나누어 쓴다(그림의 표기와 같게)
+                for k, txt in enumerate(txt0.split("p_Holm")):
+                    if k:
+                        for t2, sub in (("p", False), ("Holm", True)):
+                            r = p.add_run(); r.text = t2
+                            f = r.font
+                            f.name, f.size, f.italic = FONT, self.Pt(st.get("size", size)), not sub
+                            f.bold = st.get("bold", bold)
+                            f.color.rgb = RGBColor(*st.get("color", color))
+                            if sub:
+                                r._r.get_or_add_rPr().set("baseline", "-25000")
+                    if not txt:
+                        continue
+                    r = p.add_run()
+                    r.text = txt
+                    f = r.font
+                    f.name, f.size = FONT, self.Pt(st.get("size", size))
+                    f.bold = st.get("bold", bold)
+                    f.color.rgb = RGBColor(*st.get("color", color))
         return tb
 
     def image(self, path: Path, x, y, w, h, valign="center"):
@@ -427,7 +450,7 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
             H("① 정상 웨이블릿 변환(SWT) 적응 임계값 처리"),
             "입력을 다섯 개 주파수 대역의 세부 계수로 분해하고, 대역마다 다른 임계값을 적용한 뒤 다시 합성한다.",
             EQ("eq_swt", r"\lambda_j = k_j\,\sigma\,\sqrt{2\ln N}\;\left(1-(1-\rho)\,g(t)\right)"),
-            "k: 대역별 배율, σ: 잡음 표준편차, g(t): QRS 구간의 임계값 완화 함수.",
+            "k: 대역별 임계값 배율, σ: 잡음 표준편차, g(t): QRS 구간의 임계값 완화 함수.",
             [("장점 ", B), (f"무잡음 입력의 왜곡이 가장 작다(출력 SNR {n['clean_swt']:.1f} dB).", {})],
             [("한계 ", B), ("기저선 변동 · 임펄스 잡음은 제거하지 못한다.", {})],
         ]),
@@ -437,7 +460,7 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
             EQ("eq_eks", r"\dot{\theta} = \omega,\quad \dot{z} = -\sum_i \frac{\alpha_i\,\omega}{b_i^2}\,"
                          r"\Delta\theta_i \exp\!\left(-\frac{\Delta\theta_i^2}{2\,b_i^2}\right)"),
             "위상은 검출된 R파마다 0으로 재설정되고, 칼만 평활기가 상태 [θ, z]를 추정한다.",
-            [("장점 ", B), ("모델과 맞는 합성 ECG에서 개선량이 크다(+16.2 dB).", {})],
+            [("장점 ", B), ("모델과 맞는 합성 ECG에서 SNR 개선량이 크다(+16.2 dB).", {})],
             [("한계 ", B), ("R파 오검출 위치에 가성 QRS군을 만든다.", {})],
         ]),
         ("T3_unet.png", [
@@ -446,8 +469,8 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
             EQ("eq_res", r"\hat{x} = y - f_\theta(y)"),
             EQ("eq_loss", r"\mathcal{L} = \mathcal{L}_{\mathrm{MSE}} + 0.5\,\mathcal{L}_{\mathrm{MAE}}"
                           r" + 0.3\,\mathcal{L}_{\mathrm{diff}} + \lambda\,\mathcal{L}_{\mathrm{clean}}"),
-            [("장점 ", B), (f"{n['cross_db']:.0f} dB 미만 · 임펄스 잡음에서 우수하고, 가성 파형이 가장 적다.", {})],
-            [("한계 ", B), (f"무잡음 입력도 변형한다(출력 SNR {n['clean_m06']:.1f} dB, 보존항 적용 시 "
+            [("장점 ", B), (f"{n['cross_db']:.0f} dB 미만 · 임펄스 잡음에서 우수하고, 가성 파형 생성 에너지가 고전 기법보다 낮다.", {})],
+            [("한계 ", B), (f"무잡음 입력도 변형한다(출력 SNR {n['clean_m06']:.1f} dB, 무잡음 입력 보존 손실 적용 시 "
                           f"{n['clean_l6']:.1f} dB).", {})],
         ]),
     ]
@@ -501,7 +524,8 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     y7 = r0 + h1 + 0.1 + hc1 + 0.35
     w7, h7 = PF.SIZES["F7"]
     sh.image(PFIG / "F7_flow.png", xl, y7, w7, h7)
-    c7 = "그림 7. 딥러닝 개선 과정. 고정 평가 집합에서 같은 시드끼리 비교한 기준 모델 대비 변화량이다."
+    c7 = ("그림 7. 딥러닝 개선 과정. 기준 모델 대비 SNR 개선량 변화(동일 평가 집합, 동일 시드 대응 t-검정, "
+          f"시드 n = {n['seed_lo']}~{n['seed_hi']}, 비교 {n['n_tests']}개 Holm 보정).")
     hc7 = _text_h([c7], w7, CAP_PT)
     sh.text(xl, y7 + h7 + 0.1, w7, hc7, c7, size=CAP_PT, color=INK2)
     yb = y7 + h7 + 0.1 + hc7
@@ -511,21 +535,22 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
         [("연구의 의의", B)],
         f"• 기법의 우열은 잡음 종류 · 입력 SNR · 평가 데이터를 지정해야 정의된다. 합성 ECG에서 전 구간에 걸쳐 나타난 딥러닝의 "
         f"우위는 MIT-BIH에서 재현되지 않았고, 약 {n['cross_db']:.0f} dB 이상에서는 공통 전처리 단독이 더 높았다(그림 4).",
-        f"• 칼만 평활기의 가성 QRS군은 오차 에너지로는 드러나지 않았고, 출력의 박동 유사도로 측정하자 SWT의 약 "
+        f"• 칼만 평활기의 가성 QRS군은 오차 에너지로는 드러나지 않았고, 박동 유사도로 측정하자 SWT의 약 "
         f"{n['ph_x_swt']:.0f}배였다(그림 6). 지표를 여러 층으로 둔 근거이다.",
-        "• 학습 반복 간 변동을 측정한 뒤 판정하였다. 유의한 개선은 구조 · 규모가 아니라 학습 목표를 바꾼 시도에서만 "
-        "나타났다(그림 7).",
+        "• 시드 대응 비교와 Holm 보정으로 검정한 결과, 성능 향상은 학습 목표를 바꾼 시도(무잡음 입력 보존 손실, "
+        "SNR 조건화)에서만 확인되었다(그림 7).",
         [("한계와 원인", B)],
-        f"• 고 SNR 구간의 열세는 모델 하나가 전 입력 SNR 대역을 학습하며 절충하기 때문이다. 15~20 dB 전용 모델은 이 "
-        f"구간에서 {n['band_hi']:+.1f} dB 높았다. 보존항과 SNR 조건화는 같은 문제의 두 해법이어서 효과가 "
-        f"더해지지 않았다({n['l6cond_add']:+.1f} dB, p = {n['l6cond_add_p']:.2f}).",
-        f"• SNR 조건화에는 참 SNR을 넣었다. 실측 신호에서는 추정 SNR을 써야 하며, 조건값을 8 dB 낮게 주면 "
-        f"{n['pert_m8']:+.1f} dB, 높게 주면 {n['pert_p8']:+.1f} dB 변하였다.",
-        "• 평가는 공개 데이터 두 종의 22개 기록에 한정된다. MIT-BIH의 기준 신호는 0.5~100 Hz 대역 제한 신호이므로 "
-        "결론도 이 대역의 복원에 한정된다.",
+        f"• 고 SNR 구간의 열세는 단일 모델이 전 입력 SNR 대역을 학습하며 절충한 결과로 해석된다. 15~20 dB 전용 모델은 "
+        f"{n['band_hi']:+.1f} dB 높았으나 시드 3개의 결과이다(p_Holm = {n['band_hi_ph']:.2f}). 무잡음 입력 보존 손실과 SNR "
+        f"조건화의 효과는 가산되지 않았다({n['l6cond_add']:+.1f} dB, p = {n['l6cond_add_p']:.2f}).",
+        f"• SNR 조건화에는 실제 입력 SNR을 사용하였다. 실측 신호에는 추정 SNR이 필요하며, 조건 SNR을 8 dB 낮게 "
+        f"입력하면 {n['pert_m8']:+.1f} dB, 높게 입력하면 {n['pert_p8']:+.1f} dB 변하였다.",
+        "• 평가는 공개 데이터 두 종의 22개 기록에 한정되며, MIT-BIH 기준 신호가 0.5~100 Hz 대역 제한 신호이므로 "
+        "결론도 이 대역에 한정된다.",
         [("발전 방향", B)],
-        "• 자체 장치의 신호와 잡음을 따로 수집하여 입력 SNR 구간을 측정하고, 추정 SNR 조건화와 장치 전이를 검증한다.",
-        "• 보존항을 사전에 고정하여 주 실험을 다시 실행하고, 구조 비교는 학습 반복 수를 늘려 재판정한다.",
+        "• 자체 장치의 신호 · 잡음을 수집하여 입력 SNR 구간을 측정하고, 추정 SNR 조건화와 장치 간 도메인 적응을 "
+        "검증한다.",
+        "• 무잡음 입력 보존 손실을 사전 지정하여 주 실험을 재수행하고, 딥러닝 비교는 시드 10개로 재검정한다.",
     ]
     disc_pt = BODY_PT
     hd = _text_h(disc, 57.6 - xg, disc_pt)
@@ -556,33 +581,38 @@ def build_brochure(n: dict, final: bool = False) -> Path:
                                    ("지도교수 | ", {"bold": True}), ("(입력)", {})]], size=10.5)
     sh.text(1.6, 4.0, 17.8, 0.7, [H("1. 작품 목표")])
     sh.text(1.6, 4.8, 17.8, 2.0, "자체 제작한 심전도(ECG) 취득 장치의 잔류 잡음을 파형을 보존하면서 줄이는 디지털 "
-            "후처리 기법을 규명하는 것을 목표로 한다. 고전 필터, 웨이블릿 임계값 처리, 칼만 필터, 딥러닝의 네 계열을 "
+            "후처리 기법을 규명하는 것을 목표로 한다. 고전 필터, 웨이블릿 임계값 처리, 칼만 평활기, 딥러닝의 네 계열을 "
             "동일한 입력 · 전처리 · 평가 지표로 비교하여, 잡음 종류와 입력 SNR에 따른 적합 기법을 제시한다.", size=10)
     sh.text(1.6, 7.2, 17.8, 0.7, [H("2. 작품 개요")])
     draw_pipeline(sh, 1.6 + (17.8 - D1_W * 0.6) / 2, 8.0, s=0.6, fpt=9)
+    # 판넬의 연구 단계 목차(STEPS)와 같은 다섯 단계로 적는다
     sh.text(1.6, 16.2, 17.8, 3.8, [
-        "- 공통 전처리(0.5~100 Hz bandpass, 전원선 잡음 검출 시 notch) 후 네 계열의 기법과 이상적 상한(기준 "
-        "신호를 아는 최적 필터)을 잡음 7종, 입력 SNR 7단계에서 비교",
-        "- 4개 범주의 평가 지표(재구성 오차, 파형 보존, R파 검출, 주파수 특성)와 가성 파형 생성 검증(박동을 지운 "
-        "구간에 출력이 만드는 파형의 측정)",
-        "- 합성 ECG와 MIT-BIH 실측 기록 두 데이터에서 결과의 재현성 확인",
-        "- 녹음 신호 비교 화면과 실시간 처리 화면으로 구성된 시연 시스템",
-        [("- 응용 분야: ", {"bold": True}), ("저가형 · 착용형 심전도 취득 장치의 신호 후처리 연구, 생체신호 "
-                                             "잡음 제거 기법의 평가 방법론(임상 진단 용도 아님)", {})],
+        [("① 비교 체계: ", {"bold": True}), ("공통 전처리(0.5~100 Hz 대역통과 필터, 전원선 잡음 검출 시 노치 필터) 뒤 "
+                                           "네 계열 기법과 이상적 상한(기준 신호를 아는 최적 필터)을 잡음 7종 · 입력 SNR "
+                                           "7단계에서 동일 지표 4범주로 비교", {})],
+        [("② 조건별 비교: ", {"bold": True}), ("합성 ECG와 MIT-BIH 실측 기록에서 입력 SNR · 잡음 종류별 적합 기법 분석 "
+                                             "[그림 2]", {})],
+        [("③ 안전성 검증: ", {"bold": True}), ("박동 삭제 구간의 가성 파형 생성과 위양성 검출 위치의 가성 QRS군 생성 "
+                                             "측정 [그림 3]", {})],
+        [("④ 딥러닝 개선: ", {"bold": True}), ("구조 · 규모 · 학습 기법 · 학습 목표 변경을 동일 시드 대응 비교로 검정", {})],
+        [("⑤ 실시간 시연: ", {"bold": True}), ("저장 신호 재생 비교 화면과 실시간 처리 화면 [그림 1]", {})],
+        [("응용 분야: ", {"bold": True}), ("저가형 · 착용형 심전도 취득 장치의 신호 후처리 연구, 생체신호 잡음 제거 "
+                                         "기법의 평가 방법론(임상 진단 용도 아님)", {})],
     ], size=9.5)
     sh.text(1.6, 20.3, 17.8, 0.7, [H("3. 작품 내용 및 이미지")])
     w = 5.75
     for i, (img, capt) in enumerate([
-            (OUT / "demo_mode_b.png", "[그림 1] 시연 화면(녹음 신호 비교 모드)"),
+            (OUT / "demo_mode_b.png", "[그림 1] 시연 화면(저장 신호 재생 비교 모드)"),
             (SL / "S5_crossover.png", f"[그림 2] 딥러닝이 공통 전처리보다 높은 SNR 개선량을 보인 입력 SNR 범위(MIT-BIH, 약 {n['cross_db']:.0f} dB 이하)"),
             (SL / "S15_kalman_phantom.png", f"[그림 3] 칼만 평활기의 가성 QRS군 생성({n['ph_M05']}건)")]):
         x = 1.6 + i * (w + 0.275)
         sh.image(img, x, 21.1, w, 4.6)
         sh.text(x, 25.8, w, 0.9, capt, size=8.5, align="c")
-    sh.text(1.6, 27.0, 17.8, 1.6, f"칼만 평활기는 위양성 검출 위치(실제 R파가 없는 위치)에서 박동 형태의 가성 QRS군을 생성하였으며(SWT 대비 약 "
-            f"{n['ph_x_swt']:.0f}배), 잔차 학습 구조의 딥러닝 기법들의 가성 파형 생성 에너지가 비교 기법 중 가장 낮았다. 딥러닝에서 "
-            "유의한 개선은 손실 함수 변경과 SNR 조건화(입력 SNR을 신경망에 함께 입력)에서만 관찰되었고, 구조 · "
-            "규모의 변경에서는 관찰되지 않았다.", size=9.5)
+    sh.text(1.6, 27.0, 17.8, 1.6, f"딥러닝은 입력 SNR 약 {n['cross_db']:.0f} dB 미만에서 공통 전처리보다 높았으나 그 이상에서는 "
+            f"공통 전처리 단독이 더 높아, 기법의 우열은 잡음 조건에 따라 달라졌다[그림 2]. 칼만 평활기는 위양성 검출 "
+            f"위치에서 박동 형태의 가성 QRS군을 생성하였다(SWT 대비 약 {n['ph_x_swt']:.0f}배)[그림 3]. 딥러닝 개선 시도 중 "
+            "성능 향상은 무잡음 입력 보존 손실과 SNR 조건화(FiLM, 실제 입력 SNR 사용)에서만 확인되었다(p_Holm < 0.05). "
+            "실측 적용을 위해 추정 SNR 기반 조건화와 자체 장치 데이터 검증이 남아 있다.", size=9.5)
     print(f"  brochure 그림 면적 비율: {sh.ratio(1.6, 19.4):.0%}")
     p = OUT / ("brochure.pptx" if final else "brochure_draft.pptx")
     prs.save(str(p))

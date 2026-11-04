@@ -130,6 +130,12 @@
 | normalization layer removal (EDSR) | 정규화 계층 제거(EDSR 방식) | 선행 연구의 처방 | Lim et al., CVPRW 2017(EDSR) — 정규화가 특징 값 범위의 유연성을 줄인다는 근거로 잔차 블록에서 배치 정규화 제거 | 2026-11-04 |
 | noise level map / conditioning | 잡음 수준 조건화(noise level conditioning) | 동작점 알려 주기 | Zhang et al., FFDNet(IEEE TIP 2018) · DRUNet(IEEE TPAMI 2021) — 잡음 수준 맵을 입력으로 받아 단일 모델로 여러 잡음 수준 처리 | 2026-11-04 |
 | legend | 범례 | 읽는 법 | 표준 국어 · 학술 그림 관례 | 2026-11-04 |
+| skip connection · downsampling | 스킵 연결 · 다운샘플링 | 건너뛴 연결 | Ronneberger et al., MICCAI 2015(U-Net) 원어. 국내 U-Net 해설 자료에서 「스킵 연결」 · 「다운샘플링」 표기 확인(웹 검색) | 2026-11-04 |
+| attention · long-range dependency | 어텐션 · 장거리 의존성 | 먼 구간을 함께 본다 | Vaswani et al., NeurIPS 2017. 국내 해설 자료(itwiki · wikidocs)에서 「어텐션」 · 「장거리 의존성」 표기 확인 | 2026-11-04 |
+| Holm correction · paired t-test | Holm 보정 · 대응 t-검정 | — | Holm(1979) step-down 절차. 「대응 t-검정」은 `docs/95` §3 의 기존 표기(A3) | 2026-11-04 |
+| domain adaptation | 도메인 적응 | 도메인 전이 · 장치 전이 | 생체신호 연구의 표준 표현(Wu et al., Biosensors 2022 등). 「도메인 전이」 사용 사례를 찾지 못함 | 2026-11-04 |
+| first-order difference | 1차 차분 | 미분 오차(판넬 본문) | 시계열 · 신호처리 해설 자료의 정의 ΔY_t = Y_t − Y_{t−1} (웹 검색) | 2026-11-04 |
+| identity output | (쓰지 않음) 「그대로 출력」으로 서술 | 항등 출력 | 정착 표현을 확인하지 못해 기능 서술로 바꿈 | 2026-11-04 |
 
 ---
 
