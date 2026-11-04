@@ -91,6 +91,13 @@ def numbers() -> dict:
     n["rng_seed"] = float(np.ptp(seed_best))
     n["sd_fixed"] = float(cal[cal.arm == "m06_l1"].fixed_snr_imp_scaled.std(ddof=1))
     n["l6_all"] = _paired("structure", "m06_l6", "m06_l1", "fixed_snr_imp_scaled")[0]
+    # 고찰 — 딥러닝 개선 과정(그림 7)의 원인 진단과 한계 (F-43 · F-46 · F-47)
+    n["band_hi"] = _paired("band", "m06_l1_band_hi", "m06_l1", "band_15_20")[0]
+    n["l6cond_add"], _, n["l6cond_add_p"] = _paired("l6cond", "m06_cond_l6", "m06_l6", "band_15_20")
+    from make_slides import _sweep
+    pert = [(j["pert_m8"] - j["fixed_snr_imp_scaled"], j["pert_p8"] - j["fixed_snr_imp_scaled"])
+            for j in _sweep("condpert8").values()]
+    n["pert_m8"], n["pert_p8"] = (float(np.mean(v)) for v in zip(*pert))
     return n
 
 
@@ -200,6 +207,57 @@ def draw_pipeline(sheet, x0, y0, s=1.0, fpt=16):
     arrow(12.9, 8.3, 12.9, 9.3)
     sheet.img_area += D1_W * s * D1_H * s
     return D1_H * s
+
+
+# 연구 단계(작품 내용의 목차). 각 단계가 결과 및 고찰의 어느 그림에서 다뤄지는지를 적어 두 구역을 잇는다.
+STEPS = [("① 비교 체계", "동일 입력 · 지표", "그림 1"),
+         ("② 조건별 비교", "입력 SNR · 잡음", "그림 4 · 5"),
+         ("③ 안전성 검증", "가성 박동 생성", "그림 6"),
+         ("④ 딥러닝 개선", "원인 진단 · 목표", "그림 7"),
+         ("⑤ 실시간 시연", "장치 · 시연 화면", "그림 2 · 3")]
+
+
+def draw_steps(sheet, x0, y0, w, fpt=15, h=2.5, gap=0.5):
+    """다섯 단계를 PowerPoint 도형(상자 + 화살표)으로 한 줄에 놓는다. 높이를 돌려준다."""
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
+    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+    from pptx.oxml.ns import qn
+    from pptx.util import Cm, Pt
+    sh = sheet.s.shapes
+    bw = (w - gap * (len(STEPS) - 1)) / len(STEPS)
+    for i, (title, desc, ref) in enumerate(STEPS):
+        x = x0 + i * (bw + gap)
+        hl = title.startswith("④")                   # 이 과제의 중심 단계
+        b = sh.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Cm(x), Cm(y0), Cm(bw), Cm(h))
+        b.adjustments[0] = 0.12
+        b.fill.solid(); b.fill.fore_color.rgb = RGBColor.from_string("e4ecf7" if hl else "f1f0ec")
+        b.line.color.rgb = RGBColor.from_string("184f95" if hl else "c9c5bb"); b.line.width = Pt(1.0)
+        st = b._element.find(qn("p:style"))
+        if st is not None:
+            b._element.remove(st)
+        tf = b.text_frame
+        tf.word_wrap = True
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        for m in ("margin_left", "margin_right", "margin_top", "margin_bottom"):
+            setattr(tf, m, Cm(0.1))
+        for j, (txt, bold, col) in enumerate([(title, True, ACC), (desc, False, INK), (ref, False, INK2)]):
+            p = tf.paragraphs[0] if j == 0 else tf.add_paragraph()
+            p.alignment = PP_ALIGN.CENTER
+            r = p.add_run(); r.text = txt
+            r.font.name, r.font.size, r.font.bold = FONT, Pt(fpt), bold
+            r.font.color.rgb = RGBColor(*col)
+        if i:
+            c = sh.add_connector(MSO_CONNECTOR.STRAIGHT, Cm(x - gap + 0.05), Cm(y0 + h / 2), Cm(x - 0.05),
+                                 Cm(y0 + h / 2))
+            c.line.color.rgb = RGBColor(0x52, 0x51, 0x4e); c.line.width = Pt(1.4)
+            st = c._element.find(qn("p:style"))
+            if st is not None:
+                c._element.remove(st)
+            ln = c.line._get_or_add_ln()
+            ln.append(ln.makeelement(qn("a:tailEnd"), {"type": "triangle", "w": "med", "len": "med"}))
+    sheet.img_area += w * h
+    return h
 
 
 # ------------------------------------------------------------------ 수식
@@ -344,10 +402,12 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     sh = Sheet(prs, slide, body=(17.5, 77.8))
     # 글자 크기(A1, 1~2 m 거리): 본문 BODY_PT, 캡션 CAP_PT, 그림 속 글자 14 pt 이상(make_panel_figs.py).
     # ---- 작품 내용 (좌) x 1.9 ~ 27.6
-    intro = "잡음 종류와 입력 SNR에 따라 적합한 기법이 달라지는지를 분석하였다. 평가 체계는 기법 구현보다 먼저 확정하였다."
+    intro = ("잡음 종류와 입력 SNR에 따라 적합한 기법이 달라지는지를 다섯 단계로 분석하였다. 평가 체계는 기법 "
+             "구현보다 먼저 확정하였다.")
     hi = _text_h([intro], 25.7, BODY_PT)
     sh.text(1.9, 20.4, 25.7, hi, intro, size=BODY_PT)
     y = 20.4 + hi + 0.2
+    y += draw_steps(sh, 1.9, y, 25.7, fpt=15) + 0.45     # 연구 단계(목차) — PowerPoint 도형
     # 블록선도는 mermaid 판(scripts/make_diagrams.py). 상자에는 핵심어만 두고 세부는 캡션으로 옮겼다.
     y += draw_pipeline(sh, 1.9, y, s=1.0, fpt=15) + 0.2       # PowerPoint 도형 — 판넬에서 바로 고칠 수 있다
     c1 = "그림 1. 비교 실험 구성. 지표 4범주: 재구성 오차 · 파형 보존 · R파 검출 · 주파수 특성."
@@ -421,34 +481,53 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
         print(f"  경고: 이론적 배경 구역의 글이 구분선(51.0 cm)을 넘을 수 있다 (끝 {y:.1f} cm)")
 
     # ---- 결과 및 고찰 (하단 전폭) x 1.8 ~ 57.6, y 53.9 ~ 77.6
-    # 왼쪽 2 × 2 = 그림 4~7(make_panel_figs.py 가 칸 크기 그대로 그린 것, 그림 속 글자 13 pt 이상),
-    # 오른쪽 = 고찰. 캡션은 한 줄 제목만 두고 수치와 해석은 고찰 본문에 적는다.
-    figs = [("F4_crossover.png", "그림 4. 공통 전처리 대비 딥러닝의 SNR 개선량"),
-            ("F5_phantom.png", "그림 5. 기법별 가성 QRS군(음영: 위양성 검출 위치)"),
-            ("F6_noise.png", "그림 6. 잡음 종류별 출력(MIT-BIH, 입력 SNR −5 dB)"),
-            ("F7_journey.png", "그림 7. 잔차 U-Net 변경 16종의 효과(채운 점: p < 0.05)")]
-    gx, gy, r0 = 0.6, 0.35, 53.9
-    w, h = PF.SIZES["F4"]
-    hc = _text_h([figs[0][1]], w, CAP_PT)
-    for i, (fig, capt) in enumerate(figs):
-        x = 1.8 + (i % 2) * (w + gx)
-        yy = r0 + (i // 2) * (h + hc + 0.1 + gy)
-        sh.image(PFIG / fig, x, yy, w, h)
-        sh.text(x, yy + h + 0.1, w, hc, capt, size=CAP_PT, color=INK2)
-    yb = r0 + 2 * (h + hc + 0.1) + gy
-    xg = 1.8 + 2 * w + gx + 0.9
+    # 왼쪽 37 cm: 위 줄 = 그림 4 · 5 · 6(조건별 최적 기법 · 안전성), 아래 줄 = 그림 7(딥러닝 개선 과정, 전폭).
+    # 오른쪽 = 고찰(의의 → 한계와 원인 → 발전 방향). 그림 번호는 작품 내용의 연구 단계 순서를 따른다.
+    # 캡션은 두 줄까지 — 제목과 그림이 보여 주는 결과 한 문장.
+    B = {"bold": True}
+    r0, xl, wl = 53.9, 1.8, 37.0
+    row1 = [("F4_crossover.png", f"그림 4. 공통 전처리 대비 딥러닝의 SNR 개선량. MIT-BIH에서는 약 {n['cross_db']:.0f} dB "
+                                 "이상에서 역전된다."),
+            ("F6_noise.png", "그림 5. 잡음 종류별 출력(MIT-BIH, 입력 SNR −5 dB). 임펄스 잡음은 딥러닝만 제거한다."),
+            ("F5_phantom.png", f"그림 6. 기법별 가성 QRS군(음영: 위양성 검출 위치). 칼만 평활기가 {n['ph_M05']}건으로 "
+                               "가장 많다.")]
+    w1, h1 = PF.SIZES["F4"]
+    g1 = (wl - 3 * w1) / 2
+    hc1 = max(_text_h([c], w1, CAP_PT) for _, c in row1)
+    for i, (fig, capt) in enumerate(row1):
+        x = xl + i * (w1 + g1)
+        sh.image(PFIG / fig, x, r0, w1, h1)
+        sh.text(x, r0 + h1 + 0.1, w1, hc1, capt, size=CAP_PT, color=INK2)
+    y7 = r0 + h1 + 0.1 + hc1 + 0.35
+    w7, h7 = PF.SIZES["F7"]
+    sh.image(PFIG / "F7_flow.png", xl, y7, w7, h7)
+    c7 = "그림 7. 딥러닝 개선 과정. 고정 평가 집합에서 같은 시드끼리 비교한 기준 모델 대비 변화량이다."
+    hc7 = _text_h([c7], w7, CAP_PT)
+    sh.text(xl, y7 + h7 + 0.1, w7, hc7, c7, size=CAP_PT, color=INK2)
+    yb = y7 + h7 + 0.1 + hc7
+    xg = xl + wl + 0.9
     disc = [
         H("고찰"),
-        f"• 딥러닝은 입력 SNR −5 dB에서 공통 전처리보다 {n['dl_gain_lo']:.1f} dB 높았으나, MIT-BIH에서는 약 "
-        f"{n['cross_db']:.0f} dB 이상에서 공통 전처리 단독이 더 높았다(그림 4). 모든 조건에서 최적인 단일 기법은 없었다.",
-        f"• 칼만 평활기는 위양성 검출 위치에 실제 박동과 비슷한 가성 QRS군을 만들었다(MIT-BIH {n['ph_M05']}건, "
-        f"SWT의 약 {n['ph_x_swt']:.0f}배, 그림 5). 잔차 학습 딥러닝의 가성 파형 생성이 가장 적었다.",
-        "• 기저선 변동은 공통 전처리만으로 제거되었고, 임펄스 잡음은 딥러닝만 제거하였다(그림 6).",
-        f"• 구조 · 규모의 변경은 유의한 개선이 없었고, 유의한 개선은 손실 함수와 SNR 조건화에서만 관찰되었다"
-        f"(보존항, 15~20 dB 구간 {n['l6_hi']:+.1f} dB, 그림 7).",
-        [("한계 ", {"bold": True}), ("공개 데이터 두 종으로 평가하였고, 자체 장치 데이터 평가는 진행 중이다.", {})],
+        [("연구의 의의", B)],
+        f"• 기법의 우열은 잡음 종류 · 입력 SNR · 평가 데이터를 지정해야 정의된다. 합성 ECG에서 전 구간에 걸쳐 나타난 딥러닝의 "
+        f"우위는 MIT-BIH에서 재현되지 않았고, 약 {n['cross_db']:.0f} dB 이상에서는 공통 전처리 단독이 더 높았다(그림 4).",
+        f"• 칼만 평활기의 가성 QRS군은 오차 에너지로는 드러나지 않았고, 출력의 박동 유사도로 측정하자 SWT의 약 "
+        f"{n['ph_x_swt']:.0f}배였다(그림 6). 지표를 여러 층으로 둔 근거이다.",
+        "• 학습 반복 간 변동을 측정한 뒤 판정하였다. 유의한 개선은 구조 · 규모가 아니라 학습 목표를 바꾼 시도에서만 "
+        "나타났다(그림 7).",
+        [("한계와 원인", B)],
+        f"• 고 SNR 구간의 열세는 모델 하나가 전 입력 SNR 대역을 학습하며 절충하기 때문이다. 15~20 dB 전용 모델은 이 "
+        f"구간에서 {n['band_hi']:+.1f} dB 높았다. 보존항과 SNR 조건화는 같은 문제의 두 해법이어서 효과가 "
+        f"더해지지 않았다({n['l6cond_add']:+.1f} dB, p = {n['l6cond_add_p']:.2f}).",
+        f"• SNR 조건화에는 참 SNR을 넣었다. 실측 신호에서는 추정 SNR을 써야 하며, 조건값을 8 dB 낮게 주면 "
+        f"{n['pert_m8']:+.1f} dB, 높게 주면 {n['pert_p8']:+.1f} dB 변하였다.",
+        "• 평가는 공개 데이터 두 종의 22개 기록에 한정된다. MIT-BIH의 기준 신호는 0.5~100 Hz 대역 제한 신호이므로 "
+        "결론도 이 대역의 복원에 한정된다.",
+        [("발전 방향", B)],
+        "• 자체 장치의 신호와 잡음을 따로 수집하여 입력 SNR 구간을 측정하고, 추정 SNR 조건화와 장치 전이를 검증한다.",
+        "• 보존항을 사전에 고정하여 주 실험을 다시 실행하고, 구조 비교는 학습 반복 수를 늘려 재판정한다.",
     ]
-    disc_pt = BODY_PT + 2                     # 고찰 칸은 세로 여유가 있어 본문보다 2 pt 크게 쓴다
+    disc_pt = BODY_PT
     hd = _text_h(disc, 57.6 - xg, disc_pt)
     sh.text(xg, r0, 57.6 - xg, hd, disc, size=disc_pt)
     print(f"  결과 구역의 끝: 그림 {yb:.1f} cm, 고찰 {r0 + hd:.1f} cm (하단 77.6 cm)")

@@ -35,10 +35,10 @@ FS_S = 13          # 눈금 숫자
 
 # 판넬 칸 크기 [cm] — build_panel.py 가 이 크기로 놓는다
 SIZES = {
-    "F4": (18.2, 10.4),    # 결과: 입력 SNR 교차점          ┐ 결과 구역은 2 × 2 (왼쪽 37 cm),
-    "F5": (18.2, 10.4),    # 결과: 칼만 가성 QRS군           │ 오른쪽 18 cm 는 고찰
-    "F6": (18.2, 10.4),    # 결과: 잡음 종류별 출력          │
-    "F7": (18.2, 10.4),    # 결과: 개선 시도 16종 (16 행)   ┘
+    "F4": (12.0, 9.0),     # 결과: 입력 SNR 교차점          ┐ 결과 구역 위 줄 = 그림 4 · 5 · 6(왼쪽 37 cm),
+    "F6": (12.0, 9.0),     # 결과: 잡음 종류별 출력(그림 5)  │ 아래 줄 = 그림 7(전폭), 오른쪽 18 cm 는 고찰
+    "F5": (12.0, 9.0),     # 결과: 칼만 가성 QRS군(그림 6)   ┘
+    "F7": (37.0, 12.0),    # 결과: 딥러닝 개선 과정의 단계 흐름(결과 구역 아래 줄 전폭)
     "T1": (13.4, 8.6),     # 이론 카드 ①: SWT 임계값 (입력 | D1~D5 | 출력)
     "T2": (13.4, 8.6),     # 이론 카드 ②: 칼만 모델 (1 주기 모델 | 위상 · 출력)
     "T3": (13.4, 8.6),     # 이론 카드 ③: 잔차 학습 U-Net (높이 = 신호 길이, 겹 = 채널 수)
@@ -111,14 +111,14 @@ def f4_crossover():
                 zx = xs[i] + (xs[i + 1] - xs[i]) * ys[i] / (ys[i] - ys[i + 1])
                 ax.axvspan(zx, xs.max() + 1.5, color=col, alpha=0.08, lw=0, zorder=1)
                 ax.axvline(zx, color=col, ls=":", lw=1.6)
-                ax.text(zx + 0.4, 0.96, f"약 {zx:.0f} dB 이상:\n공통 전처리가\n더 높음", transform=ax.get_xaxis_transform(),
-                        va="top", fontsize=FS, color=col)
+                ax.text(zx + 0.35, 0.97, f"약 {zx:.0f} dB\n이상에서\n공통 전처리가\n더 높다",
+                        transform=ax.get_xaxis_transform(), va="top", fontsize=FS_S, color=col, linespacing=1.1)
     ax.axhline(0, color=MS.INK2, lw=1.1)
     ax.set_xlabel("입력 SNR [dB]")
     ax.set_ylabel("공통 전처리 대비 [dB]")
-    ax.set_xlim(-6.5, 21.5)
+    ax.set_xlim(-6.5, 22.8)
     ax.text(0.02, 0.04, "채운 표식: 유의(Holm 보정)", transform=ax.transAxes, fontsize=FS_S, color=MS.INK2)
-    fig.subplots_adjust(left=0.13, right=0.98, top=0.97, bottom=0.17)
+    fig.subplots_adjust(left=0.165, right=0.98, top=0.97, bottom=0.17)
     _save(fig, "F4", "F4_crossover")
 
 
@@ -136,8 +136,9 @@ def f5_phantom():
     w, h = SIZES["F5"]
     fig = plt.figure(figsize=(w * CM, h * CM))
     rows = [("noisy", "입력"), ("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 평활기"), ("M06", "잔차 U-Net")]
-    gs = fig.add_gridspec(len(rows), 2, width_ratios=[1.45, 1.0], wspace=0.62, hspace=0.12,
-                          left=0.19, right=0.985, top=0.97, bottom=0.15)
+    # 오른쪽 막대는 왼쪽 파형의 2~5 행과 같은 높이에 둔다 — 기법 이름은 왼쪽 행 이름 하나로 읽는다
+    gs = fig.add_gridspec(len(rows), 2, width_ratios=[1.6, 1.0], wspace=0.06, hspace=0.12,
+                          left=0.22, right=0.985, top=0.97, bottom=0.16)
     lo, hi = np.percentile(np.r_[ex["clean"], ex["M06"]], [0.5, 99.5])
     pad = 0.35 * (hi - lo)
     for k, (key, lab) in enumerate(rows):
@@ -154,7 +155,7 @@ def f5_phantom():
         if k < len(rows) - 1:
             ax.set_xticklabels([])
     ax.set_xlabel("시간 [s]")
-    ax = fig.add_subplot(gs[:, 1])
+    ax = fig.add_subplot(gs[1:, 1])
     ms = [("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 평활기"), ("M06", "잔차 U-Net")]
     yy = np.arange(len(ms))
     top = 0
@@ -167,12 +168,13 @@ def f5_phantom():
         ax.barh(yy + off, vals, height=0.36, alpha=alpha,
                 color=[MS.PHANTOM if m == "M05" else "#8f8a80" for m, _ in ms])
         for y, v in zip(yy + off, vals):
-            ax.text(v + top * 0.03, y, f"{v}", va="center", fontsize=FS_S - 1)
-    ax.set_yticks(yy); ax.set_yticklabels([n for _, n in ms], fontsize=FS_S)
-    ax.invert_yaxis(); ax.set_xlim(0, top * 1.3)
+            ax.text(v + top * 0.03, y, f"{v}", va="center", fontsize=FS_S)
+    ax.set_yticks([])
+    ax.set_ylim(len(ms) - 0.5, -0.5); ax.set_xlim(0, top * 1.35)
     ax.set_xlabel("가성 QRS군 [건]")
-    ax.text(1.0, 0.02, "진한: MIT-BIH\n옅은: 합성 ECG", transform=ax.transAxes, ha="right", va="bottom",
-            fontsize=FS_S - 1, color=MS.INK2)
+    lg = fig.add_subplot(gs[0, 1]); lg.axis("off")
+    lg.text(0.06, 0.5, "진한: MIT-BIH\n옅은: 합성 ECG", transform=lg.transAxes, va="center",
+            fontsize=FS_S, color=MS.INK2, linespacing=1.15)
     ax.grid(axis="y", visible=False)
     _save(fig, "F5", "F5_phantom")
 
@@ -183,7 +185,7 @@ def f6_noise(cache):
     cols = [("noisy", "입력"), ("M_FE", "공통 전처리"), ("M04", "SWT"), ("M08", "딥러닝")]
     w, h = SIZES["F6"]
     fig, axes = plt.subplots(len(kinds), len(cols), figsize=(w * CM, h * CM), sharex="row", sharey="row",
-                             gridspec_kw=dict(left=0.12, right=0.995, top=0.91, bottom=0.03, wspace=0.06,
+                             gridspec_kw=dict(left=0.14, right=0.995, top=0.91, bottom=0.03, wspace=0.06,
                                               hspace=0.12))
     for r, (kind, klab) in enumerate(kinds):
         d = cache[("mitdb", -5.0, kind)]
@@ -223,41 +225,177 @@ SHORT = {"SWT 전처리 직렬 결합": "SWT 직렬 결합", "웨이블릿 특�
          "입력 SNR 15~20 dB 전용 학습 모델\n(회수 가능한 개선량의 상한 추정)": "15~20 dB 전용 모델"}
 
 
-def f7_journey():
-    """변경 16종의 점 그림(forest plot). 행 이름을 짧게 하고 범주는 색과 구분선으로 나타낸다."""
-    keys = [("fixed_snr_imp_scaled", "전 구간"), ("band_15_20", "15~20 dB 구간")]
-    w, h = SIZES["F7"]
-    fig, axes = plt.subplots(1, 2, figsize=(w * CM, h * CM), sharey=True,
-                             gridspec_kw=dict(left=0.3, right=0.99, top=0.93, bottom=0.13, wspace=0.08))
-    ypos, y, last = [], 0.0, None
-    for g, *_ in MS.JOURNEY:
-        if last is not None and g != last:
-            y += 0.6
-        ypos.append(y); y += 1.0; last = g
-    for ax, (key, title) in zip(axes, keys):
-        ax.axvline(0, color=MS.INK2, lw=1.0)
-        for (g, lab, sw, arm, base, bsw), yy in zip(MS.JOURNEY, ypos):
-            r = MS._paired(sw, arm, base, key, bsw)
-            if r is None:
-                continue
-            m, d, p = r
-            sig = bool(p < 0.05)
-            if sw == "d41" and bsw == "l6cond":          # 다른 환경 기준 — 같은 환경에서도 버틸 때만 유의(F-57)
-                same = MS._paired(sw, arm, base, key, "d40_ref")
-                if same is None or abs(same[0]) < 0.1 or np.sign(same[0]) != np.sign(m):
-                    sig = False
-            c = MS.GROUP_C[g]
-            ax.plot([d.min(), d.max()], [yy, yy], color=c, lw=1.6, alpha=0.45, solid_capstyle="round")
-            ax.scatter([m], [yy], s=46, color=c if sig else MS.SURFACE, edgecolor=c, lw=1.4, zorder=3)
-        ax.set_title(title, fontsize=FS)
-        ax.set_xlabel("기준 모델 대비 [dB]")
-        ax.grid(axis="y", visible=False)
-    axes[0].set_yticks(ypos)
-    axes[0].set_yticklabels([SHORT.get(lab, lab) for _, lab, *_ in MS.JOURNEY], fontsize=FS_S)
-    for tl, (g, *_ ) in zip(axes[0].get_yticklabels(), MS.JOURNEY):
-        tl.set_color(MS.GROUP_C[g] if g == "학습 목표" else MS.INK)
-    axes[0].set_ylim(ypos[-1] + 0.7, -0.7)
-    _save(fig, "F7", "F7_journey")
+# 단계: (번호, 질문, 목적, 시도 목록, 판정, 배경색). 시도 = (이름, 설명, [(sweep, arm, 기준 arm, 기준 sweep, 점 표지)])
+# 설명은 「무엇을 바꾸었나」를 한 문장으로 적는다. 판넬을 보는 사람은 M07 · L6 같은 기호를 모른다(사용자 피드백 2026-11-04).
+FLOW = [
+    ("②", "구조를 바꾸면?", "웨이블릿 · 해상도 · 문맥을 반영한다", [
+        ("SWT 직렬 결합", "SWT 출력을 U-Net에 넣는다", [("structure", "m07_l1", "m06_l1", None)]),
+        ("웨이블릿 부대역", "U-Net이 대역별 계수를 처리한다", [("structure", "m08_l1", "m06_l1", None)]),
+        ("시간 해상도 유지", "길이를 줄이지 않는 팽창 합성곱", [("structure", "m10_l1", "m06_l1", None)]),
+        ("CNN-Transformer", "어텐션으로 먼 구간을 함께 본다", [("structure", "m09_l1", "m06_l1", None)]),
+    ], "개선된 구조 없음\nSWT 직렬은 유의하게 낮다", "#f1f0ec"),
+    ("③", "모델을 키우면?", "용량이 부족한지 확인한다", [
+        ("채널 폭 1/2 · 1/4", "층마다 특징 지도 수를 줄인다", [("structure", "m06_l1_half", "m06_l1", None),
+                                                    ("structure", "m06_l1_quarter", "m06_l1", None)]),
+        ("깊이 2배 · 4배", "파라미터 수는 같게 층을 늘린다", [("depth", "m06_l1_deep2", "m06_l1", None),
+                                               ("depth", "m06_l1_deep4", "m06_l1", None)]),
+        ("잔차 블록 4배", "단계마다 블록 1개를 4개로 늘린다", [("blocks", "m06_l1_nb4", "m06_l1", None)]),
+    ], "줄여도 키워도 판정 불가\n용량은 병목이 아니다", "#f1f0ec"),
+    ("④", "학습법을 바꾸면?", "선행 연구의 처방", [
+        ("정규화 제거", "정규화 층을 뺀다(EDSR 방식)", [("d41", "m06_l1_nonorm", "m06_l1", "l6cond")]),
+        ("가중치 EMA", "가중치 이동평균으로 평가한다", [("d41", "m06_l1_ema", "m06_l1", "l6cond")]),
+    ], "개선 없음 · 정규화\n제거는 유의하게 낮다", "#f1f0ec"),
+    ("⑤", "원인 진단", "고 SNR만 학습하면?", [
+        ("15~20 dB 전용 모델", "되찾을 수 있는 개선량의 상한", [("band", "m06_l1_band_hi", "m06_l1", None)]),
+    ], "한 모델이 전 대역을\n학습하며 절충한다", "#faefd6"),
+    ("⑥", "학습 목표를 바꾸면?", "무엇을 맞추게 할지 바꾼다", [
+        ("손실: MAE · 미분", "절댓값 · 기울기 오차도 줄인다", [("structure", "m06_l3", "m06_l1", None)]),
+        ("손실: 보존항", "무잡음 입력은 그대로 내보낸다", [("l6cond", "m06_l6", "m06_l1", None)]),
+        ("SNR 조건화", "입력 SNR을 모델에 알린다(FiLM)", [("cond", "m06_cond", "m06_l1", None)]),
+        ("보존항 + 조건화", "보존항 모델 대비 변화량", [("l6cond", "m06_cond_l6", "m06_l6", None)]),
+    ], "유의한 개선\n두 방법은 같은 문제의 두 해법", "#e4ecf7"),
+]
+
+def _wrap(s: str, cm: float, pt: float) -> str:
+    """글자 폭(한글 0.92 em, 그 밖 0.56 em — 나눔고딕 실측)으로 줄을 나눈다. 띄어쓰기 단위로만 끊는다."""
+    em = pt / 72 * 2.54
+    out, line, wl = [], "", 0.0
+    for word in s.split(" "):
+        ww = sum(em * 0.92 if "\uac00" <= ch <= "\ud7a3" else em * 0.56 for ch in word)
+        sp = em * 0.3 if line else 0.0
+        if line and wl + sp + ww > cm:
+            out.append(line); line, wl = word, ww
+        else:
+            line, wl = (line + " " + word if line else word), wl + sp + ww
+    out.append(line)
+    return "\n".join(out)
+
+
+def _flow_sig(sw, arm, base, key, bsw):
+    r = MS._paired(sw, arm, base, key, bsw)
+    if r is None:
+        return None
+    m, d, p = r
+    sig = bool(p < 0.05)
+    if sw == "d41" and bsw == "l6cond":          # 다른 환경 기준 — 같은 환경에서도 버틸 때만 유의(F-57)
+        same = MS._paired(sw, arm, base, key, "d40_ref")
+        if same is None or abs(same[0]) < 0.1 or np.sign(same[0]) != np.sign(m):
+            sig = False
+    return m, d, sig
+
+
+def f7_flow():
+    """딥러닝 개선 과정을 왼쪽 → 오른쪽 단계로 읽게 한다. 단계마다 위에서 아래로 「질문 · 목적 → 결과 → 시도 설명 → 판정」.
+
+    가운데 그래프는 모든 단계가 **같은 세로축**(기준 모델 대비 변화량)을 쓴다. 그래서 ②~④ 의 점이 0 부근에
+    머물다가 ⑤ · ⑥ 에서 위로 올라가는 것이 흐름으로 보인다. 점 옆 문자(a~n)가 아래 설명 줄과 짝이다.
+    수치는 모두 같은 자(고정 평가 집합, 같은 시드끼리의 대응 차이, F-41)이다.
+    ● 전 구간, ◆ 15~20 dB 구간(측정한 시도만), 채움 = p < 0.05, 세로선 = 시드 범위.
+    """
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+    W, H = SIZES["F7"]
+    fig = plt.figure(figsize=(W * CM, H * CM))
+    fx, fy = (lambda x: x / W), (lambda y: y / H)
+    ln = FS_S / 72 * 2.54 * 1.22                    # 한 줄 높이 [cm]
+    blue, amber, bad = MS.GROUP_C["학습 목표"], "#9a6b12", "#9b3b32"
+    gap, w0 = 0.45, 4.4
+    widths = [7.2, 6.4, 5.1, 4.75, 6.9]          # w0 + 합 + 간격 5 개 = 37.0 cm
+    assert abs(w0 + sum(widths) + 5 * gap - W) < 1e-6
+    top, bot = H - 0.1, 0.1
+    c_top, c_bot = top - 1.5, top - 5.2             # 그래프 칸 [cm]
+    YR = (-2.9, 6.0)
+    a = MS._sweep("l6cond")
+    v = [a[k]["band_15_20"] for k in a if k[0] == "m06_l1" and "band_15_20" in a[k]]
+    base_band = float(np.mean(v)) if v else float("nan")
+
+    def panel(x, w, col):
+        fig.patches.append(FancyBboxPatch((fx(x), fy(bot)), fx(w), fy(top - bot), transform=fig.transFigure,
+                                          boxstyle="round,pad=0,rounding_size=0.012", fc=col, ec="none",
+                                          zorder=-5))   # 축(zorder 0)보다 먼저 그린다
+
+    # 공통 그래프: 가로 = 판넬 cm 좌표, 세로 = dB. 축 배경은 투명하게 두어 단계 칸 색이 비친다.
+    ax = fig.add_axes([fx(w0 - 0.95), fy(c_bot), fx(W - (w0 - 0.95)), fy(c_top - c_bot)])
+    ax.patch.set_alpha(0)
+    ax.set_xlim(w0 - 0.95, W); ax.set_ylim(*YR)
+    for sp in ("top", "right", "bottom"):
+        ax.spines[sp].set_visible(False)
+    ax.spines["left"].set_color(MS.INK2)
+    ax.set_xticks([]); ax.set_yticks([-2, 0, 2, 4]); ax.set_yticklabels(["-2", "0", "+2", "+4"])
+    ax.tick_params(axis="y", labelsize=FS_S, colors=MS.INK2, length=3)
+    ax.grid(False)
+    for t in (-2, 2, 4):
+        ax.plot([w0 + gap, W], [t, t], color="#d9d6ce", lw=0.7, zorder=0)
+    ax.plot([w0 + gap, W], [0, 0], color=MS.INK2, lw=1.1, zorder=1)
+
+    # ① 출발점 + 읽는 법
+    panel(0.0, w0, "#f1f0ec")
+    fig.text(fx(0.2), fy(top - 0.5), "① 출발점", fontsize=FS, fontweight="bold", va="center")
+    fig.text(fx(0.2), fy(top - 1.08), "잔차 U-Net · MSE 손실", fontsize=FS_S, va="center", color=MS.INK2)
+    ax.set_ylabel("기준 모델 대비 [dB]", fontsize=FS_S, color=MS.INK2, labelpad=2)
+    t0 = _wrap("입력 SNR 15~20 dB에서 출력이 입력보다 나빠진다", w0 - 0.4, FS_S)
+    fig.text(fx(0.2), fy(c_bot - 0.28), t0, fontsize=FS_S, va="top", linespacing=1.1, color=MS.INK2)
+    nl = t0.count("\n") + 1
+    fig.text(fx(0.2), fy(c_bot - 0.28 - (nl * 0.95 + 0.1) * ln), f"{base_band:+.1f} dB", fontsize=FS + 4, fontweight="bold",
+             color=bad, va="top")
+    ly = c_bot - 0.28 - (nl * 0.95 + 2.1) * ln
+    fig.text(fx(0.2), fy(ly), "읽는 법", fontsize=FS_S, fontweight="bold", va="center")
+    items = [("o", True, "전 구간"), ("D", True, "15~20 dB 구간"), ("o", False, "빈 표식: p ≥ 0.05"),
+             ("|", True, "세로선: 시드 범위")]
+    for i, (mk, fill, lab) in enumerate(items):
+        yy = ly - (i + 1) * ln
+        fig.add_artist(Line2D([fx(0.38)], [fy(yy)], marker=mk, ms=7 if mk == "o" else 6, ls="none",
+                              mfc=MS.INK2 if fill else MS.SURFACE, mec=MS.INK2, mew=1.3, transform=fig.transFigure))
+        fig.text(fx(0.7), fy(yy), lab, fontsize=FS_S, va="center", color=MS.INK2)
+
+    letters = iter("abcdefghijklmnopqrstuvwxyz")
+    x = w0 + gap
+    for (no, q, purpose, tries, verdict, col), w in zip(FLOW, widths):
+        panel(x, w, col)
+        fig.patches.append(FancyArrowPatch((fx(x - gap + 0.02), fy(top - 0.5)), (fx(x - 0.02), fy(top - 0.5)),
+                                           transform=fig.transFigure, arrowstyle="-|>", mutation_scale=13,
+                                           color=MS.INK2, lw=1.4))
+        hc = blue if no == "⑥" else (amber if no == "⑤" else MS.INK)
+        dc = blue if no == "⑥" else (amber if no == "⑤" else "#6f6d68")
+        fig.text(fx(x + 0.2), fy(top - 0.5), f"{no} {q}", fontsize=FS, fontweight="bold", va="center", color=hc)
+        fig.text(fx(x + 0.2), fy(top - 1.08), purpose, fontsize=FS_S, va="center", color=MS.INK2)
+        # 그래프: 시도마다 칸 안에 고르게 놓는다. 한 시도에 점이 둘이면(½ · ¼ 등) 나란히 둔다.
+        slots = [len(arms) for _, _, arms in tries]
+        n = sum(slots)
+        xs = x + 0.5 + (np.arange(n) + 0.5) * (w - 1.0) / n
+        k, y = 0, c_bot - 0.28
+        for name, desc, arms in tries:
+            let = next(letters)
+            x_let, hi_let = [], -9.0
+            for arm_ in arms:
+                sw, arm, base, bsw = arm_
+                xc, hi = xs[k], -9.0
+                for key, mk, ms, dx in (("fixed_snr_imp_scaled", "o", 46, -0.13), ("band_15_20", "D", 36, 0.13)):
+                    r = _flow_sig(sw, arm, base, key, bsw)
+                    if r is None:
+                        continue
+                    m, d, sig = r
+                    ax.plot([xc + dx, xc + dx], [d.min(), d.max()], color=dc, lw=1.6, alpha=0.45,
+                            solid_capstyle="round", zorder=2)
+                    ax.scatter([xc + dx], [m], s=ms, marker=mk, color=dc if sig else MS.SURFACE, edgecolor=dc,
+                               lw=1.4, zorder=3, clip_on=False)
+                    hi = max(hi, d.max())
+                x_let.append(xc); hi_let = max(hi_let, hi)
+                k += 1
+            # 문자는 시도마다 하나 — 점이 둘이면 두 점의 가운데 위에 둔다
+            ax.text(float(np.mean(x_let)), hi_let + 0.25, let, ha="center", va="bottom", fontsize=FS_S, color=hc,
+                    fontweight="bold")
+            # 설명 줄: 「문자 이름」(굵게) 다음 줄에 설명
+            fig.text(fx(x + 0.2), fy(y), f"{let}  {name}", fontsize=FS_S, fontweight="bold", va="top",
+                     color=hc if no in "⑤⑥" else MS.INK)
+            dtxt = _wrap(desc, w - 0.75, FS_S)
+            fig.text(fx(x + 0.55), fy(y - ln * 0.95), dtxt, fontsize=FS_S, va="top", color=MS.INK2, linespacing=1.1)
+            y -= ln * (0.95 + 0.92 * (dtxt.count("\n") + 1)) + 0.07
+            assert y > bot + 1.2, f"{no} 칸의 글이 판정 문장과 겹친다 (y = {y:.2f} cm)"
+        fig.text(fx(x + 0.2), fy(bot + 0.2), verdict, fontsize=FS_S, fontweight="bold", va="bottom", linespacing=1.2,
+                 color=hc if no in "⑤⑥" else MS.INK)
+        x += w + gap
+    _save(fig, "F7", "F7_flow")
 
 
 # ------------------------------------------------------------------ T1 SWT 임계값
@@ -476,7 +614,7 @@ def main() -> int:
     if "F6" in want:
         f6_noise(cache)
     if "F7" in want:
-        f7_journey()
+        f7_flow()
     if "T1" in want:
         t1_swt(cache)
     if "T2" in want:

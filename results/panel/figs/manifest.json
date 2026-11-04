@@ -1,8 +1,8 @@
 {
   "env": {
     "python": "3.13.18",
-    "platform": "Linux-6.18.44-fc-v230-x86_64-with-glibc2.39",
-    "git": "e86a5d2",
+    "platform": "Linux-6.18.44-fc-v233-x86_64-with-glibc2.39",
+    "git": "a56da9c",
     "numpy": "2.5.3",
     "scipy": "1.18.1",
     "pywt": "1.8.0",
@@ -13,29 +13,24 @@
   "config": {
     "panel_figs": [
       "F4",
-      "F5",
-      "F6",
-      "F7",
-      "T1",
-      "T2",
-      "T3"
+      "F5"
     ],
     "sizes_cm": {
       "F4": [
-        18.2,
-        10.4
-      ],
-      "F5": [
-        18.2,
-        10.4
+        12.0,
+        9.0
       ],
       "F6": [
-        18.2,
-        10.4
+        12.0,
+        9.0
+      ],
+      "F5": [
+        12.0,
+        9.0
       ],
       "F7": [
-        18.2,
-        10.4
+        37.0,
+        12.0
       ],
       "T1": [
         13.4,
@@ -52,7 +47,7 @@
     }
   },
   "sources": {
-    "scripts/make_panel_figs.py": "0c3d50e9a88b012d",
+    "scripts/make_panel_figs.py": "10f6c6528741a5b1",
     "scripts/make_slides.py": "67b2e7e94060f250"
   }
 }
