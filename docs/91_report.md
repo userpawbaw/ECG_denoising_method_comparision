@@ -22,7 +22,7 @@
 | | `11_loss_by_noise`\* · `12_causal_fe`\* · `13_lookahead_fe`\* · `14_median_vs_zerophase`\* · `15_reference_and_training` · `16_fe_metric_audit` | EXP-G, 실시간 front-end 후보 네 판, 참조 정의 검토, 채점 기준 감사 |
 | 산출물·운영 | `90_results_d0`\* · `90_results_d1`\* · `92_axis_gap`\* | 모든 방법 × 모든 지표의 자동 생성 결과표 (본문은 여기서 골라 싣는다) |
 | | `30_realtime_demo` · `31_demo_design_review` · `32_metric_cards`\* · `33_card_design_samples` · `93_slides`\* · `34_visual_plan` · `94_panel_plan` · `96_visual_proposal` · `97_research_figs`\* | 시연 화면 · 지표 카드 · 발표 그림(8 장에 정리). 전시 판넬 · 브로셔 기획은 `94_panel_plan`, 대외 글의 학술 서술 규칙은 `95_academic_style`, 새 시각화 후보와 사전 점검표는 `96_visual_proposal`, 그 후보를 그린 연구 과정 그림의 색인은 `97_research_figs` |
-| | `08_acquisition` · `09_data_upload` · `35_external_compute` · `99_status` | 실측 수집 절차 · PhysioNet 데이터 공유 · 외부 GPU에서 산포를 측정하는 판의 실행 안내(F-40 · 5.10.7) · 현재 상태와 인수인계 |
+| | `08_acquisition` · `09_data_upload` · `35_external_compute` · `37_seed_replication` · `99_status` | 실측 수집 절차 · PhysioNet 데이터 공유 · 외부 GPU에서 산포를 측정하는 판의 실행 안내(F-40 · 5.10.7) · 판넬 그림 7 판정의 시드 10 개 재실험 지시(D-44) · 현재 상태와 인수인계 |
 
 지표 정의, 약어, 본 연구에서 특정한 뜻으로 쓰는 용어는 `docs/18_glossary.md`에 정리되어 있다.
 

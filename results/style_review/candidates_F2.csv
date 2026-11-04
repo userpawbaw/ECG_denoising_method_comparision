@@ -99,7 +99,7 @@
 보고서,91_report.md:22 (표),표,1,A3 A6 C1 C6 E1,A3 A6 C1 C6 E1,,자동,A3:네 판 | A3:채점 | A6:front-end | C1:EXP-G | C6:front-end | E1:감사,"EXP-G, 실시간 front-end 후보 네 판, 참조 정의 검토, 채점 기준 감사"
 보고서,91_report.md:23 (표),표,1,B1 B10 D4,B1 B10 D4,,자동,B1:× | B10:여기서 | D4:모든 | D4:모든,모든 방법 × 모든 지표의 자동 생성 결과표 (본문은 여기서 골라 싣는다)
 보고서,91_report.md:24 (표),표,1,B6 C3,B6 C3,,자동,B6:115자 | C3:`94_panel_plan` | C3:`95_academic_style` | C3:`96_visual_proposal` | C3:`97_research_figs` | C3:panel_plan | C3:academic_style | C3:visual_proposal | C3:research_figs,"시연 화면 · 지표 카드 · 발표 그림(8 장에 정리). 전시 판넬 · 브로셔 기획은 `94_panel_plan`, 대외 글의 학술 서술 규칙은 `95_academic_style`, 새 시각화 후보와 사전 점검표는 `96_visual_proposal`, 그 후보를 그린 연구 과정 그림의 색인은 `97_research_figs`"
-보고서,91_report.md:25 (표),표,1,A3 C2 C8 D6,A3 C2 C8 D6,,자동,A3:판의 | C2:F-40 | C2:5.10.7 | C8:인수인계 | D6:현재,실측 수집 절차 · PhysioNet 데이터 공유 · 외부 GPU에서 산포를 측정하는 판의 실행 안내(F-40 · 5.10.7) · 현재 상태와 인수인계
+보고서,91_report.md:25 (표),표,1,A3 B6 C2 C8 D6,A3 B6 C2 C8 D6,,자동,A3:판의 | B6:120자 | C2:F-40 | C2:D-44 | C2:5.10.7 | C8:인수인계 | D6:현재,실측 수집 절차 · PhysioNet 데이터 공유 · 외부 GPU에서 산포를 측정하는 판의 실행 안내(F-40 · 5.10.7) · 판넬 그림 7 판정의 시드 10 개 재실험 지시(D-44) · 현재 상태와 인수인계
 보고서,91_report.md:27,본문,1,C3,C3,,자동,C3:`docs/18_glossary.md` | C3:docs/18_glossary.md | C3:18_glossary.md,"지표 정의, 약어, 본 연구에서 특정한 뜻으로 쓰는 용어는 `docs/18_glossary.md`에 정리되어 있다."
 보고서,91_report.md:35,본문,2,A6,A6,,자동,A6:spike,오실로스코프에서는 광대역 잡음과 순간적인 큰 spike가 함께 관측되었다.
 보고서,91_report.md:39,본문,2,A6,A6,,자동,A6:filtering,초기에 적용한 Sameni의 모델 기반 Kalman filtering은 기대한 만큼 SNR을 개선하지 못하였다

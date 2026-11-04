@@ -50,3 +50,22 @@ def test_known_bad_phrases_are_caught(bad: str):
 ])
 def test_academic_sentences_pass(good: str):
     assert not cas.check_text(good), cas.check_text(good)
+
+
+def test_term_registry_rows_have_sources():
+    """용어 대조 기록(docs/95 §3.1)의 모든 줄에 출처와 확인일이 있다 (A6).
+
+    「특징 지도」처럼 출처 없이 직역한 말이 대외 글에 들어간 일이 있었다(2026-11-04 사용자 지적).
+    표에 올리는 순간 출처를 적게 하여, 확인하지 않은 용어가 기준표로 굳는 것을 막는다.
+    """
+    import re
+    from pathlib import Path
+    doc = (Path(__file__).resolve().parents[1] / "docs" / "95_academic_style.md").read_text(encoding="utf-8")
+    sec = doc.split("### 3.1 용어 대조 기록", 1)[1].split("\n## ", 1)[0]
+    rows = [r for r in sec.splitlines() if r.startswith("|") and not r.startswith("|---")][1:]
+    assert rows, "용어 대조 기록 표가 비었다"
+    for r in rows:
+        cells = [c.strip() for c in r.strip("|").split("|")]
+        assert len(cells) == 5, f"칸 수가 다르다: {r}"
+        assert len(cells[3]) >= 8, f"출처가 비었다: {cells[0]}"
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", cells[4]), f"확인일 형식: {cells[0]}"
