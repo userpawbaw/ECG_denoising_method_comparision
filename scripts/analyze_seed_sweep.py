@@ -26,6 +26,8 @@ import _bootstrap  # noqa: F401
 import argparse
 import csv
 import math
+import json
+from itertools import product
 from collections import defaultdict
 from pathlib import Path
 
@@ -88,6 +90,106 @@ def section(title: str) -> None:
     print(f"\n{'='*72}\n{title}\n{'='*72}")
 
 
+
+# D-44: 결과를 보기 전에 고정한 16 비교 × 2 지표의 단일 계열.
+REP_ARMS = ("m07_l1", "m08_l1", "m10_l1", "m09_l1", "m06_l1_half",
+            "m06_l1_quarter", "m06_l1_deep2", "m06_l1_deep4", "m06_l1_nb4",
+            "m06_l1_nonorm", "m06_l1_ema", "m06_l1_band_hi", "m06_l3",
+            "m06_l6", "m06_cond", "m06_cond_l6")
+REP_METRICS = ("fixed_snr_imp_scaled", "band_15_20")
+REP_COMPARISONS = tuple((a, "m06_l6" if a == "m06_cond_l6" else "m06_l1", m)
+                        for a in REP_ARMS for m in REP_METRICS)
+
+
+def holm(pvalues):
+    p = np.asarray(pvalues, dtype=float)
+    if not np.all(np.isfinite(p)) or np.any((p < 0) | (p > 1)):
+        raise ValueError("p values must be finite and in [0, 1]")
+    order = np.argsort(p, kind="stable")
+    adjusted = np.empty_like(p)
+    adjusted[order] = np.minimum(1, np.maximum.accumulate(
+        p[order] * np.arange(len(p), 0, -1)))
+    return adjusted
+
+
+def exact_wilcoxon(d):
+    # 부호 반전을 전수 열거한다. 0 차이는 제외하고 동률에는 평균 순위를 쓴다.
+    d = np.asarray(d, dtype=float)
+    d = d[d != 0]
+    if not len(d):
+        return 1.0
+    ranks = stats.rankdata(np.abs(d))
+    observed = abs(float(np.dot(np.sign(d), ranks)))
+    null = np.asarray(list(product((-1, 1), repeat=len(d)))) @ ranks
+    return float(np.mean(np.abs(null) >= observed - 1e-12))
+
+
+def tost(d, margin=0.5):
+    d = np.asarray(d, dtype=float)
+    if len(d) < 2 or not np.all(np.isfinite(d)) or margin <= 0:
+        raise ValueError("TOST requires finite paired observations and positive margin")
+    mean, sd = float(d.mean()), float(d.std(ddof=1))
+    if sd == 0:
+        return 0.0 if abs(mean) < margin else (0.5 if abs(mean) == margin else 1.0)
+    se = sd / math.sqrt(len(d))
+    return float(max(stats.t.sf((mean + margin) / se, len(d)-1),
+                     stats.t.cdf((mean - margin) / se, len(d)-1)))
+
+
+def replication_analysis(root):
+    root = Path(root)
+    rows = {}
+    environments = set()
+    for arm in ("m06_l1", *REP_ARMS):
+        for seed in range(10):
+            path = root / f"{arm}__s{seed}" / "summary.json"
+            r = json.loads(path.read_text())
+            if r["arm"] != arm or r["seed"] != seed or r.get("source") != "mitdb":
+                raise ValueError(f"invalid identity/source: {path}")
+            env = r.get("env", {})
+            keys = ("device", "amp", "torch", "python", "platform", "threads", "git_commit")
+            if any(k not in env for k in keys):
+                raise ValueError(f"missing environment metadata: {path}")
+            environments.add(tuple(str(env[k]) for k in keys) +
+                             tuple(str(env.get(k, "")) for k in ("gpu", "cuda", "cudnn")))
+            if not all(np.isfinite(r[m]) for m in REP_METRICS):
+                raise ValueError(f"missing/nonfinite metric: {path}")
+            rows[arm, seed] = r
+    if len(environments) != 1:
+        raise ValueError("D-44 requires one environment; mixed runs rejected")
+    result = []
+    for arm, base, metric in REP_COMPARISONS:
+        d = np.array([rows[arm, s][metric] - rows[base, s][metric] for s in range(10)])
+        sd = float(d.std(ddof=1))
+        p = float(stats.ttest_1samp(d, 0).pvalue) if sd else (1.0 if d.mean() == 0 else 0.0)
+        result.append(dict(arm=arm, base=base, metric=metric, n=10,
+                           mean_delta=float(d.mean()), sd_delta=sd, p=p,
+                           wilcoxon_p=exact_wilcoxon(d), _d=d))
+    for r, adjusted in zip(result, holm([r["p"] for r in result])):
+        d = r.pop("_d")
+        r["p_Holm"] = float(adjusted)
+        r["TOST_p"] = tost(d) if adjusted >= 0.05 else None
+        r["verdict"] = (("향상" if r["mean_delta"] > 0 else "저하")
+                        if adjusted < 0.05 else
+                        "동등" if r["TOST_p"] < 0.05 else "판정 불가")
+        r["wilcoxon_disagrees"] = (r["wilcoxon_p"] < 0.05) != (adjusted < 0.05)
+    with (root / "analysis.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(result[0]))
+        writer.writeheader()
+        writer.writerows(result)
+    keys = list(result[0])
+    table = "| " + " | ".join(keys) + " |\n| " + " | ".join(["---"]*len(keys)) + " |\n"
+    for r in result:
+        table += "| " + " | ".join(f"{r[k]:.6g}" if isinstance(r[k], float)
+                                    else str(r[k] if r[k] is not None else "—") for k in keys) + " |\n"
+    (root / "analysis.md").write_text(
+        "# D-44 — 32개 비교의 단일 Holm 계열\n\nΔ = arm − base. "
+        "Wilcoxon은 정확 양측 검정, TOST ±0.5 dB는 p_Holm ≥ 0.05에만 적용했다.\n\n" + table,
+        encoding="utf-8")
+    print(table)
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -95,7 +197,10 @@ def main() -> int:
     ap.add_argument("--base", default=None, help="짝지어 비교할 기준 arm")
     ap.add_argument("--targets", default="1.4,0.5,0.25",
                     help="필요 판 수를 계산할 차이 [dB]")
+    ap.add_argument("--replication", action="store_true", help="D-44: 170 summaries, 32-test Holm family")
     args = ap.parse_args()
+    if args.replication:
+        return replication_analysis(args.path)
 
     rows = load(Path(args.path))
     if not rows:
