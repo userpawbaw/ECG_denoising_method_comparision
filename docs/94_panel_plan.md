@@ -233,8 +233,9 @@
 
 ### 4.1 최종판 (2026-11-03)
 
-`python scripts/build_panel.py --template <양식.pptx> --final --render` 로 만든다. 시안 표지를 빼고
-`results/panel/panel.pptx` · `panel.pdf` · `panel.png`(100 dpi), 브로셔는 `brochure.*`(200 dpi)로 저장한다.
+`python scripts/build_panel.py --template <판넬 양식.pptx> --brochure-template <브로셔 양식.docx> --final --render` 로
+만든다. 시안 표지를 빼고 `results/panel/panel.pptx` · `panel.pdf` · `panel.png`(100 dpi), 브로셔는 `brochure.docx` ·
+`brochure.pdf` · `brochure.png`(200 dpi)로 저장한다(브로셔 양식은 5 절).
 시안 파일(`*_draft.*`)은 비교를 위해 그대로 둔다.
 
 ![panel-final](../results/panel/panel.png)
@@ -305,7 +306,7 @@
 
 #### 4.1.2 편집 가능한 pptx (2026-11-03)
 
-`results/panel/panel.pptx` 와 `brochure.pptx` 는 PowerPoint 에서 고칠 수 있게 만든다.
+`results/panel/panel.pptx` 는 PowerPoint 에서 고칠 수 있게 만든다(브로셔는 docx 양식에 글을 직접 채운다 — 5 절).
 
 | 요소 | 넣는 방식 | 고치는 방법 |
 |---|---|---|
@@ -360,19 +361,31 @@ mermaid 에 역방향 화살표가 없어 디코더 순위가 어긋나 가로 �
 남은 것: 조원 · 담당교수 이름, 장비 사진(빈 틀), 맑은 고딕 글꼴 확인(이 환경에는 없어 대체 글꼴로 그려졌다).
 제안서 P2(`S23_band_specialist`)는 S5 의 원인을 보여 주지만 지면이 없어 싣지 않았다. S4 와 바꿀지는 검토가 필요하다.
 
-## 5. 브로셔 시안
+## 5. 브로셔 (학과 양식)
 
-`results/panel/brochure_draft.pptx` · `.png` (같은 스크립트). 양식(HWP)의 순서를 그대로 따른다.
+`results/panel/brochure.docx` · `.pdf` · `.png` (같은 스크립트, `build_brochure`). **학과 HWP 양식을 docx 로 변환한 파일**을
+`--brochure-template` 으로 받아 그 표에 채운다. 양식은 학과 자료라 저장소에 넣지 않는다(판넬 양식과 같다).
 
-![brochure](../results/panel/brochure_draft.png)
+![brochure](../results/panel/brochure.png)
+
+**양식 복원 (2026-11-04)** — 처음 판은 양식의 순서만 따른 A4 pptx 였고 형식이 원본과 달랐다(사용자 지적). 원본 PDF 에서
+잰 규격으로 맞춘다.
+
+| 항목 | 원본(HWP → PDF 에서 측정) | 적용 |
+|---|---|---|
+| 쪽 | 19.0 × 26.8 cm 한 쪽, 「1 page 이내」 | 양식 docx 의 쪽 설정 그대로. 표 뒤 빈 문단 두 개가 2 쪽을 만들어 하나만 남기고 1 pt 로 줄였다 |
+| 표 | 머리 2 행(18.8 · 17.0 pt) + 본문 3 행(149.8 · 234.1 · 264.6 pt) | 행 높이를 바꾸지 않고 내용을 그 안에 맞춘다. 넘치면 행이 늘어 2 쪽이 되므로 PDF 쪽 수로 확인한다 |
+| 글꼴 | 굴림. 본문 10 pt · 줄 간격 16 pt(HWP 160 %), 구역 제목 12 pt 보통 굵기, 작품명 10 pt 굵게 | 같음(줄 간격은 고정값). docx 변환본은 구역 제목이 굵게 바뀌어 있었다 |
+| 안내문 | 빨간 글(「1 page 이내 작성」 등) | 지웠다 |
 
 | 절 | 내용 |
 |---|---|
-| 1. 작품 목표 | 세 줄 — 무엇을 찾나, 무엇을 같은 조건으로 비교하나 |
-| 2. 작품 개요 | `S18` 블록도 + 네 줄 + **응용 분야**(저가 · 웨어러블 취득 장치의 후처리 연구, 평가 방법론 — 진단 용도 아님) |
-| 3. 작품 내용 및 이미지 | 가로 세 장: 시연 화면 · `S5` · `S15` + 캡션, 아래 두 줄 요약 |
+| 1. 작품 목표 | 목표 세 줄 + 주요 질문 셋 |
+| 2. 작품 개요 | 왼쪽 실험 구성도(판넬의 PowerPoint 도형을 렌더한 그림, `figs/B_pipeline.png`) · 오른쪽 연구 단계 다섯 개(판넬 `STEPS` 와 같은 순서), 아래 **- 응용 분야**(양식의 위치 그대로) |
+| 3. 작품 내용 및 이미지 | 시연 화면 · 판넬 전용 그림 `F4_crossover` · `F5_phantom` + 캡션, 아래 결과 요약 |
 
-HWP 양식에 옮길 때는 PNG 를 넣고 글은 시안에서 복사한다(굴림 10 pt).
+남은 것: 조원 · 지도교수 이름. 이 환경에는 굴림이 없어 미리보기(PNG · PDF)는 대체 글꼴로 그려지고 굵은 글씨가 보통
+굵기로 보인다 — 한글 · Word 에서 열어 확인한다. 실험 구성도는 7.8 cm 폭이라 그림 속 글자가 약 5 pt 다.
 
 ---
 

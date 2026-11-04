@@ -168,7 +168,7 @@ def s23_band_specialist():
 AXIS_METRICS = [("snr_imp_scaled", "SNR 개선량(진폭 보정) [dB]", +1),
                 ("cc", "상관계수", +1), ("prdn", "PRDN [%]", -1), ("psd_logdist", "PSD 로그 거리", -1)]
 AXIS_METHODS = {"M06": "잔차 U-Net", "M08": "웨이블릿 부대역 U-Net", "M07": "SWT 직렬 결합 U-Net",
-                "M04": "SWT 임계값 처리", "M05": "칼만 평활기", "M_FE": "공통 전처리 단독"}
+                "M04": "SWT 임계값 처리", "M05": "칼만 필터", "M_FE": "공통 전처리 단독"}
 
 
 def _axis_gap():
@@ -412,7 +412,7 @@ def s29_metric_floor():
 # ------------------------------------------------------------------ P9 / S30
 def s30_phantom_threshold():
     import pandas as pd
-    names = {"M_FE": "공통 전처리 단독", "M04": "SWT 임계값 처리", "M05": "칼만 평활기", "M06": "잔차 U-Net"}
+    names = {"M_FE": "공통 전처리 단독", "M04": "SWT 임계값 처리", "M05": "칼만 필터", "M06": "잔차 U-Net"}
     ths = (0.7, 0.8, 0.9)
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.2), sharey=False)
     for ax, tag, lab in zip(axes, ("d0", "d1"), ("합성 ECG", "MIT-BIH")):
@@ -430,7 +430,7 @@ def s30_phantom_threshold():
         ax.set_ylabel("박동 형태의 가성 QRS군 [건]")
         ax.grid(axis="x", visible=False)
     axes[0].legend(frameon=False, title="판정 임계값\n(진할수록 엄격)", loc="upper left", fontsize=9.5)
-    fig.suptitle("가성 QRS군 판정 임계값을 0.7 · 0.8 · 0.9로 바꾸어도 칼만 평활기의 순위는 같다\n"
+    fig.suptitle("가성 QRS군 판정 임계값을 0.7 · 0.8 · 0.9로 바꾸어도 칼만 필터의 순위는 같다\n"
                  "위양성 검출 위치 +-200 ms의 출력과 그 출력의 평균 박동 파형의 상관계수, 입력 SNR -5 · 0 dB, 백색 · 혼합 잡음, 22 기록",
                  fontsize=12, y=1.04)
     _save(fig, "S30_phantom_threshold.png")
@@ -525,7 +525,7 @@ FIGS = {
     "S29": (s29_metric_floor, "S29_metric_floor.png", "P8",
             "지표 분해능 대비 효과 크기. QRS 폭 오차는 MIT-BIH 에서 한 기법을 빼고 모든 기법의 차이가 판별 하한 아래에 있어 판정에 쓸 수 없다(F-16). 합성 ECG 에서는 모두 판별 하한 위에 있다."),
     "S30": (s30_phantom_threshold, "S30_phantom_threshold.png", "P9",
-            "그림 S15 의 강건성 보조. 가성 QRS군 판정 임계값을 바꾸어도 칼만 평활기가 가장 많다(F-58, D-42)."),
+            "그림 S15 의 강건성 보조. 가성 QRS군 판정 임계값을 바꾸어도 칼만 필터가 가장 많다(F-58, D-42)."),
     "S31": (s31_findings_map, "S31_findings_map.png", "P10",
             "발견 기록 전체에서 보고서 8 장의 방법론적 요약이 유형으로 묶은 기록의 위치. 측정 전제의 오류 아홉 건이 연구 초기와 "
             "실시간 처리 연구에 모여 있다. 분류는 보고서 본문에서 읽으므로 보고서가 바뀌면 그림도 바뀐다."),

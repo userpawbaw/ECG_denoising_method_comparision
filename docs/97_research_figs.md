@@ -16,6 +16,6 @@
 | [`S27_cond_l6_interaction.png`](../results/slides/research/S27_cond_l6_interaction.png) | P6 | SNR 조건화와 무잡음 입력 보존 손실의 2x2 상호작용(F-47). 보존 손실 선이 거의 수평이므로 조건화를 더해도 추가 개선이 없다. |
 | [`S28_cond_error_cost.png`](../results/slides/research/S28_cond_error_cost.png) | P7 | 조건 SNR 오차의 비대칭 비용(F-46). 과소 추정 쪽은 급하게 떨어지고 과대 추정 쪽은 완만하다. SNR 추정기가 과대 추정 쪽으로 편향되어 있으므로(F-13) 실제 비용은 작은 쪽에 해당한다. |
 | [`S29_metric_floor.png`](../results/slides/research/S29_metric_floor.png) | P8 | 지표 분해능 대비 효과 크기. QRS 폭 오차는 MIT-BIH 에서 한 기법을 빼고 모든 기법의 차이가 판별 하한 아래에 있어 판정에 쓸 수 없다(F-16). 합성 ECG 에서는 모두 판별 하한 위에 있다. |
-| [`S30_phantom_threshold.png`](../results/slides/research/S30_phantom_threshold.png) | P9 | 그림 S15 의 강건성 보조. 가성 QRS군 판정 임계값을 바꾸어도 칼만 평활기가 가장 많다(F-58, D-42). |
+| [`S30_phantom_threshold.png`](../results/slides/research/S30_phantom_threshold.png) | P9 | 그림 S15 의 강건성 보조. 가성 QRS군 판정 임계값을 바꾸어도 칼만 필터가 가장 많다(F-58, D-42). |
 | [`S31_findings_map.png`](../results/slides/research/S31_findings_map.png) | P10 | 발견 기록 전체에서 보고서 8 장의 방법론적 요약이 유형으로 묶은 기록의 위치. 측정 전제의 오류 아홉 건이 연구 초기와 실시간 처리 연구에 모여 있다. 분류는 보고서 본문에서 읽으므로 보고서가 바뀌면 그림도 바뀐다. |
 | [`S32_step_optimum.png`](../results/slides/research/S32_step_optimum.png) | P11 | 학습 곡선을 step 축으로 다시 그린 것. 데이터량과 학습량을 4 배로 늘려도 최적점의 step 수가 비슷하다(5.10.8 절의 부수 관측). |

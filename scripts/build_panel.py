@@ -6,7 +6,7 @@
 
 산출: `results/panel/`
     panel_draft.pptx / .png      A1 세로 59.4 x 84.1 cm, 양식의 네 구역에 그림과 문안
-    brochure_draft.pptx / .png   A4 세로, 브로셔 양식(①목표 ②개요 ③내용 및 이미지)의 순서
+    brochure_draft.docx / .png   학과 브로셔 양식(docx, 19.0 x 26.8 cm 한 쪽)의 표에 ①목표 ②개요 ③내용 및 이미지
 
 **시안이다.** 문안과 배치를 팀이 보고 고치기 위한 판이고, 최종 판은 양식 파일에서
 손으로 다듬는다. 그래서 두 가지만 지킨다.
@@ -566,59 +566,179 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
 
 
 # ------------------------------------------------------------------ 브로셔
-def build_brochure(n: dict, final: bool = False) -> Path:
+def pipeline_png(path: Path) -> Path:
+    """판넬의 실험 구성도(PowerPoint 도형)를 한 장짜리 pptx 로 그려 PNG 로 렌더한다 — 브로셔(docx)에 넣는 그림."""
+    import tempfile
+
     from pptx import Presentation
     from pptx.util import Cm
     prs = Presentation()
-    prs.slide_width, prs.slide_height = Cm(21.0), Cm(29.7)
+    prs.slide_width, prs.slide_height = Cm(D1_W + 0.4), Cm(D1_H + 0.4)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    sh = Sheet(prs, slide, body=(4.5, 28.5))
-    H = lambda t: [(t, {"bold": True, "size": 12, "color": ACC})]  # noqa: E731
-    sh.text(1.6, 1.2, 17.8, 1.0, [[("작품명 | ", {"bold": True}),
-                                   ("심전도 잡음 제거 기법의 정량적 비교 연구", {"bold": True})]], size=15)
-    sh.text(1.6, 2.4, 17.8, 0.8, [[("학 과 | ", {"bold": True}), ("전기정보공학과   ", {}),
-                                   ("조 원 | ", {"bold": True}), ("(입력)   ", {}),
-                                   ("지도교수 | ", {"bold": True}), ("(입력)", {})]], size=10.5)
-    sh.text(1.6, 4.0, 17.8, 0.7, [H("1. 작품 목표")])
-    sh.text(1.6, 4.8, 17.8, 2.0, "자체 제작한 심전도(ECG) 취득 장치의 잔류 잡음을 파형을 보존하면서 줄이는 디지털 "
-            "후처리 기법을 규명하는 것을 목표로 한다. 고전 필터, 웨이블릿 임계값 처리, 칼만 필터, 딥러닝의 네 계열을 "
-            "동일한 입력 · 전처리 · 평가 지표로 비교하여, 잡음 종류와 입력 SNR에 따른 적합 기법을 제시한다.", size=10)
-    sh.text(1.6, 7.2, 17.8, 0.7, [H("2. 작품 개요")])
-    draw_pipeline(sh, 1.6 + (17.8 - D1_W * 0.6) / 2, 8.0, s=0.6, fpt=9)
-    # 판넬의 연구 단계 목차(STEPS)와 같은 다섯 단계로 적는다
-    sh.text(1.6, 16.2, 17.8, 3.8, [
-        [("① 비교 체계: ", {"bold": True}), ("공통 전처리(0.5~100 Hz 대역통과 필터, 전원선 잡음 검출 시 노치 필터) 뒤 "
-                                           "네 계열 기법과 이상적 상한(기준 신호를 아는 최적 필터)을 잡음 7종 · 입력 SNR "
-                                           "7단계에서 동일 지표 4범주로 비교", {})],
-        [("② 조건별 비교: ", {"bold": True}), ("합성 ECG와 MIT-BIH 실측 기록에서 입력 SNR · 잡음 종류별 적합 기법 분석 "
-                                             "[그림 2]", {})],
-        [("③ 안전성 검증: ", {"bold": True}), ("박동 삭제 구간의 가성 파형 생성과 위양성 검출 위치의 가성 QRS군 생성 "
-                                             "측정 [그림 3]", {})],
-        [("④ 딥러닝 개선: ", {"bold": True}), ("구조 · 규모 · 학습 기법 · 학습 목표 변경을 동일 시드 대응 비교로 검정", {})],
-        [("⑤ 실시간 시연: ", {"bold": True}), ("저장 신호 재생 비교 화면과 실시간 처리 화면 [그림 1]", {})],
-        [("응용 분야: ", {"bold": True}), ("저가형 · 착용형 심전도 취득 장치의 신호 후처리 연구, 생체신호 잡음 제거 "
-                                         "기법의 평가 방법론(임상 진단 용도 아님)", {})],
-    ], size=9.5)
-    sh.text(1.6, 20.3, 17.8, 0.7, [H("3. 작품 내용 및 이미지")])
-    # 그림은 판넬 전용 그림(make_panel_figs.py)을 쓴다 — 발표용 슬라이드를 줄이면 그림 속 글자가 4~5 pt 가 된다.
-    # 판넬 그림(12 cm 폭, 글자 13~14 pt)을 6.4 cm 로 놓으면 약 7 pt 다. 시연 화면은 화면 캡처라 좁게 둔다.
-    x = 1.6
-    for w, (img, capt) in zip((4.4, 6.4, 6.4), [
-            (OUT / "demo_mode_b.png", "[그림 1] 시연 화면(저장 신호 재생 비교 모드)"),
-            (PFIG / "F4_crossover.png", f"[그림 2] 공통 전처리 대비 딥러닝의 SNR 개선량(MIT-BIH는 약 "
-                                        f"{n['cross_db']:.0f} dB 이상에서 역전)"),
-            (PFIG / "F5_phantom.png", f"[그림 3] 기법별 가성 QRS군(음영: 위양성 검출 위치, 칼만 필터 {n['ph_M05']}건)")]):
-        sh.image(img, x, 21.1, w, 4.6)
-        sh.text(x, 25.8, w, 0.9, capt, size=8.5, align="c")
-        x += w + 0.3
-    sh.text(1.6, 27.0, 17.8, 1.6, f"딥러닝은 입력 SNR 약 {n['cross_db']:.0f} dB 미만에서 공통 전처리보다 높았으나 그 이상에서는 "
-            f"공통 전처리 단독이 더 높아, 기법의 우열은 잡음 조건에 따라 달라졌다[그림 2]. 칼만 필터는 위양성 검출 "
-            f"위치에서 박동 형태의 가성 QRS군을 생성하였다(SWT 대비 약 {n['ph_x_swt']:.0f}배)[그림 3]. 딥러닝 개선 시도 중 "
-            "성능 향상은 무잡음 입력 보존 손실과 SNR 조건화(FiLM, 실제 입력 SNR 사용)에서만 확인되었다(p_Holm < 0.05). "
-            "실측 적용을 위해 추정 SNR 기반 조건화와 자체 장치 데이터 검증이 남아 있다.", size=9.5)
-    print(f"  brochure 그림 면적 비율: {sh.ratio(1.6, 19.4):.0%}")
-    p = OUT / ("brochure.pptx" if final else "brochure_draft.pptx")
-    prs.save(str(p))
+    draw_pipeline(Sheet(prs, slide, body=(0.0, D1_H + 0.4)), 0.2, 0.2, s=1.0, fpt=16)   # 7.8 cm 로 줄면 약 5 pt — 상자에 들어가는 최대 크기
+    with tempfile.TemporaryDirectory() as td:
+        pp = Path(td, "pipeline.pptx")
+        prs.save(str(pp))
+        subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", td, str(pp)], check=True,
+                       capture_output=True, timeout=300)
+        subprocess.run(["pdftoppm", "-png", "-r", "300", "-singlefile", str(pp.with_suffix(".pdf")),
+                        str(path.with_suffix(""))], check=True, timeout=300)
+    return path
+
+
+# 브로셔 양식(학과 HWP 양식, docx 로 변환한 파일)의 글자 규격 — 원본 PDF 에서 잰 값(2026-11-04).
+# 본문 굴림 10pt · 줄 간격 16pt(HWP 160 %), 구역 제목 12pt 보통 굵기, 작품명 10pt 굵게. 표 다섯 행의 높이는 양식 그대로
+# 두고 내용을 그 안에 맞춘다(「1 page 이내」).
+BR_FONT = "굴림"
+
+
+def _br_run(par, text, size=10.0, bold=False, color=(0, 0, 0)):
+    from docx.oxml.ns import qn
+    from docx.shared import Pt, RGBColor
+    r = par.add_run(text)
+    r.font.size, r.font.bold = Pt(size), bold
+    r.font.color.rgb = RGBColor(*color)
+    r.font.name = BR_FONT
+    rpr = r._r.get_or_add_rPr()
+    fonts = rpr.find(qn("w:rFonts"))
+    if fonts is None:
+        fonts = rpr.makeelement(qn("w:rFonts"), {}); rpr.insert(0, fonts)
+    for k in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+        fonts.set(qn(k), BR_FONT)
+    return r
+
+
+def _br_par(container, runs, size=10.0, line=16.0, align="l", before=0.0, after=0.0, indent=0.0, pad=0.15):
+    """문단 하나. runs = 문자열 또는 [(글, {"bold": …})]. 줄 간격은 고정값(pt)으로 둔다 — HWP 의 160 % 와 같게."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+    from docx.shared import Cm, Pt
+    par = container.add_paragraph()
+    pf = par.paragraph_format
+    if line:                                         # 그림 문단은 line=None — 고정 줄 간격이면 그림이 잘린다
+        pf.line_spacing_rule, pf.line_spacing = WD_LINE_SPACING.EXACTLY, Pt(line)
+    pf.space_before, pf.space_after = Pt(before), Pt(after)
+    pf.left_indent, pf.right_indent = Cm(pad + indent), Cm(pad)   # 양식의 본문은 칸 테두리에서 약 2 mm 안쪽
+    if indent:
+        pf.first_line_indent = Cm(-indent)
+    par.alignment = {"l": WD_ALIGN_PARAGRAPH.LEFT, "c": WD_ALIGN_PARAGRAPH.CENTER,
+                     "j": WD_ALIGN_PARAGRAPH.JUSTIFY}[align]
+    for txt, st in ([(runs, {})] if isinstance(runs, str) else runs):
+        for k, part in enumerate(txt.split("p_Holm")):     # 판넬과 같게 p_Holm 의 Holm 을 아래 첨자로
+            if k:
+                _br_run(par, "p", size)
+                _br_run(par, "Holm", size).font.subscript = True
+            if part:
+                _br_run(par, part, size, bold=st.get("bold", False))
+    return par
+
+
+def _br_clear(cell, keep: int):
+    """셀의 앞 keep 개 문단만 남기고 지운다(양식의 안내문 · 빈 줄)."""
+    for p in cell.paragraphs[keep:]:
+        p._p.getparent().remove(p._p)
+
+
+def _br_set(par, text, size=10.0, bold=False):
+    for r in list(par.runs):
+        r._r.getparent().remove(r._r)
+    _br_run(par, text, size, bold=bold)
+
+
+def _br_inner(cell, widths_cm):
+    """셀 안의 테두리 없는 표(그림 나란히 놓기)."""
+    from docx.oxml.ns import qn
+    from docx.shared import Cm
+    t = cell.add_table(rows=1, cols=len(widths_cm))
+    t.autofit = False
+    tblPr = t._tbl.tblPr
+    borders = tblPr.makeelement(qn("w:tblBorders"), {})
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        borders.append(borders.makeelement(qn(f"w:{side}"), {qn("w:val"): "nil"}))
+    tblPr.append(borders)
+    grid = t._tbl.tblGrid                            # 격자 폭도 맞춘다 — 칸 폭만 바꾸면 LibreOffice · HWP 가 격자를 따른다
+    for gc, w in zip(grid.findall(qn("w:gridCol")), widths_cm):
+        gc.set(qn("w:w"), str(int(w / 2.54 * 1440)))
+    tblW = tblPr.find(qn("w:tblW"))
+    if tblW is None:
+        tblW = tblPr.makeelement(qn("w:tblW"), {}); tblPr.append(tblW)
+    tblW.set(qn("w:w"), str(int(sum(widths_cm) / 2.54 * 1440))); tblW.set(qn("w:type"), "dxa")
+    for c, w in zip(t.rows[0].cells, widths_cm):
+        c.width = Cm(w)
+        for p in c.paragraphs:
+            p._p.getparent().remove(p._p)
+    return t
+
+
+def build_brochure(n: dict, template: Path, final: bool = False) -> Path:
+    """학과 브로셔 양식(docx)의 표에 채운다. 양식의 행 · 칸 · 글꼴을 바꾸지 않는다."""
+    import docx
+    from docx.shared import Cm
+    d = docx.Document(str(template))
+    t = d.tables[0]
+    row = lambda i: list({id(c._tc): c for c in t.rows[i].cells}.values())  # noqa: E731
+    # 머리 두 줄
+    _br_set(row(0)[1].paragraphs[0], "심전도 잡음 제거 기법의 정량적 비교 연구", bold=True)
+    _br_set(row(1)[3].paragraphs[0], "(입력)")
+    _br_set(row(1)[5].paragraphs[0], "(입력)")
+    # 1. 작품 목표
+    c = row(2)[0]
+    _br_clear(c, 1)
+    _br_set(c.paragraphs[0], " 1. 작품 목표", size=12)
+    _br_par(c, "자체 제작한 심전도(ECG) 취득 장치의 잔류 잡음을 파형을 보존하면서 줄이는 디지털 후처리 기법을 규명하는 "
+               "것을 목표로 한다. 고전 필터, 웨이블릿 임계값 처리, 칼만 필터, 딥러닝의 네 계열을 동일한 입력 · 전처리 · 평가 "
+               "지표로 비교하여, 잡음 종류와 입력 SNR에 따른 적합 기법을 제시한다.", align="j", before=2)
+    _br_par(c, [("주요 질문", {"bold": True})], before=2)
+    for q in ("① 입력 SNR과 잡음 종류에 따라 적합한 기법이 달라지는가",
+              "② 각 기법은 입력에 없는 파형(가성 QRS군)을 생성하는가",
+              "③ 딥러닝의 고 SNR 구간 열세는 어떤 변경으로 회복되는가"):
+        _br_par(c, q, indent=0.45)
+    # 2. 작품 개요 — 왼쪽 실험 구성도, 오른쪽 연구 단계(판넬의 STEPS 와 같은 다섯 단계), 아래 응용 분야
+    c = row(3)[0]
+    _br_clear(c, 1)
+    _br_set(c.paragraphs[0], " 2. 작품 개요", size=12)
+    pipe = pipeline_png(PFIG / "B_pipeline.png")
+    it = _br_inner(c, (8.3, 7.8))
+    _br_par(it.rows[0].cells[0], "", line=None, align="c", pad=0).add_run().add_picture(str(pipe), width=Cm(7.8))
+    _br_par(it.rows[0].cells[0], "[그림 1] 비교 실험 구성", size=8.5, line=11.5, align="c")
+    steps = [("① 비교 체계: ", "공통 전처리 뒤 네 계열 기법과 이상적 상한을 잡음 7종 · 입력 SNR 7단계, 지표 4범주로 "
+                             "비교 [그림 1]"),
+             ("② 조건별 비교: ", "합성 ECG · MIT-BIH 실측 기록의 입력 SNR · 잡음 종류별 적합 기법 분석 [그림 3]"),
+             ("③ 안전성 검증: ", "가성 파형 · 가성 QRS군 생성 측정 [그림 4]"),
+             ("④ 딥러닝 개선: ", "구조 · 규모 · 학습 기법 · 학습 목표 변경을 동일 시드 대응 비교로 검정"),
+             ("⑤ 실시간 시연: ", "저장 신호 재생 비교 화면과 실시간 처리 화면 [그림 2]")]
+    for head, body in steps:
+        _br_par(it.rows[0].cells[1], [(head, {"bold": True}), (body, {})], size=9, line=12.5, after=1.5, pad=0.05)
+    _br_par(c, [("  - 응용 분야", {})], before=4)
+    _br_par(c, "저가형 · 착용형 심전도 취득 장치의 신호 후처리 연구, 생체신호 잡음 제거 기법의 평가 방법론. 본 시스템은 "
+               "연구용 신호처리 시스템이며 임상 진단 용도가 아니다.", align="j", indent=0)
+    # 3. 작품 내용 및 이미지 — 판넬 전용 그림
+    c = row(4)[0]
+    _br_clear(c, 1)
+    _br_set(c.paragraphs[0], " 3. 작품 내용 및 이미지", size=12)
+    figs = [(OUT / "demo_mode_b.png", 3.9, "[그림 2] 시연 화면(저장 신호 재생 비교 모드)"),
+            (PFIG / "F4_crossover.png", 5.45, f"[그림 3] 공통 전처리 대비 딥러닝의 SNR 개선량(MIT-BIH는 약 "
+                                             f"{n['cross_db']:.0f} dB 이상에서 역전)"),
+            (PFIG / "F5_phantom.png", 5.45, f"[그림 4] 기법별 가성 QRS군(음영: 위양성 검출 위치, 칼만 필터 "
+                                           f"{n['ph_M05']}건)")]
+    it = _br_inner(c, [w + 0.45 for _, w, _ in figs])    # 셀 안쪽 여백(양쪽 약 0.19 cm)을 더한 폭, 합 16.15 cm
+    for cell, (img, w, capt) in zip(it.rows[0].cells, figs):
+        _br_par(cell, "", line=None, align="c", pad=0).add_run().add_picture(str(img), width=Cm(w))
+        _br_par(cell, capt, size=8.5, line=11.5, align="c")
+    _br_par(c, f"딥러닝은 입력 SNR 약 {n['cross_db']:.0f} dB 미만에서 공통 전처리보다 높았으나 그 이상에서는 공통 전처리 "
+               f"단독이 더 높아, 기법의 우열은 잡음 조건에 따라 달라졌다[그림 3]. 칼만 필터는 위양성 검출 위치에서 박동 형태의 "
+               f"가성 QRS군을 생성하였다(SWT 대비 약 {n['ph_x_swt']:.0f}배)[그림 4]. 딥러닝 개선 시도 중 성능 향상은 무잡음 "
+               "입력 보존 손실과 SNR 조건화(FiLM, 실제 입력 SNR 사용)에서만 확인되었다(p_Holm < 0.05). 실측 적용을 위해 추정 "
+               "SNR 기반 조건화와 자체 장치 데이터 검증이 남아 있다.", align="j", before=3)
+    # 표 뒤의 빈 문단이 둘이면 2 쪽이 생긴다 — 하나만 남기고 1 pt 로
+    from docx.shared import Pt
+    body_ps = [p for p in d.paragraphs]
+    for p in body_ps[1:]:
+        p._p.getparent().remove(p._p)
+    if body_ps:
+        pf = body_ps[0].paragraph_format
+        pf.space_before = pf.space_after = Pt(0); pf.line_spacing = Pt(1)
+    p = OUT / ("brochure.docx" if final else "brochure_draft.docx")
+    d.save(str(p))
     return p
 
 
@@ -638,20 +758,23 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--template", required=True,
                     help="학과 판넬 양식 pptx (A00_panel). 저장소에 넣지 않는다 — 받은 파일 경로를 준다")
+    ap.add_argument("--brochure-template", type=Path, default=None,
+                    help="학과 브로셔 양식(HWP 양식을 docx 로 변환한 파일). 저장소에 넣지 않는다 — 없으면 브로셔를 만들지 않는다")
     ap.add_argument("--render", action="store_true",
                     help="LibreOffice 로 PNG 미리보기도 만든다 (soffice · pdftoppm 필요)")
     ap.add_argument("--final", action="store_true",
-                    help="최종판: 시안 표지를 빼고 panel.pptx · brochure.pptx 로 저장, --render 시 PDF 와 100 dpi PNG 를 남긴다")
+                    help="최종판: 시안 표지를 빼고 panel.pptx · brochure.docx 로 저장, --render 시 PDF 와 PNG 를 남긴다")
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     n = numbers()
     print("[numbers]", {k: (round(v, 3) if isinstance(v, float) else v) for k, v in n.items()})
-    p1, p2 = build_panel(Path(a.template), n, a.final), build_brochure(n, a.final)
-    print(f"  {p1}\n  {p2}")
+    p1 = build_panel(Path(a.template), n, a.final)
+    p2 = build_brochure(n, a.brochure_template, a.final) if a.brochure_template else None
+    print(f"  {p1}\n  {p2 or '브로셔: --brochure-template 없음, 건너뜀'}")
     if a.render:
-        dpi = 100 if a.final else 60
-        render(p1, dpi)
-        render(p2, 200 if a.final else 60)
+        render(p1, 100 if a.final else 60)
+        if p2:
+            render(p2, 200 if a.final else 60)
     return 0
 
 

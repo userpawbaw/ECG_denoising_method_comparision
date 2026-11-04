@@ -20,7 +20,7 @@
 | | |
 |---|---|
 | 스크립트 | **42 개** |
-| 옵션 | **211 개** |
+| 옵션 | **212 개** |
 | 설명이 빈 옵션 | **0 개** (`(설명 없음)` 으로 표시된다) |
 
 ---
@@ -332,8 +332,9 @@ EXP-G 분석 — **`L6` 의 이득이 잡음 종류별로도 유지되는가.**
 | 옵션 | 값 | 기본 | 설명 |
 |---|---|---|---|
 | `--template` | 문자열 | **필수** | 학과 판넬 양식 pptx (A00_panel). 저장소에 넣지 않는다 — 받은 파일 경로를 준다 |
+| `--brochure-template` | Path | — | 학과 브로셔 양식(HWP 양식을 docx 로 변환한 파일). 저장소에 넣지 않는다 — 없으면 브로셔를 만들지 않는다 |
 | `--render` | **켬/끔** | 끔 | LibreOffice 로 PNG 미리보기도 만든다 (soffice · pdftoppm 필요) |
-| `--final` | **켬/끔** | 끔 | 최종판: 시안 표지를 빼고 panel.pptx · brochure.pptx 로 저장, --render 시 PDF 와 100 dpi PNG 를 남긴다 |
+| `--final` | **켬/끔** | 끔 | 최종판: 시안 표지를 빼고 panel.pptx · brochure.docx 로 저장, --render 시 PDF 와 PNG 를 남긴다 |
 
 ### `scripts/check_academic_style.py`
 
