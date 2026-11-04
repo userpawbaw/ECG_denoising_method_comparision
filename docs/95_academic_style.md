@@ -99,7 +99,7 @@
 | SWT 기법 | 정상 웨이블릿 변환(SWT) 적응 임계값 처리 | M04, SWT thresholding |
 | hard / soft / garrote | hard · soft · garrote thresholding (원어 유지 — 정착 번역어가 없다. 처음 한 번 뜻을 붙인다: 임계값 이하 계수를 0 으로) | 경임계값 · 연임계값 (F2 에서 폐기한 억지 번역어) |
 | QRS 보호 | QRS 구간 임계값 완화 | protect_qrs, QRS 보호 |
-| Sameni 기법 | 확장 칼만 필터 · 평활기(EKF · EKS, Sameni 모델) | M05, 칼만, Sameni |
+| Sameni 기법 | 확장 칼만 필터(Sameni 모델) — 「칼만 평활기」로 쓰지 않는다(사용자 결정 2026-11-04). 구현이 순방향 추정 뒤 역방향 평활(EKS)임은 필요한 곳에서 기능 서술로 붙인다 | M05, 칼만, Sameni, 칼만 평활기 |
 | 커널 | 가우시안 기저 함수 | 커널 |
 | 딥러닝 주력 | 잔차 학습 1D U-Net(Residual U-Net) | M06, Res U-Net |
 | 웨이블릿 결합 딥러닝 | 웨이블릿 부대역 U-Net | M08 |

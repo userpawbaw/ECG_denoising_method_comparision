@@ -68,7 +68,7 @@ ORDER = ["noisy", "M_FE", "M01", "M04", "M05", "M08"]
 NAME_KO = {
     "clean": "기준 신호", "noisy": "입력 신호 (잡음 포함)",
     "M_FE": "공통 전처리", "M01": "대역통과 필터 (0.5-40 Hz)",
-    "M04": "SWT 임계값 처리", "M05": "확장 칼만 평활기 (EKS)",
+    "M04": "SWT 임계값 처리", "M05": "확장 칼만 필터",
     "M08": "웨이블릿 부대역 U-Net",
 }
 NAME_EN = {
@@ -1481,7 +1481,7 @@ def s15_kalman_phantom(TXT):
     t = (np.arange(len(ex["clean"])) - (int(ex["center"]) - int(ex["i0"]))) / fs
     ref = np.asarray(ex["ref_peaks"])
     rows = [("noisy", "입력 신호"), ("M_FE", "공통 전처리"),
-            ("M04", "SWT 임계값 처리"), ("M05", "확장 칼만 평활기"), ("M06", "잔차 학습 U-Net")]
+            ("M04", "SWT 임계값 처리"), ("M05", "확장 칼만 필터"), ("M06", "잔차 학습 U-Net")]
     fig = plt.figure(figsize=(14.0, 7.2))
     gs = fig.add_gridspec(len(rows), 2, width_ratios=[2.15, 1.0], wspace=0.30, hspace=0.18)
     tol = int(round(0.075 * fs))
@@ -1512,7 +1512,7 @@ def s15_kalman_phantom(TXT):
         ax.grid(axis="y", visible=False)
     ax.set_xlabel("시간 [s]  (구간 중심 = 0)")
     fig.text(0.04, 0.955, f"MIT-BIH 기록 {ex['record']}, {COND_KO.get(str(ex['cond']), ex['cond'])}, "
-             f"입력 SNR {float(ex['snr']):+.0f} dB.  사례 선정 기준: 칼만 평활기의 가성 QRS군이 가장 많이 "
+             f"입력 SNR {float(ex['snr']):+.0f} dB.  사례 선정 기준: 칼만 필터의 가성 QRS군이 가장 많이 "
              "포함된 4초 구간.  회색 굵은 선: 기준 신호, 점선: 실제 R파, 음영: 위양성 검출 위치",
              fontsize=9.5, color=INK2)
 
@@ -1534,7 +1534,7 @@ def s15_kalman_phantom(TXT):
             ax.text(v, y, f"  {v}건  ({f_ * 100:.1f}%, 위양성 {n_}건 중)", va="center", fontsize=8.8,
                     color=INK)
     ax.set_yticks(yy)
-    ax.set_yticklabels(["공통 전처리", "SWT 임계값 처리", "확장 칼만 평활기", "잔차 학습 U-Net"], fontsize=10)
+    ax.set_yticklabels(["공통 전처리", "SWT 임계값 처리", "확장 칼만 필터", "잔차 학습 U-Net"], fontsize=10)
     ax.invert_yaxis()
     ax.set_xlabel("가성 QRS군 수 (위양성 검출 위치의 출력 파형과 평균 박동의 상관계수 0.8 초과)")
     ax.set_title("진한 막대: MIT-BIH 실측 기록, 옅은 막대: 합성 ECG\n입력 SNR -5, 0 dB, 백색 및 혼합 잡음, 데이터별 88개 구간",
@@ -1544,8 +1544,8 @@ def s15_kalman_phantom(TXT):
     d1 = summ["d1"]["methods"]
     thr = str(summ["d1"]["threshold"])
     k5, k4, k6 = (d1[m]["beatlike"][thr] for m in ("M05", "M04", "M06"))
-    fig.suptitle("기법별 가성 QRS군 생성: 칼만 평활기의 발생이 가장 많은 구간(좌)과 기법별 발생 수(우)\n"
-                 f"MIT-BIH 실측 기록: 확장 칼만 평활기 {k5}건, SWT 임계값 처리 {k4}건, 잔차 학습 U-Net {k6}건 "
+    fig.suptitle("기법별 가성 QRS군 생성: 칼만 필터의 발생이 가장 많은 구간(좌)과 기법별 발생 수(우)\n"
+                 f"MIT-BIH 실측 기록: 확장 칼만 필터 {k5}건, SWT 임계값 처리 {k4}건, 잔차 학습 U-Net {k6}건 "
                  f"(SWT 대비 {k5 / max(k4, 1):.0f}배, U-Net 대비 {k5 / max(k6, 1):.0f}배)",
                  fontsize=12.5, x=0.5, y=1.02)
     fig.savefig(OUT / "S15_kalman_phantom.png", dpi=175, bbox_inches="tight"); plt.close(fig)
@@ -1805,7 +1805,7 @@ def s18_pipeline(TXT):
     _arrow(ax, 2.5, 4.5, 3.1, 4.0); _arrow(ax, 2.5, 2.0, 3.1, 3.1)
     fam = [("고전 필터\n대역통과 필터 · Savitzky-Golay", BOXC["cls"]),
            ("시간-주파수 분석\n이산 웨이블릿 변환 · SWT 적응 임계값", BOXC["tf"]),
-           ("모델 기반\n확장 칼만 필터 · 평활기 (Sameni)", BOXC["mdl"]),
+           ("모델 기반\n확장 칼만 필터 (Sameni)", BOXC["mdl"]),
            ("딥러닝\n잔차 학습 U-Net 외 4종", BOXC["dl"]),
            ("이상적 상한 (기준 신호 사용)\n웨이블릿 · Wiener 필터", BOXC["orc"])]
     for i, (t_, fc) in enumerate(fam):
@@ -1940,11 +1940,11 @@ def s20_kalman_model(cache, TXT):
         a2.axvline(r / fs, color=PHANTOM, lw=1.0, ls="--")
     a2.set_ylabel("진폭 [mV]"); a2.set_xlabel("시간 [s]")
     a2.set_yticks([])
-    a2.text(0.995, 0.92, "회색 굵은 선: 기준 신호, 옅은 선: 입력, 노란 선: 칼만 평활기 출력", transform=a2.transAxes,
+    a2.text(0.995, 0.92, "회색 굵은 선: 기준 신호, 옅은 선: 입력, 노란 선: 칼만 필터 출력", transform=a2.transAxes,
             ha="right", fontsize=9, color=INK2)
     for a_ in (a1, a2):
         a_.grid(axis="y", visible=False)
-    fig.suptitle("확장 칼만 평활기(Sameni 모델): 심장 위상 θ 위 가우시안 함수 합으로 ECG를 모델링하고 상태 [θ, z]를 추정\n"
+    fig.suptitle("확장 칼만 필터(Sameni 모델): 심장 위상 θ 위 가우시안 함수 합으로 ECG를 모델링하고 상태 [θ, z]를 추정\n"
                  "θ는 검출된 R파마다 0으로 재설정되므로, 위양성 검출 위치에서는 모델의 QRS 파형이 출력된다",
                  fontsize=11.5, y=1.03)
     fig.savefig(OUT / "S20_kalman_model.png", dpi=175, bbox_inches="tight"); plt.close(fig)

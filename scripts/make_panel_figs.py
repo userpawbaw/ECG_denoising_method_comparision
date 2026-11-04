@@ -58,7 +58,7 @@ def _fig(key, **kw):
     return plt.subplots(figsize=(w * CM, h * CM), **kw)
 
 
-def _save(fig, key, name):
+def _save(fig, key, name, svg_text=True):
     """PNG(300 dpi)와 편집용 SVG 를 같은 크기로 저장한다.
 
     SVG 는 글자를 글자로 남긴다(`svg.fonttype: none`). PowerPoint 에서 「도형으로 변환」하면 선 · 글자 · 색을
@@ -67,7 +67,9 @@ def _save(fig, key, name):
     w, h = SIZES[key]
     fig.set_size_inches(w * CM, h * CM)
     fig.savefig(OUT / f"{name}.png", dpi=300)       # bbox 를 자르지 않는다 — 크기가 곧 판넬 칸이다
-    with plt.rc_context({"svg.fonttype": "none"}):
+    # 수식 기호(n̂ 등)가 있는 그림은 SVG 글자를 도형으로 저장한다 — 글자로 두면 DejaVu Sans 가 없는 PC 에서
+    # 결합 악센트가 깨진다(LibreOffice 에서 확인, 2026-11-04). 나머지 그림은 글자를 글자로 남겨 고칠 수 있게 한다.
+    with plt.rc_context({"svg.fonttype": "none" if svg_text else "path"}):
         fig.savefig(OUT / f"{name}.svg")
     _svg_font(OUT / f"{name}.svg")
     plt.close(fig)
@@ -135,7 +137,7 @@ def f5_phantom():
     tol = int(round(0.075 * fs))
     w, h = SIZES["F5"]
     fig = plt.figure(figsize=(w * CM, h * CM))
-    rows = [("noisy", "입력"), ("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 평활기"), ("M06", "잔차 U-Net")]
+    rows = [("noisy", "입력"), ("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 필터"), ("M06", "잔차 U-Net")]
     # 오른쪽 막대는 왼쪽 파형의 2~5 행과 같은 높이에 둔다 — 기법 이름은 왼쪽 행 이름 하나로 읽는다
     gs = fig.add_gridspec(len(rows), 2, width_ratios=[1.6, 1.0], wspace=0.06, hspace=0.12,
                           left=0.22, right=0.985, top=0.97, bottom=0.2)
@@ -156,7 +158,7 @@ def f5_phantom():
             ax.set_xticklabels([])
     ax.set_xlabel("시간 [s]")
     ax = fig.add_subplot(gs[1:, 1])
-    ms = [("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 평활기"), ("M06", "잔차 U-Net")]
+    ms = [("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 필터"), ("M06", "잔차 U-Net")]
     yy = np.arange(len(ms))
     top = 0
     for tag, off, alpha in (("d1", -0.19, 1.0), ("d0", 0.19, 0.4)):
@@ -495,7 +497,7 @@ def t1_swt(cache):
 # ------------------------------------------------------------------ T2 칼만 모델
 def t2_kalman(cache):
     """McSharry 모델의 원리: 1 주기 = 위상 θ 위 가우시안의 합(왼쪽), θ(t)는 검출된 R파마다 0 으로
-    재설정되고(오른쪽 위), 그 모델로 칼만 평활기가 출력을 만든다(오른쪽 아래)."""
+    재설정되고(오른쪽 위), 그 모델로 칼만 필터가 출력을 만든다(오른쪽 아래)."""
     from ecgdn.eval.rpeak import detect_rpeaks
     from ecgdn.methods.kalman_sameni import SameniKalman, _kernel_sum
     d = cache[("mitdb", 5.0, "mixed")]
@@ -609,7 +611,7 @@ def t3_unet():
     ax.text(0.25, 0.2, "상자 높이: 신호 길이 · 겹친 상자 수: 채널 수\n점선: 스킵 연결", ha="left", va="bottom",
             linespacing=1.15,
             fontsize=FS_S - 1, color=MS.INK2)
-    _save(fig, "T3", "T3_unet")
+    _save(fig, "T3", "T3_unet", svg_text=False)
 
 
 def main() -> int:
