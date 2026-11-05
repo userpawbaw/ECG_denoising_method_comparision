@@ -37,7 +37,8 @@ from panel_eq import render_eq
 OUT = Path("results/panel")
 SL = Path("results/slides")
 DG = SL / "diagrams"     # mermaid 블록선도 (scripts/make_diagrams.py)
-PFIG = OUT / "figs"      # 판넬 전용 그림 (scripts/make_panel_figs.py, 칸 크기 그대로)
+PFIG = OUT / "figs"         # 판넬 전용 그림 (scripts/make_panel_figs.py, 칸 크기 그대로)
+CAP = OUT / "captures"      # 시연 영상 스틸 (릴리스 video, docs/38 §9)
 FONT = "맑은 고딕"
 INK = (0x1a, 0x16, 0x13)
 INK2 = (0x5a, 0x55, 0x50)
@@ -98,6 +99,12 @@ def numbers() -> dict:
     pert = [(j["pert_m8"] - j["fixed_snr_imp_scaled"], j["pert_p8"] - j["fixed_snr_imp_scaled"])
             for j in _sweep("condpert8").values()]
     n["pert_m8"], n["pert_p8"] = (float(np.mean(v)) for v in zip(*pert))
+    # 브로셔 그림 3 · 4 — 잡음 종류별 실험(EXP-B), MIT-BIH, 입력 SNR +10 dB 의 구간 평균 (make_brochure_figs._expb_means)
+    eb = pd.read_parquet("results/d1/exp_b/metrics.parquet")
+    eb = eb[(eb.metric == "snr_imp_scaled") & (eb.snr_in_target == 10.0)]
+    em = eb.groupby(["cond", "method"]).value.mean().unstack("method")
+    n["noise_means"] = {c: {k: float(em.loc[c, k]) for k in ("M_FE", "M04", "M08")} for c in em.index}
+    n["noise_n"] = int(eb[eb.method == "M_FE"].groupby("cond").size().min())
     # 그림 7 과 같은 Holm 보정(비교 전체 한 계열, D-44). 판넬 · 브로셔 문장이 이 판정에 기대므로 판정이 바뀌면 멈춘다.
     st = PF.flow_stats()
     n["n_tests"] = len(st)
@@ -680,55 +687,63 @@ def build_brochure(n: dict, template: Path, final: bool = False) -> Path:
     _br_set(row(0)[1].paragraphs[0], "심전도 잡음 제거 기법의 정량적 비교 연구", bold=True)
     _br_set(row(1)[3].paragraphs[0], "(입력)")
     _br_set(row(1)[5].paragraphs[0], "(입력)")
-    # 실시간 측정 수치 — 사용자 실보드 녹화(2026-10-16 01:03)의 상태 줄 · 터미널에서 읽은 값(docs/38 §9.2).
-    # 실보드 신호는 개인 생체정보라 원자료가 저장소에 없다. 녹화가 바뀌면 이 값과 그 절을 함께 고친다.
-    LIVE = {"lat": 644, "fe": 548, "proc": 96, "fs_board": 500, "fs": 250}
-    # 1. 작품 목표 — 흥미를 끄는 질문 한 줄로 시작하고, 주요 질문을 깊게 판 꼭지(D-45)와 맞춘다
+    # 구성(사용자 결정 2026-11-05, docs/38 §11): 작품 내용의 중심은 잡음 종류별 우세 기법(그림 두 쌍) — 가성 QRS군 —
+    # 실시간 처리의 QRS 직후 왜곡. 문체는 학술 서술(질문형 금지). 그림 속 글자는 7 pt 까지 허용.
+    m = n["noise_means"]
+    # 1. 작품 목표
     c = row(2)[0]
     _br_clear(c, 1)
     _br_set(c.paragraphs[0], " 1. 작품 목표", size=12)
-    _br_par(c, [("필터는 없는 심장 박동을 만들 수 있을까? 미래 표본 없이 실시간으로 처리하면 무엇을 잃을까?",
-                 {"bold": True})], before=2)
     _br_par(c, "자체 제작한 심전도(ECG) 취득 장치의 잔류 잡음을 파형을 보존하면서 줄이는 디지털 후처리 기법을 규명하는 "
                "것을 목표로 한다. 고전 필터, 웨이블릿 임계값 처리, 칼만 필터, 딥러닝의 네 계열을 동일한 입력 · 전처리 · 평가 "
-               "지표로 비교하고, 그 결과를 실시간 측정 시스템과 전시 화면으로 직접 보인다.", align="j", before=2)
-    for q in ("① 입력 SNR과 잡음 종류에 따라 적합한 기법이 달라지는가",
-              "② 각 기법은 입력에 없는 박동(가성 QRS군)을 만드는가",
-              "③ 미래 표본 없이 실시간으로 처리하면 파형의 무엇을 잃는가"):
-        _br_par(c, q, indent=0.45)
-    # 2. 작품 개요 — 시스템 구성도(측정 경로 · 비교 실험 경로 · 전시 GUI), 아래 응용 분야(양식 위치)
+               "지표로 비교하여 ① 잡음 종류와 입력 SNR에 따른 최적 기법, ② 입력에 없는 파형(가성 QRS군)의 생성, ③ 실시간 "
+               "처리에서의 파형 왜곡을 분석하고, 그 결과를 실시간 측정과 전시 화면으로 구현한다.", align="j", before=2)
+    # 2. 작품 개요 — 왼쪽 실험 구성도, 오른쪽 시연 화면(도입부의 입력 · 출력 겹치기 장면), 아래 응용 분야
     c = row(3)[0]
     _br_clear(c, 1)
     _br_set(c.paragraphs[0], " 2. 작품 개요", size=12)
-    _br_par(c, "", line=None, align="c", pad=0).add_run().add_picture(str(PFIG / "B1_system.png"), width=Cm(15.9))
-    _br_par(c, "[그림 1] 시스템 구성. 위는 실시간 측정 경로, 아래는 비교 실험 경로이며 두 경로는 전시 GUI에서 만난다.",
-            size=8.5, line=11.5, align="c")
-    _br_par(c, f"공개 데이터로 네 계열 기법을 같은 조건에서 비교하고, 같은 기법을 실보드 신호에 실시간으로 적용한다. "
-               f"보드는 {LIVE['fs_board']} Hz로 표본화하고 PC가 {LIVE['fs']} Hz로 변환하며, 시리얼 전송에 순번과 검사합을 "
-               "넣어 손실을 센다. 실측에서 손실 0으로 동작하였다.", align="j", before=2)
-    _br_par(c, [("  - 응용 분야", {})], before=3)
+    it = _br_inner(c, (8.3, 7.8))
+    _br_par(it.rows[0].cells[0], "", line=None, align="c", pad=0).add_run().add_picture(
+        str(PFIG / "B5_pipeline.png"), width=Cm(7.0))                  # 칸 안쪽 폭(그림 속 약 7 pt)
+    _br_par(it.rows[0].cells[0], "[그림 1] 비교 실험 구성", size=8.5, line=11.5, align="c")
+    # 시연 사진은 하나만 — 실시간 측정 화면을 우선한다(사용자 지시 2026-11-05). 본인 심전도라 git 제외 폴더에서 읽는다.
+    _br_par(it.rows[0].cells[1], "", line=None, align="c", pad=0).add_run().add_picture(
+        str(Path("data/arduino/captures/live_01_overlay_t16.png")), width=Cm(6.2))
+    _br_par(it.rows[0].cells[1], "[그림 2] 자체 장치 신호의 실시간 처리 화면", size=8.5, line=11.5, align="c")
+    _br_par(c, [("  - 응용 분야", {})], before=1)
     _br_par(c, "저가형 · 착용형 심전도 취득 장치의 신호 후처리 연구, 생체신호 잡음 제거 기법의 평가 방법론. 본 시스템은 "
                "연구용 신호처리 시스템이며 임상 진단 용도가 아니다.", align="j", indent=0)
-    # 3. 작품 내용 및 이미지 — 주 꼭지: 실시간 공통 전처리(B2) · 보조 꼭지: 가성 QRS군(B3) + 그 밖의 결과
+    # 3. 작품 내용 및 이미지
     c = row(4)[0]
     _br_clear(c, 1)
     _br_set(c.paragraphs[0], " 3. 작품 내용 및 이미지", size=12)
-    _br_par(c, "", line=None, align="c", pad=0).add_run().add_picture(str(PFIG / "B2_realtime.png"), width=Cm(15.9))
-    _br_par(c, "[그림 2] ① 미래 표본을 쓰지 않는 인과 필터의 QRS 직후 왜곡(MIT-BIH). ② 평탄도와 ST 충실도를 함께 "
-               f"만족하는 방식은 없다(합성 ECG, 점 크기 = 지연). ③ 실보드 지연 {LIVE['lat']} ms = 대기 {LIVE['fe']} + 처리 "
-               f"{LIVE['proc']}, 손실 0.", size=8.5, line=11.5, align="j")
-    it = _br_inner(c, (7.75, 8.4))
-    _br_par(it.rows[0].cells[0], "", line=None, align="c", pad=0).add_run().add_picture(
-        str(PFIG / "B3_phantom.png"), width=Cm(7.35))
-    cr = it.rows[0].cells[1]
-    _br_par(cr, [("없는 박동을 만드는 필터. ", {"bold": True}),
-                 (f"[그림 3] 칼만 필터는 R파를 잘못 검출한 위치마다 박동 모양을 출력하였다(MIT-BIH {n['ph_M05']}건, "
-                  f"SWT의 약 {n['ph_x_swt']:.0f}배). 오차 에너지로는 드러나지 않아 박동 유사도로 측정하였다.", {})],
-            size=8.5, line=11.5, align="j", pad=0.05, after=1.5)
-    _br_par(cr, [("그 밖의 결과. ", {"bold": True}),
-                 (f"딥러닝은 입력 SNR 약 {n['cross_db']:.0f} dB 미만에서만 공통 전처리보다 우수하였고, 성능 향상은 손실 "
-                  "함수와 SNR 조건화에서만 확인되었다(p_Holm < 0.05).", {})],
-            size=8.5, line=11.5, align="j", pad=0.05)
+    _br_par(c, [("잡음 종류별 우세 기법. ", {"bold": True}),
+                (f"근전도 · 임펄스 잡음에서는 딥러닝이 SWT보다 {m['ma_synth']['M08'] - m['ma_synth']['M04']:.1f} · "
+                 f"{m['impulse']['M08'] - m['impulse']['M04']:.1f} dB 높았고, 기저선 변동은 공통 전처리 단독이, 전원선 간섭은 "
+                 "SWT가 가장 높았다. 이 두 잡음에서 딥러닝은 심전도 대역에 잔차를 남겼다(MIT-BIH, 입력 SNR +10 dB, "
+                 f"숫자 = {n['noise_n']}개 구간 평균 SNR 개선량[dB], 음영 = 최고, 아래 행 = 잔차).", {})],
+            size=9, line=13, align="j", before=1)
+    it = _br_inner(c, (7.95, 7.95))
+    for cell, (fig, capt) in zip(it.rows[0].cells, (
+            ("N1_dl_wins.png", "[그림 3] 딥러닝이 우세한 잡음(근전도 · 임펄스)"),
+            ("N2_classic_wins.png", "[그림 4] 고전 처리가 우세한 잡음(기저선 변동 · 전원선 간섭)"))):
+        _br_par(cell, "", line=None, align="c", pad=0).add_run().add_picture(str(PFIG / fig), width=Cm(6.9))
+        _br_par(cell, capt, size=8.5, line=11.5, align="c")
+    it = _br_inner(c, (7.95, 7.95))
+    for cell, (fig, w, capt, body) in zip(it.rows[0].cells, (
+            ("B3_phantom.png", 6.9, "[그림 5] 칼만 필터의 가성 QRS군(MIT-BIH)",
+             f"R파 오검출 위치에 박동 형태를 출력하였다({n['ph_M05']}건, SWT의 약 {n['ph_x_swt']:.0f}배). 오차 에너지로는 "
+             "드러나지 않는다."),
+            ("B4_causal.png", 6.9, "[그림 6] 실시간 공통 전처리의 QRS 직후 왜곡(MIT-BIH)",
+             "인과 필터는 QRS 직후를 R파 높이의 약 5 % 왜곡하였고, 0.5 s 블록 영위상 필터는 오프라인 처리와 거의 "
+             "같았다."))):
+        _br_par(cell, "", line=None, align="c", pad=0).add_run().add_picture(str(PFIG / fig), width=Cm(w))
+        _br_par(cell, [(capt + " ", {"bold": True}), (body, {})], size=8.5, line=11.5, align="j", pad=0.05)
+    # 본문 세 행의 최소 높이를 내용에 맞춰 다시 나눈다 — 합계(양식 13,039 twip)는 그대로라 한 쪽이 유지된다.
+    # 양식의 높이는 「최소」라 3 행에 그림 넷을 넣으면 행이 늘어 2 쪽이 되었다(2026-11-05).
+    from docx.oxml.ns import qn as _qn
+    for i, h in ((2, 1500), (3, 3000), (4, 6800)):
+        t.rows[i]._tr.find(_qn("w:trPr")).find(_qn("w:trHeight")).set(_qn("w:val"), str(h))
     # 표 뒤의 빈 문단이 둘이면 2 쪽이 생긴다 — 하나만 남기고 1 pt 로
     from docx.shared import Pt
     body_ps = [p for p in d.paragraphs]

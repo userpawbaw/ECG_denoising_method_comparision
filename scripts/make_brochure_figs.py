@@ -28,14 +28,22 @@ OUT = Path("results/panel/figs")
 CAP = Path("results/panel/captures")
 LIVE = Path("data/arduino/captures")
 CM = 1 / 2.54
-FS = 7.5            # 그림 속 기본 글자 [pt] — 브로셔 본문 10 pt, 캡션 8.5 pt 보다 작게
-FS_S = 6.8
+FS = 7.5            # 그림 속 기본 글자 [pt] — 최소 7 pt (사용자 지시 2026-11-05). 축소 없이 놓으므로 인쇄 크기 그대로
+FS_S = 7.0
 
 SIZES = {
     "B1": (16.0, 3.9),     # 2. 작품 개요 — 시스템 구성도
     "B2": (16.0, 4.4),     # 3. 작품 내용 — 주 꼭지: 실시간 공통 전처리
-    "B3": (7.4, 2.7),      # 3. 작품 내용 — 보조 꼭지: 가성 QRS군
+    "B3": (7.8, 2.9),      # 3. 작품 내용 — 칼만 필터의 가성 QRS군
+    "B4": (7.8, 3.3),      # 3. 작품 내용 — 실시간 처리: 인과 필터의 QRS 직후 왜곡(B2 ① 만, 사용자 결정 2026-11-05)
+    "N1": (7.9, 5.2),      # 잡음 종류별 비교 — 딥러닝이 우세한 잡음(근전도 · 임펄스)
+    "N2": (7.9, 5.2),      # 잡음 종류별 비교 — 고전 처리가 우세한 잡음(기저선 변동 · 전원선 간섭)
+    "B5": (8.0, 4.6),      # 2. 작품 개요 — 비교 실험 구성(브로셔 폭으로 다시 그림)
 }
+# 잡음 종류별 실험(EXP-B)과 같은 조건 — MIT-BIH 실측 기록, 입력 SNR +10 dB (판정판 S17 과 같은 원천)
+EXPB_SNR = 10.0
+NOISE_KO = {"ma_synth": "근전도", "impulse": "임펄스", "bw_synth": "기저선 변동", "pli": "전원선 간섭"}
+N_COLS = [("noisy", "입력"), ("M_FE", "전처리"), ("M04", "SWT"), ("M08", "딥러닝")]
 FE_COL = {"오프라인 영위상": "#9a978f", "인과 o1 0.5 Hz": "#eb6834",
           "블록 영위상 0.5 s": "#2a78d6", "중앙값 200+600 ms": "#1baf7a"}
 FE_LAB = {"오프라인 영위상": "오프라인 영위상", "인과 o1 0.5 Hz": "인과 필터",
@@ -122,6 +130,41 @@ def b1_system():
     _save(fig, "B1", "B1_system")
 
 
+def b5_pipeline():
+    """비교 실험 구성(판넬 그림 1 과 같은 구성)을 브로셔 폭 8 cm 로 그린다 — 판넬 도형을 줄이면 글자가 5 pt 아래가 된다."""
+    from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+    W, H = SIZES["B5"]
+    fig = plt.figure(figsize=(W * CM, H * CM))
+    ax = fig.add_axes([0, 0, 1, 1]); ax.set_xlim(0, W); ax.set_ylim(0, H); ax.axis("off")
+
+    def box(x, y, w, h, text, fc, ec, bold=False, dash=False):
+        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0,rounding_size=0.08", fc=fc, ec=ec, lw=0.6,
+                                    ls="--" if dash else "-"))
+        ax.text(x + w / 2, y + h / 2, text, ha="center", va="center", fontsize=FS_S, linespacing=1.05,
+                fontweight="bold" if bold else "normal")
+
+    def arrow(x0, y0, x1, y1):
+        ax.add_patch(FancyArrowPatch((x0, y0), (x1, y1), arrowstyle="-|>", mutation_scale=6, color=MS.INK2, lw=0.6))
+
+    y1, h1 = 3.35, 1.15
+    box(0.05, y1, 2.45, h1, "합성 ECG\nMIT-BIH 실측 기록", "#ece9e1", "#8f8a80")
+    box(2.85, y1, 2.35, h1, "잡음 7종 ×\n입력 SNR 7단계", "#f3e6cf", "#b39257")
+    box(5.55, y1, 2.4, h1, "공통 전처리\n0.5~100 Hz · 노치", "#f6d6e3", "#b5718d")
+    arrow(2.52, y1 + h1 / 2, 2.83, y1 + h1 / 2); arrow(5.22, y1 + h1 / 2, 5.53, y1 + h1 / 2)
+    y2, h2 = 1.75, 1.0
+    items = [("고전\n필터", "#d5e4f7", "#5b86bd"), ("SWT\n임계값", "#fbdccc", "#c77c55"), ("칼만\n필터", "#fbecc2", "#b8962e"),
+             ("딥러닝", "#cdeee1", "#3f9a77"), ("이상적\n상한", "#e4e2dc", "#8f8a80")]
+    bw = (W - 0.1 - 4 * 0.12) / 5
+    for i, (t, fc, ec) in enumerate(items):
+        box(0.05 + i * (bw + 0.12), y2, bw, h2, t, fc, ec, dash=(i == 4))
+    arrow(6.75, y1 - 0.02, 6.75, y2 + h2 + 0.02)
+    y3, h3 = 0.1, 1.15
+    box(0.9, y3, 3.0, h3, "지표 4범주\n재구성 · 형태 · 검출 · 주파수", "#e6e5f4", "#6f6aa8")
+    box(4.1, y3, 3.0, h3, "가성 파형 생성 검증\n박동 삭제 · 무수축 · PVC", "#e6e5f4", "#6f6aa8")
+    arrow(W / 2, y2 - 0.02, W / 2, y3 + h3 + 0.02)
+    _save(fig, "B5", "B5_pipeline")
+
+
 # ------------------------------------------------------------------ B2 실시간 공통 전처리
 def _beat_avg(v, r, fs, pre=0.25, post=0.6):
     a, b = int(pre * fs), int(post * fs)
@@ -195,6 +238,28 @@ def b2_realtime():
                                 for k, v in g.iterrows()}}
 
 
+def b4_causal():
+    """B2 의 ① 만 — 실시간 공통 전처리 방식별 평균 박동과 오프라인 영위상의 차이(MIT-BIH 기록 100)."""
+    import audit_fe_metrics as A
+    W, H = SIZES["B4"]
+    fig, ax = plt.subplots(figsize=(W * CM, H * CM))
+    fig.subplots_adjust(left=0.13, right=0.70, top=0.96, bottom=0.27)
+    x, r, ramp, _ = A.take("d1")
+    outs = {lab: _beat_avg(fn(x), r, A.FS) for lab, fn in A.CANDS}
+    t, ref = outs["오프라인 영위상"]
+    ax.axhline(0, color=FE_COL["오프라인 영위상"], lw=1.4, label="오프라인\n영위상(기준)")
+    ax.axvspan(-0.04, 0.04, color="#e6e5f4", lw=0, zorder=0)
+    ax.text(0.0, 5.0, "QRS", ha="center", fontsize=FS_S, color=MS.INK2)
+    for lab in ("인과 o1 0.5 Hz", "블록 영위상 0.5 s", "중앙값 200+600 ms"):
+        ax.plot(t, (outs[lab][1] - ref) / ramp * 100, color=FE_COL[lab], lw=1.0, label=FE_LAB[lab])
+    ax.set_ylim(-6, 6); ax.set_xlim(-0.2, 0.6)
+    ax.set_xlabel("R파 기준 시간 [s]", labelpad=1); ax.set_ylabel("기준 대비 [%R]", labelpad=1)
+    ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize=FS_S - 0.4, handlelength=1.2,
+              borderaxespad=0.1, labelspacing=0.35)
+    ax.grid(alpha=0.3)
+    _save(fig, "B4", "B4_causal")
+
+
 # ------------------------------------------------------------------ B3 가성 QRS군
 def b3_phantom():
     """칼만 필터 출력 한 줄(위양성 검출 위치 음영) + 기법별 가성 QRS군 수 막대(MIT-BIH)."""
@@ -205,7 +270,7 @@ def b3_phantom():
     ref = np.asarray(ex["ref_peaks"]); tol = int(round(0.075 * fs))
     W, H = SIZES["B3"]
     fig = plt.figure(figsize=(W * CM, H * CM))
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.7, 1.0], left=0.02, right=0.99, top=0.84, bottom=0.12, wspace=0.22)
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.7, 1.0], left=0.02, right=0.99, top=0.85, bottom=0.08, wspace=0.25)
     ax = fig.add_subplot(gs[0, 0])
     ax.plot(t, ex["clean"], color=MS.CLEAN, lw=1.6)
     ax.plot(t, ex["M05"], color=MS.OUTK, lw=0.7)
@@ -231,11 +296,74 @@ def b3_phantom():
     _save(fig, "B3", "B3_phantom")
 
 
+# ------------------------------------------------------------------ N1 · N2 잡음 종류별 비교
+def _expb_means():
+    """EXP-B 의 SNR 개선량 평균(44 구간)과 구간 수 — `results/d1/exp_b/metrics.parquet`."""
+    import pandas as pd
+    df = pd.read_parquet("results/d1/exp_b/metrics.parquet")
+    df = df[(df.metric == "snr_imp_scaled") & (df.snr_in_target == EXPB_SNR)]
+    mean = df.groupby(["cond", "method"]).value.mean().unstack("method")
+    return mean, int(df[df.method == "M_FE"].groupby("cond").size().min())
+
+
+def n_pair(key, conds, name):
+    """잡음 두 종을 한 장에 — 잡음마다 출력 행(참값 회색 + 출력)과 잔차 행(출력 - 참값).
+
+    출력 칸의 숫자는 이 구간 하나가 아니라 **EXP-B 44 구간 평균**이다(판정판 S17 과 같은 값). 세 처리 중 가장 높은 칸은
+    바탕을 칠한다(기저선 변동은 공통 전처리 단독이 가장 높다). 잔차는 세 기법이 같은 세로축을 쓰고, 입력 칸(지울 잡음)은 크기가 수십 배라 따로 둔다.
+    """
+    mean, n = _expb_means()
+    W, H = SIZES[key]
+    fig = plt.figure(figsize=(W * CM, H * CM))
+    gs = fig.add_gridspec(4, 4, left=0.085, right=0.995, top=0.92, bottom=0.02, hspace=0.18, wspace=0.08,
+                          height_ratios=[1.3, 0.75, 1.3, 0.75])
+    for k, cond in enumerate(conds):
+        d = MS.prepare("mitdb", EXPB_SNR, cond, methods=("M_FE", "M04"))   # M08 은 dl_methods 로 함께 만든다
+        fs, x, y = d["fs"], d["x"], d["y"]
+        i0, i1 = MS._window(d, 2.0)
+        t = (np.arange(i0, i1) - i0) / fs
+        win = max(("M_FE", "M04", "M08"), key=lambda m: float(mean.loc[cond, m]))   # 세 처리 중 최고
+        ro, rr = 2 * k, 2 * k + 1
+        ax_o = [fig.add_subplot(gs[ro, c]) for c in range(4)]
+        ax_r = [fig.add_subplot(gs[rr, c]) for c in range(4)]
+        for c in range(1, 4):
+            ax_o[c].sharey(ax_o[0])
+        for c in range(2, 4):
+            ax_r[c].sharey(ax_r[1])
+        for c, (m, lab) in enumerate(N_COLS):
+            o = y if m == "noisy" else d["outs"][m]
+            col = MS.NOISY if m == "noisy" else MS.C.get(m, MS.OUTK)
+            a = ax_o[c]
+            a.plot(t, x[i0:i1], color=MS.CLEAN, lw=1.1)
+            a.plot(t, o[i0:i1], color=col, lw=0.4 if m == "noisy" else 0.55)
+            if m == win:
+                a.set_facecolor("#fbf3dc"); ax_r[c].set_facecolor("#fbf3dc")
+            if m != "noisy":
+                a.text(0.99, 1.02, f"{mean.loc[cond, m]:+.1f}", transform=a.transAxes, ha="right", va="top",
+                       fontsize=FS_S, fontweight="bold", color=col)
+            if k == 0:
+                a.set_title(lab, fontsize=FS, color=MS.INK if m == "noisy" else col)
+            r = ax_r[c]
+            r.plot(t, ((y if m == "noisy" else o) - x)[i0:i1], color=col, lw=0.4)
+            r.axhline(0, color=MS.INK2, lw=0.4)
+            for aa in (a, r):
+                aa.set_xticks([]); aa.set_yticks([]); aa.grid(False)
+                for sp in aa.spines.values():
+                    sp.set_visible(False)
+        lo, hi = ax_o[0].get_ylim()                  # 숫자 띠: 위쪽 여백 — R파 봉우리와 겹치지 않게
+        ax_o[0].set_ylim(lo, hi + 0.38 * (hi - lo))
+        ax_o[0].set_ylabel(NOISE_KO[cond].replace(" ", "\n"), fontsize=FS_S, fontweight="bold", rotation=90, labelpad=1,
+                           linespacing=1.0)
+        ax_r[0].set_ylabel("잔차", fontsize=FS_S, color=MS.INK2, rotation=90, labelpad=1)
+    _save(fig, key, name)
+    return {c: {m: float(mean.loc[c, m]) for m in ("M_FE", "M04", "M08")} for c in conds}, n
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="브로셔 전용 그림: 시스템 구성도 · 실시간 공통 전처리 · 가성 QRS군")
-    ap.add_argument("--only", nargs="*", default=None, help="B1 B2 B3 중 일부만 생성")
+    ap.add_argument("--only", nargs="*", default=None, help="B1 B2 B3 B4 B5 N1 N2 중 일부만 생성 (기본: B3 B4 B5 N1 N2 — B1 · B2 는 이전 구성)")
     a = ap.parse_args()
-    want = set(a.only or ["B1", "B2", "B3"])
+    want = set(a.only or ["B3", "B4", "B5", "N1", "N2"])
     _ko_font()
     ensure_dir(OUT)
     if "B1" in want:
@@ -245,6 +373,17 @@ def main() -> int:
         (OUT / "B2_realtime.json").write_text(json.dumps(vals, ensure_ascii=False, indent=1), encoding="utf-8")
     if "B3" in want:
         b3_phantom()
+    if "B4" in want:
+        b4_causal()
+    if "B5" in want:
+        b5_pipeline()
+    if "N1" in want or "N2" in want:
+        vals = {}
+        if "N1" in want:
+            vals["N1"] = n_pair("N1", ("ma_synth", "impulse"), "N1_dl_wins")
+        if "N2" in want:
+            vals["N2"] = n_pair("N2", ("bw_synth", "pli"), "N2_classic_wins")
+        (OUT / "N_noise_pairs.json").write_text(json.dumps(vals, ensure_ascii=False, indent=1), encoding="utf-8")
     return 0
 
 
