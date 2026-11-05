@@ -35,9 +35,12 @@ FS_S = 13          # 눈금 숫자
 
 # 판넬 칸 크기 [cm] — build_panel.py 가 이 크기로 놓는다
 SIZES = {
-    "F4": (12.0, 7.8),     # 결과: 입력 SNR 교차점          ┐ 결과 구역 위 줄 = 그림 4 · 5 · 6(왼쪽 37 cm),
-    "F6": (12.0, 7.8),     # 결과: 잡음 종류별 출력(그림 5)  │ 아래 줄 = 그림 7(전폭), 오른쪽 18 cm 는 고찰
-    "F5": (12.0, 7.8),     # 결과: 칼만 가성 QRS군(그림 6)   ┘
+    # 결과 구역 위 줄 네 칸(왼쪽 37 cm, 2026-11-05 사용자 결정): 교차점 · 딥러닝 우세 쌍 · 고전 우세 쌍 · 가성 QRS군
+    "F4": (8.2, 7.8),      # 결과: 입력 SNR 교차점
+    "F5a": (10.0, 7.8),    # 결과: 딥러닝이 우세한 잡음(근전도 · 임펄스) — 브로셔 N1 과 같은 그림
+    "F5b": (10.0, 7.8),    # 결과: 고전 처리가 우세한 잡음(기저선 변동 · 전원선 간섭) — 브로셔 N2 와 같은 그림
+    "F5": (8.0, 7.8),      # 결과: 칼만 가성 QRS군(축약판 — 칼만 출력 한 줄 + 기법별 막대)
+    "F6": (12.0, 7.8),     # (이전 구성) 잡음 종류별 출력 3 × 4 — 지금 판넬에는 쓰지 않는다
     "F7": (37.0, 13.2),    # 결과: 딥러닝 개선 과정의 단계 흐름(결과 구역 아래 줄 전폭)
     "T1": (13.4, 8.6),     # 이론 카드 ①: SWT 임계값 (입력 | D1~D5 | 출력)
     "T2": (13.4, 8.6),     # 이론 카드 ②: 칼만 모델 (1 주기 모델 | 위상 · 출력)
@@ -105,31 +108,32 @@ def f4_crossover():
         ax.plot(xs, ys, color=col, lw=2.6, zorder=3)
         ax.scatter(xs[sig], ys[sig], s=70, color=col, marker=mk, zorder=4, edgecolor=MS.SURFACE, lw=1.2)
         ax.scatter(xs[~sig], ys[~sig], s=70, facecolor=MS.SURFACE, marker=mk, zorder=4, edgecolor=col, lw=1.8)
-        k = 3 if tag == "d0" else 1
-        ax.annotate(lab, (xs[k], ys[k]), xytext=(0, 12 if tag == "d0" else -26), textcoords="offset points",
-                    color=col, fontsize=FS, fontweight="bold", ha="center")
+        k = 1 if tag == "d0" else 2                  # 합성 ECG 는 선 위, MIT-BIH 는 선 아래 빈 자리
+        ax.annotate(lab, (xs[k], ys[k]), xytext=(0, 9) if tag == "d0" else (-4, -14), textcoords="offset points",
+                    color=col, fontsize=FS_S, fontweight="bold", ha="center" if tag == "d0" else "right",
+                    va="bottom" if tag == "d0" else "top")
         for i in range(len(xs) - 1):
             if ys[i] > 0 >= ys[i + 1] and tag == "d1":
                 zx = xs[i] + (xs[i + 1] - xs[i]) * ys[i] / (ys[i] - ys[i + 1])
                 ax.axvspan(zx, xs.max() + 1.5, color=col, alpha=0.08, lw=0, zorder=1)
                 ax.axvline(zx, color=col, ls=":", lw=1.6)
-                ax.text(zx + 0.35, 0.97, f"약 {zx:.0f} dB\n이상에서\n공통 전처리가\n더 높다",
+                ax.text(zx + 0.35, 0.97, f"{zx:.0f} dB\n이상:\n전처리\n우세",
                         transform=ax.get_xaxis_transform(), va="top", fontsize=FS_S, color=col, linespacing=1.1)
     ax.axhline(0, color=MS.INK2, lw=1.1)
     ax.set_xlabel("입력 SNR [dB]")
     ax.set_ylabel("공통 전처리 대비 [dB]")
     ax.set_xlim(-6.5, 22.8)
-    ax.text(0.02, 0.04, "채운 표식: 유의(Holm 보정)", transform=ax.transAxes, fontsize=FS_S, color=MS.INK2)
-    fig.subplots_adjust(left=0.165, right=0.98, top=0.97, bottom=0.17)
+    ax.set_ylim(-5.6, 10.2)
+    ax.text(0.02, 0.04, "채운 표식: 유의", transform=ax.transAxes, fontsize=FS_S, color=MS.INK2)
+    fig.subplots_adjust(left=0.2, right=0.98, top=0.97, bottom=0.17)
     _save(fig, "F4", "F4_crossover")
 
 
 # ------------------------------------------------------------------ F5 칼만 가성 QRS군
 def f5_phantom():
-    """발표용 S15 의 구성을 유지한다: 왼쪽 = 다섯 출력의 파형과 위양성 검출 위치(음영),
-    오른쪽 = 기법별 가성 QRS군 수(진한 막대 MIT-BIH, 옅은 막대 합성 ECG). 제목 · 설명문은 캡션 · 고찰로."""
-    summ = {t: json.loads(Path(f"results/{t}/phantom/summary.json").read_text()) for t in ("d1", "d0")
-            if Path(f"results/{t}/phantom/summary.json").exists()}
+    """8 cm 칸의 축약판(2026-11-05): 위 = SWT · 칼만 필터 출력 두 줄과 위양성 검출 위치(음영), 아래 = 기법별 가성 QRS군 수
+    (MIT-BIH). 이전 판의 다섯 줄 · 두 데이터 막대는 12 cm 칸용이었다."""
+    summ = json.loads(Path("results/d1/phantom/summary.json").read_text())
     ex = np.load("results/d1/phantom/example.npz", allow_pickle=True)
     fs = float(ex["fs"])
     t = (np.arange(len(ex["clean"])) - (int(ex["center"]) - int(ex["i0"]))) / fs
@@ -137,48 +141,46 @@ def f5_phantom():
     tol = int(round(0.075 * fs))
     w, h = SIZES["F5"]
     fig = plt.figure(figsize=(w * CM, h * CM))
-    rows = [("noisy", "입력"), ("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 필터"), ("M06", "잔차 U-Net")]
-    # 오른쪽 막대는 왼쪽 파형의 2~5 행과 같은 높이에 둔다 — 기법 이름은 왼쪽 행 이름 하나로 읽는다
-    gs = fig.add_gridspec(len(rows), 2, width_ratios=[1.6, 1.0], wspace=0.06, hspace=0.12,
-                          left=0.22, right=0.985, top=0.97, bottom=0.2)
+    rows = [("M04", "SWT"), ("M05", "칼만")]
+    gs = fig.add_gridspec(3, 1, height_ratios=[1.0, 1.0, 1.3], hspace=0.28, left=0.25, right=0.97, top=0.98,
+                          bottom=0.18)
     lo, hi = np.percentile(np.r_[ex["clean"], ex["M06"]], [0.5, 99.5])
-    pad = 0.35 * (hi - lo)
+    pad = 0.3 * (hi - lo)
     for k, (key, lab) in enumerate(rows):
         ax = fig.add_subplot(gs[k, 0])
-        ax.plot(t, ex["clean"], color=MS.CLEAN, lw=2.2)
-        ax.plot(t, ex[key], color=MS.NOISY if key == "noisy" else MS.OUTK, lw=0.6 if key == "noisy" else 0.9)
-        if key != "noisy":
-            for d in np.asarray(ex[f"det_{key}"]):
-                if ref.size == 0 or np.abs(ref - d).min() > tol:
-                    ax.axvspan(t[d] - 0.2, t[d] + 0.2, color=MS.PHANTOM, alpha=0.22, lw=0)
-            ax.set_ylim(lo - pad, hi + pad)
-        ax.set_yticks([]); ax.grid(False)
+        ax.plot(t, ex["clean"], color=MS.CLEAN, lw=2.0)
+        ax.plot(t, ex[key], color=MS.OUTK, lw=0.9)
+        for d in np.asarray(ex[f"det_{key}"]):
+            if ref.size == 0 or np.abs(ref - d).min() > tol:
+                ax.axvspan(t[d] - 0.2, t[d] + 0.2, color=MS.PHANTOM, alpha=0.25, lw=0)
+        ax.set_ylim(lo - pad, hi + pad)
+        ax.set_yticks([]); ax.set_xticks([]); ax.grid(False)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
         ax.set_ylabel(lab, rotation=0, ha="right", va="center", fontsize=FS_S)
-        if k < len(rows) - 1:
-            ax.set_xticklabels([])
-    ax.set_xlabel("시간 [s]")
-    ax = fig.add_subplot(gs[1:, 1])
-    ms = [("M_FE", "공통 전처리"), ("M04", "SWT"), ("M05", "칼만 필터"), ("M06", "잔차 U-Net")]
-    yy = np.arange(len(ms))
-    top = 0
-    for tag, off, alpha in (("d1", -0.19, 1.0), ("d0", 0.19, 0.4)):
-        if tag not in summ:
-            continue
-        thr = str(summ[tag]["threshold"])
-        vals = [summ[tag]["methods"][m]["beatlike"][thr] for m, _ in ms]
-        top = max(top, max(vals))
-        ax.barh(yy + off, vals, height=0.36, alpha=alpha,
-                color=[MS.PHANTOM if m == "M05" else "#8f8a80" for m, _ in ms])
-        for y, v in zip(yy + off, vals):
-            ax.text(v + top * 0.03, y, f"{v}", va="center", fontsize=FS_S)
-    ax.set_yticks([])
-    ax.set_ylim(len(ms) - 0.5, -0.5); ax.set_xlim(0, top * 1.35)
-    ax.set_xlabel("가성 QRS군 [건]")
-    lg = fig.add_subplot(gs[0, 1]); lg.axis("off")
-    lg.text(0.06, 0.5, "진한: MIT-BIH\n옅은: 합성 ECG", transform=lg.transAxes, va="center",
-            fontsize=FS_S, color=MS.INK2, linespacing=1.15)
+    ax = fig.add_subplot(gs[2, 0])
+    thr = str(summ["threshold"])
+    ms = [("M_FE", "전처리"), ("M04", "SWT"), ("M05", "칼만"), ("M06", "U-Net")]
+    vals = [summ["methods"][m]["beatlike"][thr] for m, _ in ms]
+    ax.barh(range(len(ms)), vals, height=0.62, color=[MS.PHANTOM if m == "M05" else "#8f8a80" for m, _ in ms])
+    for i, v in enumerate(vals):
+        ax.text(v + max(vals) * 0.03, i, f"{v}", va="center", fontsize=FS_S)
+    ax.set_yticks(range(len(ms))); ax.set_yticklabels([n for _, n in ms], fontsize=FS_S)
+    ax.set_ylim(len(ms) - 0.5, -0.5); ax.set_xlim(0, max(vals) * 1.3)
+    ax.set_xlabel("가성 QRS군 [건]", labelpad=1)
     ax.grid(axis="y", visible=False)
     _save(fig, "F5", "F5_phantom")
+
+
+# ------------------------------------------------------------------ F5a · F5b 잡음 종류별 우세 기법 두 쌍
+def f5_pairs():
+    """브로셔 N1 · N2 와 같은 그림을 판넬 칸 크기와 판넬 글자(13 pt 이상)로 그린다(make_brochure_figs.n_pair)."""
+    import make_brochure_figs as MB
+
+    def save(fig, _key, name):
+        _save(fig, name.split("_")[0], name)
+    MB.n_pair("F5a", ("ma_synth", "impulse"), "F5a_dl_wins", size=SIZES["F5a"], fs=FS, fs_s=FS_S, lw=1.5, save=save)
+    MB.n_pair("F5b", ("bw_synth", "pli"), "F5b_classic_wins", size=SIZES["F5b"], fs=FS, fs_s=FS_S, lw=1.5, save=save)
 
 
 # ------------------------------------------------------------------ F6 잡음 종류별 출력
@@ -616,9 +618,9 @@ def t3_unet():
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="판넬(A1) 전용 그림: 판넬 칸 크기 그대로, 그림 속 글자 14 pt 이상")
-    ap.add_argument("--only", nargs="*", default=None, help="F4 F5 F6 F7 T1 T2 T3 중 일부만 생성")
+    ap.add_argument("--only", nargs="*", default=None, help="F4 F5 F5ab F6 F7 T1 T2 T3 중 일부만 생성 (F6 은 이전 구성)")
     a = ap.parse_args()
-    want = set(a.only or ["F4", "F5", "F6", "F7", "T1", "T2", "T3"])
+    want = set(a.only or ["F4", "F5", "F5ab", "F7", "T1", "T2", "T3"])
     _ko_font()
     ensure_dir(OUT)
     need = set()
@@ -638,6 +640,8 @@ def main() -> int:
         f5_phantom()
     if "F6" in want:
         f6_noise(cache)
+    if "F5ab" in want:
+        f5_pairs()
     if "F7" in want:
         f7_flow()
     if "T1" in want:

@@ -446,9 +446,11 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     y += hc + 0.3
     ph = 50.0 - CAP_PT * 0.0353 * 1.3 - y                # 사진 칸 높이: 캡션 한 줄을 남기고 구분선(약 51 cm)까지
     sh.frame(1.9, y, 12.5, ph, "사진: 신호 취득 장치\n(전극, AD8232, Arduino Uno)\n[사진 삽입 예정]")
-    sh.image(OUT / "demo_mode_b.png", 15.1, y, 12.5, ph)
+    # 시연 사진은 실시간 측정 화면을 우선한다(사용자 지시 2026-11-05). 본인 심전도라 git 제외 폴더에서 읽는다.
+    sh.image(Path("data/arduino/captures/live_01_overlay_t16.png"), 15.1, y, 12.5, ph)
     sh.text(1.9, y + ph + 0.15, 12.5, 0.8, "그림 2. 신호 취득 장치.", size=CAP_PT, color=INK2)
-    sh.text(15.1, y + ph + 0.15, 12.5, 0.8, "그림 3. 시연 화면.", size=CAP_PT, color=INK2)
+    sh.text(15.1, y + ph + 0.15, 12.5, 0.8, "그림 3. 실시간 측정 화면(자체 장치 신호, SWT · 딥러닝 출력).", size=CAP_PT,
+            color=INK2)
 
     # ---- 이론적 배경 (우) x 29.5 ~ 57.5
     B = {"bold": True}
@@ -511,23 +513,36 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
         print(f"  경고: 이론적 배경 구역의 글이 구분선(51.0 cm)을 넘을 수 있다 (끝 {y:.1f} cm)")
 
     # ---- 결과 및 고찰 (하단 전폭) x 1.8 ~ 57.6, y 53.9 ~ 77.6
-    # 왼쪽 37 cm: 위 줄 = 그림 4 · 5 · 6(조건별 최적 기법 · 안전성), 아래 줄 = 그림 7(딥러닝 개선 과정, 전폭).
+    # 왼쪽 37 cm: 위 줄 = 그림 4 · 5(가)(나) · 6(조건별 최적 기법 · 안전성), 아래 줄 = 그림 7(딥러닝 개선 과정, 전폭).
     # 오른쪽 = 고찰(의의 → 한계와 원인 → 발전 방향). 그림 번호는 작품 내용의 연구 단계 순서를 따른다.
     # 캡션은 두 줄까지 — 제목과 그림이 보여 주는 결과 한 문장.
     B = {"bold": True}
     r0, xl, wl = 53.9, 1.8, 37.0
-    row1 = [("F4_crossover.png", f"그림 4. 공통 전처리 대비 딥러닝의 SNR 개선량. MIT-BIH에서는 약 {n['cross_db']:.0f} dB "
-                                 "이상에서 역전된다."),
-            ("F6_noise.png", "그림 5. 잡음 종류별 출력(MIT-BIH, 입력 SNR −5 dB). 임펄스 잡음은 딥러닝만 제거한다."),
-            ("F5_phantom.png", f"그림 6. 기법별 가성 QRS군(음영: 위양성 검출 위치). 칼만 필터가 {n['ph_M05']}건으로 "
-                               "가장 많다.")]
-    w1, h1 = PF.SIZES["F4"]
-    g1 = (wl - 3 * w1) / 2
-    hc1 = max(_text_h([c], w1, CAP_PT) for _, c in row1)
-    for i, (fig, capt) in enumerate(row1):
-        x = xl + i * (w1 + g1)
-        sh.image(PFIG / fig, x, r0, w1, h1)
-        sh.text(x, r0 + h1 + 0.1, w1, hc1, capt, size=CAP_PT, color=INK2)
+    # 위 줄 네 칸(2026-11-05 사용자 결정): 그림 4 교차점 · 그림 5 (가)(나) 잡음 종류별 우세 기법 두 쌍 · 그림 6 가성 QRS군.
+    # 그림 5 의 캡션은 두 칸에 걸쳐 하나로 쓴다.
+    cells = [("F4_crossover.png", PF.SIZES["F4"],
+              "그림 4. 공통 전처리 대비 딥러닝의 SNR 개선량."),
+             ("F5a_dl_wins.png", PF.SIZES["F5a"], None),
+             ("F5b_classic_wins.png", PF.SIZES["F5b"], None),
+             ("F5_phantom.png", PF.SIZES["F5"],
+              "그림 6. 기법별 가성 QRS군(MIT-BIH).")]
+    c5 = ("그림 5. 잡음 종류별 우세 기법(MIT-BIH, 입력 SNR +10 dB). 숫자 = 평균 SNR 개선량 [dB], 음영 = 최고, 아래 행 = "
+          "잔차.")
+    h1 = PF.SIZES["F4"][1]
+    g1 = (wl - sum(sz[0] for _, sz, _ in cells)) / 3
+    xs, x = [], xl
+    for _, sz, _ in cells:
+        xs.append(x); x += sz[0] + g1
+    w5 = PF.SIZES["F5a"][0] + g1 + PF.SIZES["F5b"][0]
+    hc1 = max(_text_h([cells[0][2]], cells[0][1][0], CAP_PT), _text_h([cells[3][2]], cells[3][1][0], CAP_PT),
+              _text_h([c5], w5, CAP_PT))
+    for (fig, sz, capt), x in zip(cells, xs):
+        sh.image(PFIG / fig, x, r0, sz[0], sz[1])
+        if capt:
+            sh.text(x, r0 + h1 + 0.1, sz[0], hc1, capt, size=CAP_PT, color=INK2)
+    sh.text(xs[1], r0 + h1 + 0.1, w5, hc1, c5, size=CAP_PT, color=INK2)
+    for lab, x in (("(가)", xs[1]), ("(나)", xs[2])):
+        sh.text(x, r0 - 0.05, 1.5, 0.7, [[(lab, {"bold": True})]], size=CAP_PT)
     y7 = r0 + h1 + 0.1 + hc1 + 0.35
     w7, h7 = PF.SIZES["F7"]
     sh.image(PFIG / "F7_flow.png", xl, y7, w7, h7)

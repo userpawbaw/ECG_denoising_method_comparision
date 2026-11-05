@@ -453,7 +453,7 @@ STEP 29: 실측 Arduino 신호의 SNR 추정 — **"정말 15 dB 인가?" 에 �
 
 | 옵션 | 값 | 기본 | 설명 |
 |---|---|---|---|
-| `--only` | 문자열 | — | F4 F5 F6 F7 T1 T2 T3 중 일부만 생성 |
+| `--only` | 문자열 | — | F4 F5 F5ab F6 F7 T1 T2 T3 중 일부만 생성 (F6 은 이전 구성) |
 
 ### `scripts/make_research_figs.py`
 

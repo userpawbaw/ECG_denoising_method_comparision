@@ -306,16 +306,19 @@ def _expb_means():
     return mean, int(df[df.method == "M_FE"].groupby("cond").size().min())
 
 
-def n_pair(key, conds, name):
+def n_pair(key, conds, name, size=None, fs=None, fs_s=None, lw=1.0, save=None):
     """잡음 두 종을 한 장에 — 잡음마다 출력 행(참값 회색 + 출력)과 잔차 행(출력 - 참값).
 
     출력 칸의 숫자는 이 구간 하나가 아니라 **EXP-B 44 구간 평균**이다(판정판 S17 과 같은 값). 세 처리 중 가장 높은 칸은
     바탕을 칠한다(기저선 변동은 공통 전처리 단독이 가장 높다). 잔차는 세 기법이 같은 세로축을 쓰고, 입력 칸(지울 잡음)은 크기가 수십 배라 따로 둔다.
     """
+    # 판넬도 같은 그림을 쓴다(make_panel_figs.f5_pairs) — 크기 · 글자 · 선 굵기 배율 · 저장 함수만 바꾼다
+    FS, FS_S = fs or globals()["FS"], fs_s or globals()["FS_S"]
     mean, n = _expb_means()
-    W, H = SIZES[key]
+    W, H = size or SIZES[key]
     fig = plt.figure(figsize=(W * CM, H * CM))
-    gs = fig.add_gridspec(4, 4, left=0.085, right=0.995, top=0.92, bottom=0.02, hspace=0.18, wspace=0.08,
+    gs = fig.add_gridspec(4, 4, left=0.085 if size is None else 0.11, right=0.995, top=0.92, bottom=0.02, hspace=0.18,
+                          wspace=0.08,
                           height_ratios=[1.3, 0.75, 1.3, 0.75])
     for k, cond in enumerate(conds):
         d = MS.prepare("mitdb", EXPB_SNR, cond, methods=("M_FE", "M04"))   # M08 은 dl_methods 로 함께 만든다
@@ -334,8 +337,8 @@ def n_pair(key, conds, name):
             o = y if m == "noisy" else d["outs"][m]
             col = MS.NOISY if m == "noisy" else MS.C.get(m, MS.OUTK)
             a = ax_o[c]
-            a.plot(t, x[i0:i1], color=MS.CLEAN, lw=1.1)
-            a.plot(t, o[i0:i1], color=col, lw=0.4 if m == "noisy" else 0.55)
+            a.plot(t, x[i0:i1], color=MS.CLEAN, lw=1.1 * lw)
+            a.plot(t, o[i0:i1], color=col, lw=(0.4 if m == "noisy" else 0.55) * lw)
             if m == win:
                 a.set_facecolor("#fbf3dc"); ax_r[c].set_facecolor("#fbf3dc")
             if m != "noisy":
@@ -344,7 +347,7 @@ def n_pair(key, conds, name):
             if k == 0:
                 a.set_title(lab, fontsize=FS, color=MS.INK if m == "noisy" else col)
             r = ax_r[c]
-            r.plot(t, ((y if m == "noisy" else o) - x)[i0:i1], color=col, lw=0.4)
+            r.plot(t, ((y if m == "noisy" else o) - x)[i0:i1], color=col, lw=0.4 * lw)
             r.axhline(0, color=MS.INK2, lw=0.4)
             for aa in (a, r):
                 aa.set_xticks([]); aa.set_yticks([]); aa.grid(False)
@@ -355,7 +358,7 @@ def n_pair(key, conds, name):
         ax_o[0].set_ylabel(NOISE_KO[cond].replace(" ", "\n"), fontsize=FS_S, fontweight="bold", rotation=90, labelpad=1,
                            linespacing=1.0)
         ax_r[0].set_ylabel("잔차", fontsize=FS_S, color=MS.INK2, rotation=90, labelpad=1)
-    _save(fig, key, name)
+    (save or _save)(fig, key, name)
     return {c: {m: float(mean.loc[c, m]) for m in ("M_FE", "M04", "M08")} for c in conds}, n
 
 
