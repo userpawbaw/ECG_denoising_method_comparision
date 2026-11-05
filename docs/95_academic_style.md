@@ -136,6 +136,8 @@
 | domain adaptation | 도메인 적응 | 도메인 전이 · 장치 전이 | 생체신호 연구의 표준 표현(Wu et al., Biosensors 2022 등). 「도메인 전이」 사용 사례를 찾지 못함 | 2026-11-04 |
 | first-order difference | 1차 차분 | 미분 오차(판넬 본문) | 시계열 · 신호처리 해설 자료의 정의 ΔY_t = Y_t − Y_{t−1} (웹 검색) | 2026-11-04 |
 | identity output | (쓰지 않음) 「그대로 출력」으로 서술 | 항등 출력 | 정착 표현을 확인하지 못해 기능 서술로 바꿈 | 2026-11-04 |
+| causal filter · zero-phase filtering | 인과 필터 · 영위상 필터링(블록 영위상 = 미리보기 구간에 영위상 필터링) | front-end 인과 · zerophase | MathWorks 한국어 문서 「IIR 필터로 인한 지연 보상」(정방향 · 역방향 필터링으로 위상 왜곡 제거) | 2026-11-05 |
+| median filter | 중앙값 필터 | 메디안 | 신호처리 교재 · MathWorks 한국어 문서의 중앙값 필터링 표기 | 2026-11-05 |
 
 ---
 

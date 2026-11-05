@@ -680,55 +680,55 @@ def build_brochure(n: dict, template: Path, final: bool = False) -> Path:
     _br_set(row(0)[1].paragraphs[0], "심전도 잡음 제거 기법의 정량적 비교 연구", bold=True)
     _br_set(row(1)[3].paragraphs[0], "(입력)")
     _br_set(row(1)[5].paragraphs[0], "(입력)")
-    # 1. 작품 목표
+    # 실시간 측정 수치 — 사용자 실보드 녹화(2026-10-16 01:03)의 상태 줄 · 터미널에서 읽은 값(docs/38 §9.2).
+    # 실보드 신호는 개인 생체정보라 원자료가 저장소에 없다. 녹화가 바뀌면 이 값과 그 절을 함께 고친다.
+    LIVE = {"lat": 644, "fe": 548, "proc": 96, "fs_board": 500, "fs": 250}
+    # 1. 작품 목표 — 흥미를 끄는 질문 한 줄로 시작하고, 주요 질문을 깊게 판 꼭지(D-45)와 맞춘다
     c = row(2)[0]
     _br_clear(c, 1)
     _br_set(c.paragraphs[0], " 1. 작품 목표", size=12)
+    _br_par(c, [("필터는 없는 심장 박동을 만들 수 있을까? 미래 표본 없이 실시간으로 처리하면 무엇을 잃을까?",
+                 {"bold": True})], before=2)
     _br_par(c, "자체 제작한 심전도(ECG) 취득 장치의 잔류 잡음을 파형을 보존하면서 줄이는 디지털 후처리 기법을 규명하는 "
                "것을 목표로 한다. 고전 필터, 웨이블릿 임계값 처리, 칼만 필터, 딥러닝의 네 계열을 동일한 입력 · 전처리 · 평가 "
-               "지표로 비교하여, 잡음 종류와 입력 SNR에 따른 적합 기법을 제시한다.", align="j", before=2)
-    _br_par(c, [("주요 질문", {"bold": True})], before=2)
+               "지표로 비교하고, 그 결과를 실시간 측정 시스템과 전시 화면으로 직접 보인다.", align="j", before=2)
     for q in ("① 입력 SNR과 잡음 종류에 따라 적합한 기법이 달라지는가",
-              "② 각 기법은 입력에 없는 파형(가성 QRS군)을 생성하는가",
-              "③ 딥러닝의 고 SNR 구간 열세는 어떤 변경으로 회복되는가"):
+              "② 각 기법은 입력에 없는 박동(가성 QRS군)을 만드는가",
+              "③ 미래 표본 없이 실시간으로 처리하면 파형의 무엇을 잃는가"):
         _br_par(c, q, indent=0.45)
-    # 2. 작품 개요 — 왼쪽 실험 구성도, 오른쪽 연구 단계(판넬의 STEPS 와 같은 다섯 단계), 아래 응용 분야
+    # 2. 작품 개요 — 시스템 구성도(측정 경로 · 비교 실험 경로 · 전시 GUI), 아래 응용 분야(양식 위치)
     c = row(3)[0]
     _br_clear(c, 1)
     _br_set(c.paragraphs[0], " 2. 작품 개요", size=12)
-    pipe = pipeline_png(PFIG / "B_pipeline.png")
-    it = _br_inner(c, (8.3, 7.8))
-    _br_par(it.rows[0].cells[0], "", line=None, align="c", pad=0).add_run().add_picture(str(pipe), width=Cm(7.8))
-    _br_par(it.rows[0].cells[0], "[그림 1] 비교 실험 구성", size=8.5, line=11.5, align="c")
-    steps = [("① 비교 체계: ", "공통 전처리 뒤 네 계열 기법과 이상적 상한을 잡음 7종 · 입력 SNR 7단계, 지표 4범주로 "
-                             "비교 [그림 1]"),
-             ("② 조건별 비교: ", "합성 ECG · MIT-BIH 실측 기록의 입력 SNR · 잡음 종류별 적합 기법 분석 [그림 3]"),
-             ("③ 안전성 검증: ", "가성 파형 · 가성 QRS군 생성 측정 [그림 4]"),
-             ("④ 딥러닝 개선: ", "구조 · 규모 · 학습 기법 · 학습 목표 변경을 동일 시드 대응 비교로 검정"),
-             ("⑤ 실시간 시연: ", "저장 신호 재생 비교 화면과 실시간 처리 화면 [그림 2]")]
-    for head, body in steps:
-        _br_par(it.rows[0].cells[1], [(head, {"bold": True}), (body, {})], size=9, line=12.5, after=1.5, pad=0.05)
-    _br_par(c, [("  - 응용 분야", {})], before=4)
+    _br_par(c, "", line=None, align="c", pad=0).add_run().add_picture(str(PFIG / "B1_system.png"), width=Cm(15.9))
+    _br_par(c, "[그림 1] 시스템 구성. 위는 실시간 측정 경로, 아래는 비교 실험 경로이며 두 경로는 전시 GUI에서 만난다.",
+            size=8.5, line=11.5, align="c")
+    _br_par(c, f"공개 데이터로 네 계열 기법을 같은 조건에서 비교하고, 같은 기법을 실보드 신호에 실시간으로 적용한다. "
+               f"보드는 {LIVE['fs_board']} Hz로 표본화하고 PC가 {LIVE['fs']} Hz로 변환하며, 시리얼 전송에 순번과 검사합을 "
+               "넣어 손실을 센다. 실측에서 손실 0으로 동작하였다.", align="j", before=2)
+    _br_par(c, [("  - 응용 분야", {})], before=3)
     _br_par(c, "저가형 · 착용형 심전도 취득 장치의 신호 후처리 연구, 생체신호 잡음 제거 기법의 평가 방법론. 본 시스템은 "
                "연구용 신호처리 시스템이며 임상 진단 용도가 아니다.", align="j", indent=0)
-    # 3. 작품 내용 및 이미지 — 판넬 전용 그림
+    # 3. 작품 내용 및 이미지 — 주 꼭지: 실시간 공통 전처리(B2) · 보조 꼭지: 가성 QRS군(B3) + 그 밖의 결과
     c = row(4)[0]
     _br_clear(c, 1)
     _br_set(c.paragraphs[0], " 3. 작품 내용 및 이미지", size=12)
-    figs = [(OUT / "demo_mode_b.png", 3.9, "[그림 2] 시연 화면(저장 신호 재생 비교 모드)"),
-            (PFIG / "F4_crossover.png", 5.45, f"[그림 3] 공통 전처리 대비 딥러닝의 SNR 개선량(MIT-BIH는 약 "
-                                             f"{n['cross_db']:.0f} dB 이상에서 역전)"),
-            (PFIG / "F5_phantom.png", 5.45, f"[그림 4] 기법별 가성 QRS군(음영: 위양성 검출 위치, 칼만 필터 "
-                                           f"{n['ph_M05']}건)")]
-    it = _br_inner(c, [w + 0.45 for _, w, _ in figs])    # 셀 안쪽 여백(양쪽 약 0.19 cm)을 더한 폭, 합 16.15 cm
-    for cell, (img, w, capt) in zip(it.rows[0].cells, figs):
-        _br_par(cell, "", line=None, align="c", pad=0).add_run().add_picture(str(img), width=Cm(w))
-        _br_par(cell, capt, size=8.5, line=11.5, align="c")
-    _br_par(c, f"딥러닝은 입력 SNR 약 {n['cross_db']:.0f} dB 미만에서 공통 전처리보다 높았으나 그 이상에서는 공통 전처리 "
-               f"단독이 더 높아, 기법의 우열은 잡음 조건에 따라 달라졌다[그림 3]. 칼만 필터는 위양성 검출 위치에서 박동 형태의 "
-               f"가성 QRS군을 생성하였다(SWT 대비 약 {n['ph_x_swt']:.0f}배)[그림 4]. 딥러닝 개선 시도 중 성능 향상은 무잡음 "
-               "입력 보존 손실과 SNR 조건화(FiLM, 실제 입력 SNR 사용)에서만 확인되었다(p_Holm < 0.05). 실측 적용을 위해 추정 "
-               "SNR 기반 조건화와 자체 장치 데이터 검증이 남아 있다.", align="j", before=3)
+    _br_par(c, "", line=None, align="c", pad=0).add_run().add_picture(str(PFIG / "B2_realtime.png"), width=Cm(15.9))
+    _br_par(c, "[그림 2] ① 미래 표본을 쓰지 않는 인과 필터의 QRS 직후 왜곡(MIT-BIH). ② 평탄도와 ST 충실도를 함께 "
+               f"만족하는 방식은 없다(합성 ECG, 점 크기 = 지연). ③ 실보드 지연 {LIVE['lat']} ms = 대기 {LIVE['fe']} + 처리 "
+               f"{LIVE['proc']}, 손실 0.", size=8.5, line=11.5, align="j")
+    it = _br_inner(c, (7.75, 8.4))
+    _br_par(it.rows[0].cells[0], "", line=None, align="c", pad=0).add_run().add_picture(
+        str(PFIG / "B3_phantom.png"), width=Cm(7.35))
+    cr = it.rows[0].cells[1]
+    _br_par(cr, [("없는 박동을 만드는 필터. ", {"bold": True}),
+                 (f"[그림 3] 칼만 필터는 R파를 잘못 검출한 위치마다 박동 모양을 출력하였다(MIT-BIH {n['ph_M05']}건, "
+                  f"SWT의 약 {n['ph_x_swt']:.0f}배). 오차 에너지로는 드러나지 않아 박동 유사도로 측정하였다.", {})],
+            size=8.5, line=11.5, align="j", pad=0.05, after=1.5)
+    _br_par(cr, [("그 밖의 결과. ", {"bold": True}),
+                 (f"딥러닝은 입력 SNR 약 {n['cross_db']:.0f} dB 미만에서만 공통 전처리보다 우수하였고, 성능 향상은 손실 "
+                  "함수와 SNR 조건화에서만 확인되었다(p_Holm < 0.05).", {})],
+            size=8.5, line=11.5, align="j", pad=0.05)
     # 표 뒤의 빈 문단이 둘이면 2 쪽이 생긴다 — 하나만 남기고 1 pt 로
     from docx.shared import Pt
     body_ps = [p for p in d.paragraphs]

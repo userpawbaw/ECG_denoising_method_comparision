@@ -86,6 +86,10 @@ SLIDES_SCRIPT = ROOT / "scripts" / "make_slides.py"
 PANEL_FIGS_SCRIPT = ROOT / "scripts" / "make_panel_figs.py"
 PANEL_FIG_FUNCS = {"f4_crossover", "f5_phantom", "f6_noise", "f7_flow", "t1_swt", "t2_kalman", "t3_unet"}
 PANEL_FIG_CONSTS = {"FLOW"}
+# 브로셔 전용 그림
+BROCHURE_FIGS_SCRIPT = ROOT / "scripts" / "make_brochure_figs.py"
+BROCHURE_FIG_FUNCS = {"b1_system", "b2_realtime", "b3_phantom"}
+BROCHURE_FIG_CONSTS = {"FE_LAB"}
 # 판넬에 실리는 그림 — `docs/94_panel_plan.md` §4 의 배치와 같아야 한다
 PANEL_FIGS = {"s4_noise", "s5_crossover", "s15_kalman_phantom", "s16_wavelet_placement",
               "s17_dl_journey", "s18_pipeline", "s19_swt", "s20_kalman_model", "s21_resunet"}
@@ -127,6 +131,7 @@ def targets() -> list[tuple[str, int, str]]:
     out = []
     for path, funcs, consts in ((PANEL_SCRIPT, PANEL_FUNCS, {"STEPS"}),
                                 (PANEL_FIGS_SCRIPT, PANEL_FIG_FUNCS, PANEL_FIG_CONSTS),
+                                (BROCHURE_FIGS_SCRIPT, BROCHURE_FIG_FUNCS, BROCHURE_FIG_CONSTS),
                                 (SLIDES_SCRIPT, PANEL_FIGS, PANEL_CONSTS)):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in tree.body:
