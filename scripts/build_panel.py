@@ -122,8 +122,12 @@ def numbers() -> dict:
 SVG_EXT_URI = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"
 
 
+EMBED_SVG = False    # 기본은 PNG 만 넣는다 — SVG 를 넣은 판이 다른 PC 의 PowerPoint 에서 「그림을 표시할 수 없습니다」로
+                     # 떴다(사용자, 2026-11-06). 편집용 SVG 는 results/panel/figs · eq 에 따로 있다. --embed-svg 로 켠다.
+
+
 def add_picture(slide, png: Path, x, y, w, h):
-    """그림을 넣는다. 같은 이름의 SVG 가 있으면 SVG 를 본 그림으로, PNG 를 대체 그림으로 함께 넣는다.
+    """그림을 넣는다. `EMBED_SVG` 이면 같은 이름의 SVG 를 본 그림으로, PNG 를 대체 그림으로 함께 넣는다.
 
     PowerPoint(2016 이후)는 SVG 를 표시하고 「도형으로 변환」으로 편집할 수 있다. SVG 를 지원하지 않는
     뷰어(LibreOffice 미리보기 등)는 PNG 를 표시한다. 저장 방식은 PowerPoint 가 SVG 를 넣을 때와 같다
@@ -136,7 +140,7 @@ def add_picture(slide, png: Path, x, y, w, h):
     from pptx.util import Cm
     pic = slide.shapes.add_picture(str(png), Cm(x), Cm(y), Cm(w), Cm(h))
     svg = Path(png).with_suffix(".svg")
-    if not svg.exists():
+    if not EMBED_SVG or not svg.exists():
         return pic
     pkg = slide.part.package
     idx = 1 + sum(1 for p in pkg.iter_parts() if str(p.partname).startswith("/ppt/media/svg"))
@@ -416,9 +420,7 @@ def build_panel(template: Path, n: dict, final: bool = False) -> Path:
     box = {sh.name: sh for sh in slide.shapes}
     H = lambda t: [(t, {"bold": True, "color": ACC})]  # noqa: E731
 
-    _set(box["TextBox 16"], [[("심전도 잡음 제거 기법의 정량적 비교 연구", {"bold": True, "size": 50})]], 50)
-    _set(box["TextBox 17"], [[("조원 이름 : (입력)", {"bold": True})]], 24)
-    _set(box["TextBox 18"], [[("담당교수 : (입력)", {"bold": True})]], 24)
+    # 제목 · 조원 · 담당교수(TextBox 16~18)는 양식의 빈칸 그대로 둔다 — 작품명을 임의로 넣지 않는다(사용자 지시 2026-11-06)
     _set(box["TextBox 19"], [
         [("작품 개요", {"bold": True, "size": 24})],
         [("자체 제작한 ECG 취득 장치(AD8232, Arduino Uno)의 잔류 잡음을 줄이는 후처리 기법을 정량적으로 "
@@ -699,9 +701,7 @@ def build_brochure(n: dict, template: Path, final: bool = False) -> Path:
     t = d.tables[0]
     row = lambda i: list({id(c._tc): c for c in t.rows[i].cells}.values())  # noqa: E731
     # 머리 두 줄
-    _br_set(row(0)[1].paragraphs[0], "심전도 잡음 제거 기법의 정량적 비교 연구", bold=True)
-    _br_set(row(1)[3].paragraphs[0], "(입력)")
-    _br_set(row(1)[5].paragraphs[0], "(입력)")
+    # 머리 두 줄(작품명 · 학과 · 조원 · 지도교수)은 양식 그대로 둔다(사용자 지시 2026-11-06)
     # 구성(사용자 결정 2026-11-05, docs/38 §11): 작품 내용의 중심은 잡음 종류별 우세 기법(그림 두 쌍) — 가성 QRS군 —
     # 실시간 처리의 QRS 직후 왜곡. 문체는 학술 서술(질문형 금지). 그림 속 글자는 7 pt 까지 허용.
     m = n["noise_means"]
@@ -788,6 +788,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--template", required=True,
                     help="학과 판넬 양식 pptx (A00_panel). 저장소에 넣지 않는다 — 받은 파일 경로를 준다")
+    ap.add_argument("--embed-svg", action="store_true",
+                    help="판넬 pptx 에 편집용 SVG 를 함께 넣는다(PowerPoint 2016 이후 전용 — 다른 PC 에서 그림이 안 뜰 수 있다)")
     ap.add_argument("--brochure-template", type=Path, default=None,
                     help="학과 브로셔 양식(HWP 양식을 docx 로 변환한 파일). 저장소에 넣지 않는다 — 없으면 브로셔를 만들지 않는다")
     ap.add_argument("--render", action="store_true",
@@ -795,6 +797,8 @@ def main() -> int:
     ap.add_argument("--final", action="store_true",
                     help="최종판: 시안 표지를 빼고 panel.pptx · brochure.docx 로 저장, --render 시 PDF 와 PNG 를 남긴다")
     a = ap.parse_args()
+    global EMBED_SVG
+    EMBED_SVG = a.embed_svg
     OUT.mkdir(parents=True, exist_ok=True)
     n = numbers()
     print("[numbers]", {k: (round(v, 3) if isinstance(v, float) else v) for k, v in n.items()})

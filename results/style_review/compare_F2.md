@@ -503,7 +503,7 @@
 
 ### A1
 - `91_report.md:2106` 막대 대신 점을 쓴 이유는 해석의 대상이 0 으로부터의 거리이고 음수 값도 의미가 있기 때문이다.
-- `build_panel.py:473` R파 오검출 위치에 가성 QRS군을 만든다.
+- `build_panel.py:475` R파 오검출 위치에 가성 QRS군을 만든다.
 - `build_panel.py:750` R파 오검출 위치에 박동 형태를 출력하였다(
 
 ### A2
@@ -737,7 +737,7 @@
 - `91_report.md:3761 (표)` `docs/32_metric_cards.md`\*, 외부 검토안을 본 연구의 근거와 비교한 기록은 `docs/31_demo_design_review.md`, 카드 디자인 세 안의 비교는 `docs/33_card_design_samples.md`
 - `91_report.md:3762 (표)` 색인 `docs/93_slides.md`\*, 제작 · 배치 계획은 `docs/34_visual_plan.md`
 - `91_report.md:3763 (표)` `docs/90_results_d0.md`\* · `docs/90_results_d1.md`\* · 두 데이터 대조 `docs/92_axis_gap.md`\*
-- `build_panel.py:582` 시안: build_panel.py 자동 생성, 수치는 실험 산출물에서 읽음
+- `build_panel.py:584` 시안: build_panel.py 자동 생성, 수치는 실험 산출물에서 읽음
 
 ### D1
 - `91_report.md:1003` SWT 전처리가 신경망 입력 전에 정보의 일부를 제거하고, 신경망은 이를 복원하지 못하는 것으로 해석된다
