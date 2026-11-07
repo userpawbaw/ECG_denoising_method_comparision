@@ -3,6 +3,7 @@
 
     python scripts/check_academic_style.py                 # 판넬 · 브로셔 · 판넬 그림의 글
     python scripts/check_academic_style.py --file 초안.txt  # 임의의 원고
+    python scripts/check_academic_style.py --file live.html # 화면(GUI) 문안 — 주석은 빼고 보이는 글만
     python scripts/check_academic_style.py --lexicon        # 어휘표를 마크다운으로 출력
 
 **이 파일의 `LEXICON` 이 금지 표현의 유일한 원천이다.** 문서(95)는 원칙과 대표 예만
@@ -70,6 +71,10 @@ LEXICON: list[tuple[str, str, str, str]] = [
     (r"[?？]", "D5", "의문문 — 졸업 작품 대외 글은 질문을 쓰지 않는다(사용자 지시 2026-11-05)",
      "서술문(예: 「~을 분석하였다」 · 「~의 변화」)"),
     (r"녹음", "A6", "소리에 쓰는 말 — 심전도는 녹음하지 않는다", "기록 · 저장 신호"),
+    # ---- 화면(GUI) 문안에서 찾은 구어 (2026-11-07, docs/39)
+    (r"걷어차", "B1", "의인화", "과도 응답을 일으킨다"),
+    (r"뭉쳐", "B2", "구어", "몰아서 도착한다 → 도착 간격이 불규칙하다"),
+    (r"못 ?(?:따라간|따라가|돌아온|돌아오|보냈)", "B2", "구어 부정", "실시간 처리 한계 초과 · 복귀하지 못한다 · 전송 실패"),
 
     (r"했다", "D1", "구어체 과거형", "하였다"),
     (r"「|」|«|»", "B3", "강조용 인용부호", "삭제 — 용어 정의 시에만 작은따옴표"),
@@ -104,6 +109,56 @@ def check_text(text: str, where: str = "") -> list[str]:
         for m in rx.finditer(text):
             out.append(f"{where}[{rule}] «{m.group(0)}» — {why} → {alt}")
     return out
+
+
+UI_SUFFIXES = {".html", ".htm", ".js", ".jsx", ".ts", ".tsx", ".vue"}
+_UI_ATTR = re.compile(r"""(?:title|aria-label|placeholder|alt|label)\s*=\s*(["'])(.*?)\1""", re.S)
+_JS_STR = re.compile(r"""'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`""")
+
+
+def _nl(m: re.Match) -> str:
+    """지운 자리에 줄바꿈 수만 남긴다 — 줄 번호가 원본과 맞게."""
+    return "\n" * m.group(0).count("\n")
+
+
+def _untag(t: str) -> str:
+    """태그를 지우되 title · aria-label · placeholder · alt 값(툴팁 · 낭독 글)은 남긴다."""
+    return re.sub(r"<[^>]*>", lambda m: " ".join(v for _, v in _UI_ATTR.findall(m.group(0)))
+                  + _nl(m), t, flags=re.S)
+
+
+def _js_texts(code: str, line0: int) -> list[tuple[int, str]]:
+    """스크립트에서는 **문자열 상수**만 화면 글이다 — 삼항 연산자의 «?» 같은 코드는 뺀다."""
+    code = re.sub(r"/\*.*?\*/", _nl, code, flags=re.S)
+    code = re.sub(r"(?<![:\\'\"`])//[^\n]*", "", code)
+    out = []
+    for m in _JS_STR.finditer(code):
+        body = re.sub(r"\$\{[^}]*\}", " ", m.group(0)[1:-1])
+        body = _untag(body).replace("\n", " ")
+        if HANGUL.search(body):
+            out.append((line0 + code.count("\n", 0, m.start()), body))
+    return out
+
+
+def ui_lines(text: str, suffix: str = ".html") -> list[tuple[int, str]]:
+    """화면 파일에서 **보이는 글**만 (줄 번호, 글) 로 — `docs/39_ui_copy_style.md`.
+
+    주석(<!-- -->, /* */, //)과 <style> 은 개발자용이라 뺀다. HTML 본문은 태그를 지운 글,
+    <script> 와 .js · .ts 파일은 문자열 상수만 본다. 값이 비었음을 뜻하는 «—» 한 글자는
+    표시 관례라 뺀다."""
+    if suffix in {".js", ".jsx", ".ts", ".tsx"}:
+        return _js_texts(text, 1)
+    out: list[tuple[int, str]] = []
+    t = re.sub(r"<!--.*?-->", _nl, text, flags=re.S)
+    t = re.sub(r"<style\b.*?</style>", _nl, t, flags=re.S | re.I)
+
+    def script(m: re.Match) -> str:
+        out.extend(_js_texts(m.group(1), t.count("\n", 0, m.start(1)) + 1))
+        return _nl(m)
+    t = re.sub(r"<script\b[^>]*>(.*?)</script>", script, t, flags=re.S | re.I)
+    t = re.sub(r">\s*—\s*<", "><", t)
+    out += [(i, ln) for i, ln in enumerate(_untag(t).splitlines(), 1) if HANGUL.search(ln)]
+    return sorted(out)
 
 
 def _strings(node: ast.AST) -> list[tuple[int, str]]:
@@ -152,7 +207,7 @@ def check_targets() -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--file", type=Path, default=None,
-                    help="이 원고 파일 하나만 검사한다 (UTF-8 텍스트 · 마크다운)")
+                    help="이 원고 파일 하나만 검사한다 (UTF-8 텍스트 · 마크다운 · 화면 파일 html/js/tsx — 주석 제외)")
     ap.add_argument("--lexicon", action="store_true",
                     help="금지 표현 어휘표 전체를 마크다운 표로 출력하고 끝낸다")
     a = ap.parse_args()
@@ -163,7 +218,10 @@ def main() -> int:
         return 0
     if a.file:
         v = []
-        for i, line in enumerate(a.file.read_text(encoding="utf-8").splitlines(), 1):
+        text = a.file.read_text(encoding="utf-8")
+        lines = ui_lines(text, a.file.suffix.lower()) if a.file.suffix.lower() in UI_SUFFIXES \
+            else enumerate(text.splitlines(), 1)
+        for i, line in lines:
             v += check_text(line, f"{a.file.name}:{i} ")
     else:
         v = check_targets()

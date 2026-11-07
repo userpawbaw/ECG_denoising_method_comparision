@@ -69,3 +69,28 @@ def test_term_registry_rows_have_sources():
         assert len(cells) == 5, f"칸 수가 다르다: {r}"
         assert len(cells[3]) >= 8, f"출처가 비었다: {cells[0]}"
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", cells[4]), f"확인일 형식: {cells[0]}"
+
+
+def test_ui_lines_keeps_visible_text_and_drops_code():
+    """화면 파일 검사(docs/39): 주석 · 삼항 연산자의 «?» · 빈 값 «—» 는 빼고, 보이는 글 · 툴팁 · 문자열 상수는 본다."""
+    from check_academic_style import check_text, ui_lines
+    html = (
+        "<!-- 개발 메모: 녹음본 -->\n"
+        "<style>/* 그린다 */ .a{}</style>\n"
+        '<div title="툴팁에서 지어낸 말"><span id="lat">—</span></div>\n'
+        "<p>전극 신호를 처리한다</p>\n"
+        "<script>\n"
+        "// 주석: 손해\n"
+        "const s = ok ? '연결됨' : '끊김 — 다시 붙는 중';\n"
+        "</script>\n"
+    )
+    lines = dict(ui_lines(html, ".html"))
+    assert 1 not in lines and 2 not in lines            # 주석 · style
+    assert "지어낸" in lines[3] and "—" not in lines[3]  # 툴팁은 보고, 빈 값 표시는 뺀다
+    assert lines[4].strip() == "전극 신호를 처리한다"
+    v = [x for ln, t in ui_lines(html, ".html") for x in check_text(t, f"{ln} ")]
+    assert not any("[D5]" in x for x in v)              # 삼항 연산자는 의문문이 아니다
+    assert any(x.startswith("7 ") and "[B3]" in x for x in v)
+    assert not any("손해" in x or "녹음" in x or "그린다" in x for x in v)
+    js = "const a = 1; // 주석은 녹음\nel.textContent = `${n} 로 바꿨다`;\n"
+    assert [ln for ln, _ in ui_lines(js, ".js")] == [2]
