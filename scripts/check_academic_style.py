@@ -97,6 +97,10 @@ PANEL_FIG_CONSTS = {"FLOW"}
 BROCHURE_FIGS_SCRIPT = ROOT / "scripts" / "make_brochure_figs.py"
 BROCHURE_FIG_FUNCS = {"b1_system", "b2_realtime", "b3_phantom"}
 BROCHURE_FIG_CONSTS = {"FE_LAB"}
+# 발표 자료(16:9, 7 쪽) — 슬라이드 글과 발표자 노트
+PRES_SCRIPT = ROOT / "scripts" / "build_presentation.py"
+PRES_FUNCS = {"p1_overview", "p2_theory", "p3_noise", "p4_safety", "p5_flow", "p6_exhibit", "p7_live"}
+PRES_CONSTS = {"PSTEPS"}
 # 판넬에 실리는 그림 — `docs/94_panel_plan.md` §4 의 배치와 같아야 한다
 PANEL_FIGS = {"s4_noise", "s5_crossover", "s15_kalman_phantom", "s16_wavelet_placement",
               "s17_dl_journey", "s18_pipeline", "s19_swt", "s20_kalman_model", "s21_resunet"}
@@ -184,12 +188,13 @@ def _strings(node: ast.AST) -> list[tuple[int, str]]:
 
 
 def targets() -> list[tuple[str, int, str]]:
-    """(파일, 줄, 문자열) — 판넬 · 브로셔 · 판넬 그림에 실리는 글."""
+    """(파일, 줄, 문자열) — 판넬 · 브로셔 · 판넬 그림 · 발표 자료에 실리는 글."""
     out = []
     for path, funcs, consts in ((PANEL_SCRIPT, PANEL_FUNCS, {"STEPS"}),
                                 (PANEL_FIGS_SCRIPT, PANEL_FIG_FUNCS, PANEL_FIG_CONSTS),
                                 (BROCHURE_FIGS_SCRIPT, BROCHURE_FIG_FUNCS, BROCHURE_FIG_CONSTS),
-                                (SLIDES_SCRIPT, PANEL_FIGS, PANEL_CONSTS)):
+                                (SLIDES_SCRIPT, PANEL_FIGS, PANEL_CONSTS),
+                                (PRES_SCRIPT, PRES_FUNCS, PRES_CONSTS)):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in tree.body:
             if isinstance(node, ast.FunctionDef) and node.name in funcs:

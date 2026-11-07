@@ -332,7 +332,7 @@ class Sheet:
             paras = [paras]
         for i, para in enumerate(paras):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-            p.alignment = {"l": PP_ALIGN.LEFT, "c": PP_ALIGN.CENTER}[align]
+            p.alignment = {"l": PP_ALIGN.LEFT, "c": PP_ALIGN.CENTER, "r": PP_ALIGN.RIGHT}[align]
             runs = para if isinstance(para, list) else [(para, {})]
             for txt0, st in runs:
                 # 「p_Holm」은 p 와 아래 첨자 Holm 으로 나누어 쓴다(그림의 표기와 같게)

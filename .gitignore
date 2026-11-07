@@ -104,3 +104,4 @@ results/**/_partial/
 # 업로드한 것을 커밋하지 않도록 여기서도 막는다. 수치는 summary.json/sweep.csv 에 있다.
 results/ext/**/best.pt
 results/ext/**/last.pt
+/results/presentation/slide-*.png

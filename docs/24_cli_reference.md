@@ -19,8 +19,8 @@
 
 | | |
 |---|---|
-| 스크립트 | **43 개** |
-| 옵션 | **214 개** |
+| 스크립트 | **44 개** |
+| 옵션 | **216 개** |
 | 설명이 빈 옵션 | **0 개** (`(설명 없음)` 으로 표시된다) |
 
 ---
@@ -336,6 +336,15 @@ EXP-G 분석 — **`L6` 의 이득이 잡음 종류별로도 유지되는가.**
 | `--brochure-template` | Path | — | 학과 브로셔 양식(HWP 양식을 docx 로 변환한 파일). 저장소에 넣지 않는다 — 없으면 브로셔를 만들지 않는다 |
 | `--render` | **켬/끔** | 끔 | LibreOffice 로 PNG 미리보기도 만든다 (soffice · pdftoppm 필요) |
 | `--final` | **켬/끔** | 끔 | 최종판: 시안 표지를 빼고 panel.pptx · brochure.docx 로 저장, --render 시 PDF 와 PNG 를 남긴다 |
+
+### `scripts/build_presentation.py`
+
+졸업 작품 **발표 자료**(16:9, 7 쪽)를 판넬 · 브로셔와 같은 그림 · 수치로 만든다 (docs/38 §13).
+
+| 옵션 | 값 | 기본 | 설명 |
+|---|---|---|---|
+| `--video-dir` | Path | — | 릴리스 video 의 원본 영상 폴더(intro0.mp4 · live2.mp4). 주면 영상 클립부터 다시 자른다. 없으면 이미 잘라 둔 클립(results/panel/captures · data/arduino/captures)을 쓴다 |
+| `--render` | **켬/끔** | 끔 | LibreOffice 로 PDF 와 쪽별 PNG 미리보기도 만든다 |
 
 ### `scripts/check_academic_style.py`
 
