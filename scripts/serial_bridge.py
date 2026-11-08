@@ -228,7 +228,9 @@ class ReplaySource:
         """ADC 카운트(0..1023) 배열. AD8232 출력을 흉내낸다."""
         if kind == "csv":
             from ecgdn.data.arduino import load_csv
-            rec = load_csv(csv, fs_out=None)
+            # 파일의 fs 가 아니라 **보드 fs 로 맞춰** 흘린다 — 안 그러면 250 Hz 녹화가
+            # 기본 1000 Hz(D-53)로 4 배 빨리 흐른다
+            rec = load_csv(csv, fs_out=float(board_fs))
             x = rec.x
         else:
             from ecgdn.data.mixer import mix_at_snr
@@ -560,8 +562,10 @@ def main() -> int:
     ap.add_argument("--csv", help="--replay csv 일 때 읽을 파일")
     ap.add_argument("--baud", type=int, default=115200,
         help="시리얼 속도. 스케치의 SERIAL_BAUD 와 맞춘다")
-    ap.add_argument("--board-fs", type=int, default=250, choices=[250, 500, 1000],
-                    help="보드의 샘플링률. **250 이면 리샘플이 없다**")
+    ap.add_argument("--board-fs", type=int, default=1000, choices=[250, 500, 1000],
+                    help="보드의 샘플링률. 기본 1000 (D-53) — 100 Hz LPF 로 높은 전원선 고조파를 **접히기 전에** 깎고 "
+                         "250 Hz 로 내린 뒤 고조파 제거기가 남은 것을 뺀다. 250 이면 리샘플이 없지만 9 차 넘는 고조파가 접혀 남는다. "
+                         "1000 은 BINARY 만 된다(초당 5 kB, 115200 baud 로 충분)")
     ap.add_argument("--ascii", action="store_true",
                     help="ASCII 모드로 읽는다 (손실을 셀 수 없다 — 디버깅용)")
     ap.add_argument("--methods", default="M_FE,M01,M04",
@@ -619,9 +623,13 @@ def main() -> int:
 
     parser = BinaryParser() if binary else AsciiParser()
     dec = CausalDecimator(args.board_fs, FS)
-    if dec.m != 1:
-        print(f"[warn] 보드 {args.board_fs} Hz -> {FS:g} Hz 로 {dec.m} 배 데시메이션한다. "
-              "보드를 250 Hz 로 돌리면 리샘플이 아예 없다 (권장).")
+    # ASCII 는 한 줄이 약 12 바이트라 1 kHz 에서 115200 baud 를 넘는다 (펌웨어 머리말)
+    if args.ascii and args.board_fs > 500:
+        raise SystemExit(f"--ascii 는 --board-fs {args.board_fs} 를 못 버틴다 (시리얼 용량 초과). "
+                         "--ascii 를 떼거나 --board-fs 250 · 500 으로")
+    if dec.m != 1 and not args.quiet:
+        print(f"보드 {args.board_fs} Hz -> {FS:g} Hz 로 {dec.m} 배 데시메이션한다 "
+              "(100 Hz LPF 뒤 — 전원선 고조파가 접히기 전에 깎인다, D-53)")
 
     # ---- front-end 는 여기서 **한 번만**. 방법은 한 번 만들어 재사용한다
     # (모델 적재가 비싸다) — 전환 때는 `reset()` 만 부른다.

@@ -13,7 +13,7 @@
 | 작업 브랜치 | `claude/adoring-cray-nv6pvq` — 원격에 푸시돼 있다 |
 | 기본 브랜치 | `claude/ecg-denoising-dsp-dl-comparison-b5wjvj` — 작업 브랜치는 이것보다 **앞서기만** 한다(뒤처진 커밋 0). **아직 합치지 않았고 PR 도 없다** |
 | 검사 | `pytest tests/` 전부 통과 — 709 passed · 11 skipped (2026-10-05) |
-| 사용자 PC | Windows · VS Code · Python 3.13(Microsoft Store 판) · Arduino Uno + AD8232 · `COM13` · `--ascii --board-fs 250` |
+| 사용자 PC | Windows · VS Code · Python 3.13(Microsoft Store 판) · Arduino Uno + AD8232 · `COM13` · D-53 전까지 `--ascii --board-fs 250`, 이후 기본(1000 Hz · BINARY — 실보드 확인 전) |
 
 **새 세션의 첫 동작**
 
@@ -50,12 +50,18 @@ python3 scripts/screenshot_live.py --methods M_FE,M04,M05S   # 화면을 띄워 
 ## 3. 실보드에서 돌리는 명령 (사용자 PC)
 
 ```bat
-:: 기본 — 고전 + 스트리밍 칼만
-python scripts\serial_bridge.py --port COM13 --ascii --board-fs 250 --methods M_FE,M04,M05S --serve
+:: 기본 — 보드 1000 Hz · BINARY (D-53). --ascii 를 붙이지 않는다 (1 kHz 에서 ASCII 는 시리얼 용량을 넘는다)
+python scripts\serial_bridge.py --port COM13 --methods M_FE,M04,M05S --serve
 ::   -> 브라우저(Chrome/Edge 권장)에서 http://127.0.0.1:8765/live.html
 
 :: 창 방식 칼만 — hop 128 이 자동이다(지연 560 ms)
-python scripts\serial_bridge.py --port COM13 --ascii --board-fs 250 --methods M_FE,M04,M05 --serve
+python scripts\serial_bridge.py --port COM13 --methods M_FE,M04,M05 --serve
+
+:: 되돌리기 — D-53 이전 명령. 1000 Hz · BINARY 가 실보드에서 안 되면(샘플이 안 맞는다 · fs 경고)
+python scripts\serial_bridge.py --port COM13 --ascii --board-fs 250 --methods M_FE,M04,M05S --serve
+
+:: 전원선 처리를 노치(D-50)로 되돌리기
+python scripts\serial_bridge.py --port COM13 --pli notch --methods M_FE,M04,M05S --serve
 
 :: 멈춤 · 끊김을 되짚을 기록을 남길 때
 python scripts\serial_bridge.py ... --trace-io trace.txt
