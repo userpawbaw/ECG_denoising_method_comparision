@@ -59,6 +59,15 @@ CLIPS = [
     # 실시간 측정 화면은 그래프 영역만 자른다 — 범례 칩 · 해설 글(내부 코드 · 구어, docs/39 §3)이 영상에 남지 않게.
     (LIVE / "clip_live_overlay.mp4", "live2.mp4", 15, 10, "fps=30,crop=816:410:275:150", 24),
 ]
+# 최종 GUI(Signal Studio) 화면 — GUI 저장소(ecg-gui-design-review 4fcf0c9)의 재생 브리지로 띄워 캡처한 것(docs/38 §14).
+# 입력은 MIT-BIH 111 + NSTDB 혼합 잡음 −5 dB 재생이라 개인 생체정보가 아니어서 저장소에 둔다.
+# 없으면 이전 실험실 캡처를 쓴다. --lab-img · --gui-img 로 바꿀 수 있다.
+GUI_LAB = CAP / "gui_lab.png"
+GUI_LIVE = CAP / "gui_live.png"
+SCREENS = {"lab": (GUI_LAB if GUI_LAB.exists() else CAP / "lab_01_compare.png",
+                   "그림 7. 실험실 화면: 기법 출력 비교(혼합 잡음 −5 dB)."),
+           "live": (GUI_LIVE if GUI_LIVE.exists() else None,
+                    "최종 GUI 실시간 측정 탭")}
 POSTER_AT = 1.0     # 클립의 첫 화면(포스터)으로 쓸 시각 [s]
 FIG_PT = {   # 그림을 그린 크기(cm 폭)와 그림 속 최소 글자(pt) — 놓인 폭에 비례해 커지거나 작아진다
     "F4": (PF.SIZES["F4"][0], 13.0), "F5a": (PF.SIZES["F5a"][0], 13.0), "F5b": (PF.SIZES["F5b"][0], 13.0),
@@ -400,9 +409,9 @@ def p6_exhibit(d: Deck):
     yy = 2.9 + h1 + 0.08
     sh.text(xr, yy, wr, 0.6, "그림 6. 동일 박동의 입력(잡음)과 처리 결과의 중첩 표시.", size=CAP_PT, color=INK2)
     yy += 0.95
-    _, _, _, h2 = sh.image(CAP / "lab_01_compare.png", xr, yy, wr, H - 1.75 - yy, valign="top")
-    sh.text(xr, yy + h2 + 0.08, wr, 0.6, "그림 7. 실험실 화면: 입력과 기법별 출력의 동일 축 비교.", size=CAP_PT,
-            color=INK2)
+    lab, lab_capt = SCREENS["lab"]
+    _, _, _, h2 = sh.image(lab, xr, yy, wr, H - 1.75 - yy, valign="top")
+    sh.text(xr, yy + h2 + 0.08, wr, 0.6, lab_capt, size=CAP_PT, color=INK2)
 
 
 # ------------------------------------------------------------------ 7 쪽 시연 ②
@@ -451,7 +460,8 @@ def p7_live(d: Deck):
     stages = [("① 벤치마크 화면", "기록 신호(MIT-BIH)에 기준 신호를 겹쳐 기법별 출력을 비교", Path("results/panel/demo_mode_b.png")),
               ("② 실시간 측정 화면", "자체 장치를 연결하여 실시간 처리 경로를 검증(2026-10-16)",
                LIVE / "live_02_split_t32.png"),
-              ("③ 최종 GUI", "벤치마크 비교와 실시간 측정을 한 프로그램의 탭으로 통합, 실시간 측정 탭은 ②와 동일", None)]
+              ("③ 최종 GUI", "실험실과 실시간 측정을 탭으로 통합(그림: 재생 입력, 혼합 잡음 −5 dB)",
+               SCREENS["live"][0])]
     gp = 0.7
     bw = (X1 - X0 - 2 * gp) / 3
     for i, (head, desc, img) in enumerate(stages):
@@ -521,8 +531,17 @@ def main() -> int:
     ap.add_argument("--video-dir", type=Path, default=None,
                     help="릴리스 video 의 원본 영상 폴더(intro0.mp4 · live2.mp4). 주면 영상 클립부터 다시 자른다. "
                          "없으면 이미 잘라 둔 클립(results/panel/captures · data/arduino/captures)을 쓴다")
+    ap.add_argument("--lab-img", type=Path, default=None,
+                    help="6 쪽 오른쪽 아래 화면 그림(기본: results/panel/captures/gui_lab.png, 없으면 이전 실험실 캡처)")
+    ap.add_argument("--lab-caption", default=None, help="--lab-img 그림의 캡션(기본: 실험실 화면 캡션)")
+    ap.add_argument("--gui-img", type=Path, default=None,
+                    help="7 쪽 개발 단계 ③ 최종 GUI 그림(기본: results/panel/captures/gui_live.png, 없으면 비움)")
     ap.add_argument("--render", action="store_true", help="LibreOffice 로 PDF 와 쪽별 PNG 미리보기도 만든다")
     a = ap.parse_args()
+    if a.lab_img:
+        SCREENS["lab"] = (a.lab_img, a.lab_caption or SCREENS["lab"][1])
+    if a.gui_img:
+        SCREENS["live"] = (a.gui_img, SCREENS["live"][1])
     if a.video_dir:
         make_clips(a.video_dir)
     missing = [str(o) for o, *_ in CLIPS if not o.exists()]

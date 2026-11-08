@@ -20,7 +20,7 @@
 | | |
 |---|---|
 | 스크립트 | **44 개** |
-| 옵션 | **216 개** |
+| 옵션 | **219 개** |
 | 설명이 빈 옵션 | **0 개** (`(설명 없음)` 으로 표시된다) |
 
 ---
@@ -344,6 +344,9 @@ EXP-G 분석 — **`L6` 의 이득이 잡음 종류별로도 유지되는가.**
 | 옵션 | 값 | 기본 | 설명 |
 |---|---|---|---|
 | `--video-dir` | Path | — | 릴리스 video 의 원본 영상 폴더(intro0.mp4 · live2.mp4). 주면 영상 클립부터 다시 자른다. 없으면 이미 잘라 둔 클립(results/panel/captures · data/arduino/captures)을 쓴다 |
+| `--lab-img` | Path | — | 6 쪽 오른쪽 아래 화면 그림(기본: results/panel/captures/gui_lab.png, 없으면 이전 실험실 캡처) |
+| `--lab-caption` | 문자열 | — | --lab-img 그림의 캡션(기본: 실험실 화면 캡션) |
+| `--gui-img` | Path | — | 7 쪽 개발 단계 ③ 최종 GUI 그림(기본: results/panel/captures/gui_live.png, 없으면 비움) |
 | `--render` | **켬/끔** | 끔 | LibreOffice 로 PDF 와 쪽별 PNG 미리보기도 만든다 |
 
 ### `scripts/check_academic_style.py`
