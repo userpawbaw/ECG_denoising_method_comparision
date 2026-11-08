@@ -47,7 +47,7 @@ from pathlib import Path
 import numpy as np
 
 from ecgdn.config import FS
-from ecgdn.realtime.frontend_modes import FE_MODES, build_fe, fe_intrinsic
+from ecgdn.realtime.frontend_modes import FE_MODES, PLI_MODES, build_fe, fe_intrinsic
 from ecgdn.realtime.serial_link import (SYNC, AsciiParser, BinaryParser,
                                         CausalDecimator, SampleChunk, adc_to_mv)
 from ecgdn.realtime.stream import StreamProcessor
@@ -569,6 +569,8 @@ def main() -> int:
     ap.add_argument("--axis", default="d1", help="딥러닝 체크포인트 축")
     ap.add_argument("--fe", default="zerophase", choices=sorted(FE_MODES),
                     help="front-end 모드. 화면에서 실행 중에도 바꿀 수 있다")
+    ap.add_argument("--pli", default="canceller", choices=sorted(PLI_MODES),
+                    help="전원선 잡음 처리. " + " · ".join(f"{k}: {v}" for k, v in PLI_MODES.items()))
     ap.add_argument("--d", type=int, default=12, help="미래 문맥 [샘플]")
     ap.add_argument("--hop", type=int, default=16,
                     help="추론 간격 [샘플]. 기본 16 = 초당 15.6 회 (D-49 — 12 에서 CPU 약 30 %% 절감, 품질 차이 없음 `[측정]`)")
@@ -629,7 +631,7 @@ def main() -> int:
         torch.set_num_threads(args.torch_threads)
         print(f"torch 스레드 {torch.get_num_threads()} 개로 제한 (--torch-threads)")
     fe_hop_s = max(1, args.fe_hop) / FS
-    fe = build_fe(args.fe, FS, hop_s=fe_hop_s)
+    fe = build_fe(args.fe, FS, hop_s=fe_hop_s, pli=args.pli)
     procs = {}
     for n in names:
         if n in ALWAYS_INTRINSIC:
@@ -816,7 +818,7 @@ def main() -> int:
                 # 출력으로 채워져 있어, 그대로 두면 두 필터가 섞인 구간이 나온다.
                 # 처리기는 다시 만들지 않고 `reset()` 만 한다 — 모델 적재가 비싸다.
                 switch.mode = want
-                fe = build_fe(want, FS, hop_s=fe_hop_s)
+                fe = build_fe(want, FS, hop_s=fe_hop_s, pli=args.pli)
                 # **어느 이름이 «필터가 곧 방법» 인지도 모드마다 다르다.**
                 # 중앙값은 대역통과가 아니라 `M01` 을 대체하지 않는다.
                 fe_names, proc_names = split_names(want)

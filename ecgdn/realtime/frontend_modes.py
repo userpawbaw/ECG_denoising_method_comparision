@@ -47,6 +47,7 @@ from scipy import signal as sps
 
 from ..config import DEFAULT_FE, DEFAULT_FE_CAUSAL, FS
 from .frontend_stream import StreamingFrontEnd
+from .pli_canceller import PliRemover
 
 # 전원선 노치는 **세 모드 모두 항상 건다** (D-50). 전에는 zerophase·median 에
 # 노치가 아예 없었고, causal 은 첫 4 초에 한 번만 판정했다 — 시작 뒤에 충전기를
@@ -59,7 +60,43 @@ def _notch_bank(fs: float, cfg=DEFAULT_FE) -> list:
     return [sps.tf2sos(*sps.iirnotch(f0, cfg.notch_q, fs))
             for f0 in NOTCH_HZ if f0 < nyq * 0.98]
 
-__all__ = ["FE_MODES", "fe_intrinsic", "build_fe",
+
+# 전원선 잡음을 무엇으로 빼나 (D-52). 기본은 **고조파 추적 제거기**다 — 노치(Q30)는
+# 한전 주파수가 ±0.2 Hz 만 흔들려도 −14 dB 로 약해지고, 250 Hz 에서 접힌 고조파
+# (70 · 10 · 50 Hz …)는 아예 못 뺀다. 노치는 비교 · 되돌리기용으로 남긴다.
+PLI_MODES = {
+    "canceller": "고조파 추적 제거기 (칼만 + PLL, 접힌 고조파까지) — 기본 (D-52)",
+    "notch": "고정 노치 60 · 120 Hz, Q30 (D-50)",
+}
+
+
+class _NotchStage:
+    """D-50 의 노치를 상태를 이어 가며 건다. `PliRemover` 와 같은 꼴(push · reset)."""
+
+    def __init__(self, fs: float):
+        self._st = [[sos, None] for sos in _notch_bank(fs)]
+
+    def push(self, block: np.ndarray) -> np.ndarray:
+        for st in self._st:
+            if not block.size:
+                break
+            if st[1] is None:           # 첫 표본 값으로 상태를 맞춘다 — DC 계단 방지
+                st[1] = sps.sosfilt_zi(st[0]) * block[0]
+            block, st[1] = sps.sosfilt(st[0], block, zi=st[1])
+        return block
+
+    def reset(self) -> None:
+        for st in self._st:
+            st[1] = None
+
+
+def _pli_stage(fs: float, pli: str):
+    if pli not in PLI_MODES:
+        raise ValueError(f"전원선 처리 방식이 아니다: {pli!r} (가능: {sorted(PLI_MODES)})")
+    return PliRemover(fs) if pli == "canceller" else _NotchStage(fs)
+
+
+__all__ = ["FE_MODES", "PLI_MODES", "fe_intrinsic", "build_fe",
            "CausalFE", "BlockZeroPhaseFE", "MedianBaselineFE"]
 
 # 화면에 그대로 쓰는 이름표. 코드와 UI 가 갈라지지 않게 **여기 하나만** 둔다.
@@ -112,19 +149,22 @@ class CausalFE(_Base):
 
     latency_samples = 0
 
-    def __init__(self, fs: float = FS, cfg=DEFAULT_FE_CAUSAL):
+    def __init__(self, fs: float = FS, cfg=DEFAULT_FE_CAUSAL, pli: str = "canceller"):
         super().__init__(fs)
-        self._fe = StreamingFrontEnd(fs, replace(cfg, notch_hz=NOTCH_HZ, auto_notch=False),
+        # 전원선은 앞단(`_pli`)에서 뺀다 — StreamingFrontEnd 자신의 노치는 끈다
+        self._pli = _pli_stage(fs, pli)
+        self._fe = StreamingFrontEnd(fs, replace(cfg, notch_hz=(), auto_notch=False),
                                      decide_after_s=0.0)
 
     def push(self, block):
-        out = self._fe.push(block)
+        out = self._fe.push(self._pli.push(np.asarray(block, dtype=np.float64).ravel()))
         self._n_seen += len(block)
         self._n_out += len(out)
         return out
 
     def reset(self) -> None:
         super().reset()
+        self._pli.reset()
         self._fe.reset()
 
 
@@ -137,7 +177,7 @@ class _Windowed(_Base):
     """
 
     def __init__(self, fs: float = FS, look_s: float = 0.5, past_s: float = 4.0,
-                 hop_s: float = 0.096, xfade_s: float | None = None):
+                 hop_s: float = 0.096, xfade_s: float | None = None, pli: str = "canceller"):
         super().__init__(fs)
         self.look = int(round(look_s * fs))
         self.past = int(round(past_s * fs))
@@ -154,10 +194,10 @@ class _Windowed(_Base):
         self._acc = np.zeros(0)
         self._wsum = np.zeros(0)
         self._acc0 = 0                    # _acc[0] 의 절대 표본 번호
-        # 노치는 창 안의 filtfilt 가 아니라 **들어오는 길목에서 상태를 이어 가며**
-        # 건다. 창마다 filtfilt 로 걸면 창 끝에서 노치가 울려 잡음의 14~26 % 가
-        # 남았다 (D-50). Q 30 노치의 위상 왜곡은 60 Hz ±1 Hz 밖에서 무시할 만하다.
-        self._notch = [[sos, None] for sos in _notch_bank(fs)]
+        # 전원선은 창 안의 filtfilt 가 아니라 **들어오는 길목에서 상태를 이어 가며**
+        # 뺀다. 창마다 filtfilt 로 노치를 걸면 창 끝에서 울려 잡음의 14~26 % 가
+        # 남았다 (D-50). 제거기(D-52)도 표본 단위 인과 추정이라 같은 자리에 둔다.
+        self._pli = _pli_stage(fs, pli)
 
     def _process(self, w: np.ndarray) -> np.ndarray:   # pragma: no cover
         raise NotImplementedError
@@ -165,8 +205,7 @@ class _Windowed(_Base):
     def reset(self) -> None:
         super().reset()
         self._acc, self._wsum, self._acc0 = np.zeros(0), np.zeros(0), 0
-        for st in self._notch:
-            st[1] = None
+        self._pli.reset()
 
     def _fade(self, m: int) -> np.ndarray:
         """양 끝을 raised-cosine 으로 눕힌 가중치. 겹치는 두 조각의 합이 1 이다."""
@@ -178,17 +217,8 @@ class _Windowed(_Base):
             w[-k:] = r[::-1]
         return w
 
-    def _prefilter(self, block: np.ndarray) -> np.ndarray:
-        for st in self._notch:
-            if not block.size:
-                break
-            if st[1] is None:           # 첫 표본 값으로 상태를 맞춘다 — DC 계단 방지
-                st[1] = sps.sosfilt_zi(st[0]) * block[0]
-            block, st[1] = sps.sosfilt(st[0], block, zi=st[1])
-        return block
-
     def push(self, block):
-        block = self._prefilter(np.asarray(block, dtype=np.float64).ravel())
+        block = self._pli.push(np.asarray(block, dtype=np.float64).ravel())
         self._buf.extend(block.tolist())
         self._n_seen += block.size
         out: list[float] = []
@@ -254,8 +284,9 @@ class BlockZeroPhaseFE(_Windowed):
     """
 
     def __init__(self, fs: float = FS, look_s: float = 0.5, past_s: float = 4.0,
-                 hop_s: float = 0.096, cfg=DEFAULT_FE, xfade_s: float | None = None):
-        super().__init__(fs, look_s, past_s, hop_s, xfade_s)
+                 hop_s: float = 0.096, cfg=DEFAULT_FE, xfade_s: float | None = None,
+                 pli: str = "canceller"):
+        super().__init__(fs, look_s, past_s, hop_s, xfade_s, pli=pli)
         nyq = fs / 2.0
         self._hp = sps.butter(cfg.order, cfg.hp_hz / nyq, btype="highpass", output="sos")
         self._lp = sps.butter(cfg.order, cfg.lp_hz / nyq, btype="lowpass", output="sos")
@@ -289,7 +320,7 @@ class MedianBaselineFE(_Windowed):
 
     def __init__(self, fs: float = FS, w1_s: float = 0.2, w2_s: float = 0.6,
                  past_s: float = 4.0, hop_s: float = 0.096, cfg=DEFAULT_FE,
-                 xfade_s: float | None = 0.0):
+                 xfade_s: float | None = 0.0, pli: str = "canceller"):
         # **기본은 끔.** 중앙값은 창 w1·w2 안의 자료만 보는 **국소 연산**이라
         # 창이 hop 만큼 미끄러져도 결과가 거의 안 바뀐다 — 이음매 비를 재 보면
         # 교차 페이드 없이도 0.95 다. 반면 `filtfilt` 는 **창 전체의 함수**라
@@ -298,7 +329,7 @@ class MedianBaselineFE(_Windowed):
         self.w1 = _odd(int(round(w1_s * fs)))
         self.w2 = _odd(int(round(w2_s * fs)))
         super().__init__(fs, look_s=(self.w1 // 2 + self.w2 // 2) / fs, past_s=past_s,
-                         hop_s=hop_s, xfade_s=xfade_s)
+                         hop_s=hop_s, xfade_s=xfade_s, pli=pli)
         self._lp = sps.butter(cfg.order, cfg.lp_hz / (fs / 2), btype="lowpass",
                               output="sos")
 
@@ -318,12 +349,12 @@ def _odd(n: int) -> int:
     return n + 1 if n % 2 == 0 else n
 
 
-def build_fe(mode: str, fs: float = FS, hop_s: float = 0.096):
+def build_fe(mode: str, fs: float = FS, hop_s: float = 0.096, pli: str = "canceller"):
     """이름 하나로 고른다. 모르는 이름은 **조용히 넘어가지 않고** 죽는다."""
     if mode not in FE_MODES:
         raise ValueError(f"front-end 모드가 아니다: {mode!r} (가능: {sorted(FE_MODES)})")
     if mode == "causal":
-        return CausalFE(fs)
+        return CausalFE(fs, pli=pli)
     if mode == "zerophase":
-        return BlockZeroPhaseFE(fs, hop_s=hop_s)
-    return MedianBaselineFE(fs, hop_s=hop_s)
+        return BlockZeroPhaseFE(fs, hop_s=hop_s, pli=pli)
+    return MedianBaselineFE(fs, hop_s=hop_s, pli=pli)

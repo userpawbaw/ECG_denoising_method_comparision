@@ -26,6 +26,12 @@ HOP = int(round(HOP_S * FS))
 BEAT_S = 0.8                    # 봉우리 간격 (75 bpm 쯤)
 
 
+# 이 파일은 **창 · 교차 페이드의 이음매 기제**를 잰다. 전원선 처리는 D-50 때처럼 노치로 고정한다 —
+# 기본값인 고조파 제거기(D-52)는 이 인공 스파이크 열의 평평한 구간에 QRS 의 약 0.3 % 크기 잔물결을
+# 남기고 `[측정]`, 그것이 «경계 대 내부» 차분비를 가려 이음매가 있어도 못 잰다.
+PLI = "notch"
+
+
 def _signal(seconds=40.0, seed=7):
     """평평한 구간이 넓은 신호 — 이음매는 **평평한 곳에서** 보인다.
 
@@ -98,8 +104,8 @@ def test_cross_fade_removes_the_block_seam():
     «시험이 실제로 그 결함을 잡는다» 가 성립한다.
     """
     x = _signal()
-    bad = _seam_ratio(_run(BlockZeroPhaseFE(FS, xfade_s=0.0), x))
-    good = _seam_ratio(_run(BlockZeroPhaseFE(FS, xfade_s=HOP_S), x))
+    bad = _seam_ratio(_run(BlockZeroPhaseFE(FS, pli=PLI, xfade_s=0.0), x))
+    good = _seam_ratio(_run(BlockZeroPhaseFE(FS, pli=PLI, xfade_s=HOP_S), x))
     assert bad > 3.0, (
         f"교차 페이드를 껐는데 이음매가 안 보인다 (비 {bad:.2f}) — "
         "시험 신호가 결함을 못 드러내고 있다")
@@ -109,7 +115,7 @@ def test_cross_fade_removes_the_block_seam():
 
 def test_default_zerophase_mode_has_the_cross_fade_on():
     """기본값이 꺼져 있으면 화면에서 계단이 그대로 보인다."""
-    fe = build_fe("zerophase", FS)
+    fe = build_fe("zerophase", FS, pli=PLI)
     assert fe.xfade == fe.hop, "기본 `zerophase` 의 교차 페이드가 hop 과 다르다"
 
 
@@ -120,14 +126,14 @@ def test_median_mode_does_not_pay_for_a_cross_fade_it_does_not_need():
     거의 안 바뀐다. `filtfilt` 는 **창 전체의 함수**라 바뀐다 — 그 차이가
     교차 페이드가 한쪽에만 필요한 이유다 (F-36).
     """
-    fe = build_fe("median", FS)
+    fe = build_fe("median", FS, pli=PLI)
     assert fe.xfade == 0, "중앙값 모드가 필요 없는 교차 페이드로 지연을 사고 있다"
 
     from ecgdn.realtime.frontend_modes import MedianBaselineFE
     # **처리기는 한 번만 만든다.** 매 블록마다 새로 만들면 상태가 없어 출력이
     # 0 이 되고, `_seam_ratio` 가 조용히 skip 한다 — 실제로 그렇게 짰다가
     # 「통과」로 보였다. skip 은 통과가 아니다.
-    fe = MedianBaselineFE(FS, hop_s=HOP_S, xfade_s=0.0)
+    fe = MedianBaselineFE(FS, pli=PLI, hop_s=HOP_S, xfade_s=0.0)
     x = _signal()
     v = np.concatenate([fe.push(x[i:i + HOP]) for i in range(0, x.size, HOP)])
     assert v.size > FS * 10, f"출력이 너무 짧다 ({v.size}) — 시험이 성립 안 한다"
@@ -140,11 +146,11 @@ def test_cross_fade_costs_exactly_its_width_in_latency():
     지연 표기가 실제보다 짧으면 화면의 «지연» 표시가 거짓이 된다.
     """
     for xf in (0.0, 0.096, 0.25):
-        fe = BlockZeroPhaseFE(FS, look_s=0.5, hop_s=HOP_S, xfade_s=xf)
+        fe = BlockZeroPhaseFE(FS, pli=PLI, look_s=0.5, hop_s=HOP_S, xfade_s=xf)
         want = int(round(0.5 * FS)) + HOP + int(round(xf * FS))
         assert fe.latency_samples == want, f"xfade={xf}: {fe.latency_samples} != {want}"
     # 기본값(=hop)일 때도 맞아야 한다
-    fe = BlockZeroPhaseFE(FS, look_s=0.5, hop_s=HOP_S)
+    fe = BlockZeroPhaseFE(FS, pli=PLI, look_s=0.5, hop_s=HOP_S)
     assert fe.latency_samples == int(round(0.5 * FS)) + 2 * HOP
 
 
@@ -155,8 +161,8 @@ def test_smaller_fe_hop_buys_back_the_latency():
     FE 는 블록당 0.6 ms 라 자주 돌려도 예산의 몇 % 다 — 추론 hop 과 분리해
     두었기에 CPU 도 안 는다.
     """
-    before = BlockZeroPhaseFE(FS, look_s=0.5, hop_s=0.048, xfade_s=0.0)
-    after = BlockZeroPhaseFE(FS, look_s=0.5, hop_s=0.024)
+    before = BlockZeroPhaseFE(FS, pli=PLI, look_s=0.5, hop_s=0.048, xfade_s=0.0)
+    after = BlockZeroPhaseFE(FS, pli=PLI, look_s=0.5, hop_s=0.024)
     assert after.latency_samples == before.latency_samples, (
         f"hop 을 절반으로 줄였는데 지연이 달라졌다 "
         f"({before.latency_samples} -> {after.latency_samples})")
@@ -175,14 +181,14 @@ def test_cross_fade_keeps_the_sample_contract():
     이것이 깨지면 `Aligner` 와 원시 패널이 전부 어긋난다.
     """
     x = _signal(seconds=20.0)
-    out = _run(BlockZeroPhaseFE(FS, xfade_s=HOP_S), x)
+    out = _run(BlockZeroPhaseFE(FS, pli=PLI, xfade_s=HOP_S), x)
     assert out.size <= x.size
     # 확정된 출력은 입력의 **앞쪽부터 차례로** 대응해야 한다. 봉우리 하나만
     # 크게 만들어 두고 그 위치가 안 밀렸는지 본다 (봉우리가 다 같으면 argmax
     # 가 어느 것을 고를지 임의라 시험이 못 된다 — 처음에 그렇게 짰다).
     mark = _beats(x.size)[5]
     x[mark:mark + 10] += np.hanning(10) * 6.0
-    out = _run(BlockZeroPhaseFE(FS, xfade_s=HOP_S), x)
+    out = _run(BlockZeroPhaseFE(FS, pli=PLI, xfade_s=HOP_S), x)
     pk_out = int(np.argmax(out))
     assert abs(pk_out - (mark + 5)) <= 4, \
         f"봉우리가 {mark + 5} -> {pk_out} 으로 밀렸다 — 표본 번호 계약이 깨졌다"
@@ -215,7 +221,7 @@ def test_constant_padding_removes_the_curvature_in_flat_segments():
     0.5 Hz 고역통과가 그것을 과도현상으로 바꿔 평활 구간에 굴곡을 남긴다.
     """
     x = _signal()
-    good = _curvature(_run(BlockZeroPhaseFE(FS), x))
+    good = _curvature(_run(BlockZeroPhaseFE(FS, pli=PLI), x))
 
     class _Odd(BlockZeroPhaseFE):
         def _process(self, w):
@@ -224,7 +230,7 @@ def test_constant_padding_removes_the_curvature_in_flat_segments():
             v = sp.sosfiltfilt(self._hp, w, padtype="odd", padlen=pad)
             return sp.sosfiltfilt(self._lp, v, padtype="odd", padlen=pad)
 
-    bad = _curvature(_run(_Odd(FS), x))
+    bad = _curvature(_run(_Odd(FS, pli=PLI), x))
     assert bad > good * 1.8, (
         f"`odd` 로 되돌렸는데 굴곡이 안 돌아온다 ({bad:.4f} vs {good:.4f}) — "
         "시험이 결함을 못 잡고 있다")
@@ -243,7 +249,7 @@ def test_the_block_filter_declares_its_padding_choice():
 def test_accumulator_stays_bounded():
     """누적기가 자라면 F-31 이 재현된다 — 시간이 갈수록 느려진다."""
     x = _signal(seconds=60.0)
-    fe = BlockZeroPhaseFE(FS, xfade_s=HOP_S)
+    fe = BlockZeroPhaseFE(FS, pli=PLI, xfade_s=HOP_S)
     _run(fe, x)
     assert fe._acc.size <= 4 * HOP, f"누적기가 {fe._acc.size} 로 자랐다"
     assert fe._wsum.size == fe._acc.size
