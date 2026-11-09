@@ -946,6 +946,7 @@ def main() -> int:
                 "stat": {**stat, "qdrop": qdrop[0], "sse_drop": hub.dropped,
                          "lat_ms": round(lat_ms + fe.latency_samples / FS * 1000.0, 1),
                          "fe": switch.mode,
+                         "pli": args.pli,       # 화면 이름표가 방식을 정확히 말하게 (D-52)
                          "rtf": round(cpu / max(el, 1e-9), 3),
                          "gap_ms": round(gap_ms)},
             }

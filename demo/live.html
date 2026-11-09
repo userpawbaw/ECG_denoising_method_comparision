@@ -246,13 +246,26 @@ function panel(name, label){
 
 const LABEL = {
   raw:'입력 — 전극에서 온 그대로 (front-end 이전)',
-  M_FE:'공통 front-end (0.5–100 Hz + 전원선 제거)',
+  M_FE:'공통 front-end (0.5–100 Hz + 전원선 제거)',   // 브리지가 방식을 말하면 아래 setPli 가 바꾼다
   M01:'대역통과 + 전원선 제거',
   M02:'Savitzky–Golay', M03:'DWT', M04:'SWT + QRS 보호', M05:'Sameni EKS (창 · hop 128)',
   M05S:'Sameni EKF · 스트리밍 (미래 144 ms + 고정 지연 평활)',
   M06:'ResUNet1D (딥러닝)', M06L6:'ResUNet1D · clean 보존 손실',
   M08:'wavelet-subband U-Net', M09:'CNN + Transformer',
 };
+
+/* 전원선 처리 방식 (D-52). 브리지가 `stat.pli` 로 말한다 — 말하지 않는 낡은 브리지면
+ * 위의 «전원선 제거» 를 그대로 둔다(어느 쪽인지 모르는데 하나를 적으면 틀린 말이 된다). */
+const PLI_TXT = {canceller:'고조파 추적 제거', notch:'노치 60 · 120 Hz'};
+let pliMode = null;
+function setPli(p){
+  if (!p || p === pliMode) return false;
+  pliMode = p;
+  const t = PLI_TXT[p] || p;
+  LABEL.M_FE = `공통 front-end (0.5–100 Hz + ${t})`;
+  LABEL.M01 = `대역통과 + ${t}`;
+  return true;
+}
 
 /* 겹치기용 색. dataviz 팔레트 순서 그대로이고 **넷까지만** `--pairs all` 을
  * 통과한다(다섯째를 넣으면 초록↔주황이 protan ΔE 3.2 로 무너진다). 그래서
@@ -774,6 +787,7 @@ es.onmessage = ev => {
   const s = m.stat;
   // 다른 창에서 바꿨을 수도 있다 — 브리지가 말하는 것을 따른다.
   if (s.fe && s.fe !== feMode){ feMode = s.fe; paintFe(); }
+  if (setPli(s.pli)) relayout();          // 이름표를 방식에 맞춰 다시 그린다
   el('lat').textContent  = s.lat_ms + ' ms';
   el('elapsed').textContent = (m.i / m.fs).toFixed(1) + ' s';
   el('lost').textContent = s.lost + ' 샘플';
